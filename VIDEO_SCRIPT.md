@@ -15,9 +15,12 @@ pad. Bracketed [ ] = something you need to record/insert; VO = voiceover line.
 - [ ] Static image/export of the architecture diagram (from README.md /
       WRITEUP.md) — make it legible at video resolution, don't just screenshot
       the markdown
-- [ ] Have `agents/`, `skills/*/SKILL.md`, `mcp_server/aws_mcp_server.py`,
-      `infra/iam-policy.json` open and ready to flash on screen during "The
-      Build"
+- [ ] Screen recording: the same request re-run with "using Terraform"
+      instead of "using CDK" — shows the router actually switching
+      provisioning sub-agent and toolchain, not just a hardcoded path
+- [ ] Have `agents/`, `skills/*/SKILL.md`, `mcp_server/external_servers.py`,
+      `infra/iam-policy.json`, `infra/allowed-resource-types.json` open and
+      ready to flash on screen during "The Build"
 
 ---
 
@@ -65,20 +68,23 @@ static for 90 seconds, animate/reveal it in sync with the VO.
 > cost ceiling.' That check is deterministic code, not a model call, so the
 > result is reproducible and auditable.
 >
-> If it passes, the Provisioning Agent — a distinct ADK agent — drafts a
-> plan and produces a plain-English summary of exactly what it's about to
-> create, before touching anything.
+> If it passes, a provisioning router agent picks a path based on the
+> user's tool preference — CDK-native, or Terraform. Rather than writing
+> our own AWS provisioning code, each path routes to an existing, officially
+> maintained MCP server: AWS Labs' tools for CDK and AWS's Cloud Control
+> API, or HashiCorp's official Terraform MCP Server for teams on HCP
+> Terraform. Both produce a plain-English summary of exactly what they're
+> about to create, before touching anything.
 >
 > That plan goes to a separate Security Agent for review. This agent has no
-> AWS tools at all — it can only approve or reject, checking the plan
-> against our IAM allow-list and cost ceiling. That's a deliberate
-> separation of duties: a compromised or confused agent upstream can't
-> execute anything on its own.
+> infrastructure-modifying tools at all — it can only approve or reject.
+> Because one of these tools can touch over a thousand resource types, IAM
+> permissions alone aren't a tight enough boundary, so the Security Agent
+> also checks the plan against an explicit resource-type allow-list — a
+> second, independent gate.
 >
-> Only an approved plan reaches our MCP server, which exposes exactly three
-> AWS actions — estimate cost, create the site, check status — and
-> re-checks the same allow-list and cost ceiling itself before doing
-> anything. Two independent checkpoints, not one."
+> Only an approved plan executes. Two independent checkpoints, not one, on
+> the riskiest step in the system."
 
 ---
 
@@ -89,12 +95,16 @@ on AWS API calls), real-time for the interesting parts (the Vibe Diff
 summary appearing, the approval, the rejected case).
 
 **VO (adjust to match what's actually on screen):**
-> "Here's a real run. I ask for a static blog site in us-east-1. The
-> compliance check passes — you can see exactly which rules it verified.
-> The Provisioning Agent estimates cost at about a dollar a month and shows
-> the plain-English summary of what it's about to create. The Security
-> Agent reviews it against our policy and approves. The MCP server creates
-> the S3 bucket and CloudFront distribution, and we get back a working URL.
+> "Here's a real run. I ask for a static blog site in us-east-1, using CDK.
+> The compliance check passes — you can see exactly which rules it verified.
+> The CDK provisioning agent validates the template and shows a plain-English
+> summary of what it's about to create. The Security Agent reviews it and
+> approves. The resources get created via AWS's Cloud Control API, and we
+> get back a working URL.
+>
+> Now the same request, but 'using Terraform' instead — [show it routing to
+> the Terraform agent]. Same review, same approval gate, different
+> execution path underneath.
 >
 > Now here's a spec that requests public write access on the bucket — [show
 > rejection]. The compliance check catches it immediately, with the specific
@@ -106,20 +116,24 @@ summary appearing, the approval, the rejected case).
 ## 4:00–5:00 — The Build (60s)
 
 **Visual:** Quick cuts across the actual file tree / code: `agents/`
-folder, one `SKILL.md` open, `aws_mcp_server.py`, `infra/iam-policy.json`.
+folder, one `SKILL.md` open, `mcp_server/external_servers.py`,
+`infra/iam-policy.json`, `infra/allowed-resource-types.json`.
 
 **VO:**
 > "Under the hood: Google's Agent Development Kit for multi-agent
-> orchestration, with three distinct agents — orchestrator, provisioning,
-> and security — not one agent role-playing different jobs. Procedure lives
-> in Agent Skills: versioned, inspectable markdown files an ops team could
-> edit without touching code. Reach lives in a purpose-built MCP server with
-> a deliberately narrow tool surface. And least-privilege IAM plus a hard
-> cost ceiling are enforced at two independent layers, not just one.
+> orchestration, with five distinct agents — an orchestrator, a
+> provisioning router, two provisioning specialists, and security — not one
+> agent role-playing different jobs. Procedure lives in Agent Skills:
+> versioned, inspectable markdown files an ops team could edit without
+> touching code. Reach lives entirely in existing, officially maintained MCP
+> servers — we deliberately didn't write our own AWS provisioning code.
+> And least-privilege IAM plus a resource-type allow-list plus a hard cost
+> ceiling are enforced at independent layers, not just one.
 >
 > This is a minimal, real, working core — not a mockup — designed so the
-> next surface, like real diagram parsing or compute provisioning, plugs
-> into the exact same review-and-approve pattern."
+> next surface, like GCP, Azure, or real diagram parsing, plugs into the
+> exact same review-and-approve pattern. We researched the current MCP
+> ecosystem for those too — it's in the README roadmap."
 
 ---
 

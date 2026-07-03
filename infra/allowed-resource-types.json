@@ -1,0 +1,7 @@
+{
+  "_comment": "Resource-type allow-list for the CDK/CCAPI path. CCAPI's tool interface accepts an arbitrary CloudFormation-style resource type identifier as a parameter, so IAM action grants alone don't bound *which* resource types can be touched — the security_agent checks this list explicitly before approving any create/update/delete.",
+  "allowed_resource_types": [
+    "AWS::S3::Bucket",
+    "AWS::CloudFront::Distribution"
+  ]
+}

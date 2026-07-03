@@ -57,17 +57,15 @@ image upload as a documented next step, not built here), the system:
    ceiling." This check runs deterministically via `spec/check_compliance.py`
    — no model call needed, so results are reproducible and auditable, not
    just "the LLM said it was fine."
-2. **Drafts a provisioning plan**, if compliant, via the **Provisioning
-   Agent**, which produces a plain-English summary of exactly what it's
-   about to do — resource names, region, estimated monthly cost — before
-   touching anything.
+2. **Drafts a provisioning plan**, if compliant, via a **Provisioning
+   Agent** for the user's chosen toolchain, which produces a plain-English
+   summary of exactly what it's about to do — resources, region, estimated
+   monthly cost — before touching anything.
 3. **Requires explicit approval** from a separate **Security Agent**, which
-   checks the plan against an IAM allow-list and cost ceiling using its own
-   `security-review-checklist` procedure. Only an approved plan is allowed to
-   execute.
-4. **Provisions the resources** through a narrow, purpose-built MCP server
-   that exposes exactly three tools — `estimate_cost`,
-   `create_static_site`, `get_deployment_status` — and nothing else.
+   checks the plan using its own `security-review-checklist` procedure
+   before anything is allowed to execute.
+4. **Provisions the resources** by routing to existing, officially
+   maintained MCP servers rather than hand-rolled cloud code — see below.
 
 ```
 User request / spec
@@ -78,36 +76,48 @@ platformops_orchestrator (ADK root agent)
         ├── sdlc-diagram-compliance-check skill ──► check_compliance.py
         │        (checked against reference_architecture.md)
         ▼
-provisioning_agent ──uses──► provision-static-web-app skill
-        │                         (produces a plain-English action summary)
+provisioning_agent (router) ──uses──► provision-infra skill, Step 0
+        │        (picks a path by the user's stated tool preference)
+        ├──► cdk_provisioning_agent ──► aws-iac-mcp-server (design/validate)
+        │                          └─► ccapi-mcp-server (execute via AWS
+        │                              Cloud Control API)
+        └──► terraform_provisioning_agent ──► HashiCorp Terraform MCP
+                                          Server (create_run/action_run
+                                          against HCP Terraform)
+        │        each path produces a plain-English "Vibe Diff" first
         ▼
 security_agent ──uses──► security-review-checklist skill
-        │        (checks IAM allow-list + cost ceiling)
+        │   (IAM + resource-type allow-list on the CDK path; workspace
+        │    scope + an operator-controlled kill switch on the Terraform
+        │    path; cost ceiling and region on both)
         ▼ (approved only)
-aws_mcp_server (MCP) ──boto3──► AWS (S3 + CloudFront)
+   AWS (S3 + CloudFront, this MVP's demo scope)
 ```
 
-**Multi-agent system (ADK).** The orchestrator, Provisioning Agent, and
-Security Agent are three distinct ADK agents with separate instructions and
-tool access, not one agent wearing different hats via prompting. The
-Security Agent in particular has *no* AWS-modifying tools available to it at
-all — it can only approve or reject, which means a prompt-injection or
-reasoning failure in that agent can't itself cause an unwanted AWS action.
+**Multi-agent system (ADK).** Five distinct ADK agents, not one agent
+wearing different hats via prompting: an orchestrator, a provisioning
+*router*, two provisioning specialists (`cdk_provisioning_agent`,
+`terraform_provisioning_agent`), and a Security Agent. The Security Agent
+has *no* infrastructure-modifying tools available to it at all — it can
+only approve or reject, so a prompt-injection or reasoning failure upstream
+can't itself cause an unwanted change.
 
 **Agent Skills.** We deliberately used Skills, not ad hoc prompt text, to
-encode procedure: `provision-static-web-app`, `security-review-checklist`,
-and `sdlc-diagram-compliance-check` are each a `SKILL.md` with explicit
-trigger conditions and a numbered procedure. This means the *how* of
-provisioning or reviewing is versioned, inspectable, and reusable across
-whichever agent loads it — and it can be updated by an ops team without
-touching agent code.
+encode procedure: `provision-infra` (which path to take and how to execute
+each), `security-review-checklist`, and `sdlc-diagram-compliance-check` are
+each a `SKILL.md` with explicit trigger conditions and a numbered
+procedure. This means the *how* of provisioning or reviewing is versioned,
+inspectable, and reusable across whichever agent loads it.
 
-**MCP Server.** We use skills for procedure and MCP for reach. The
-`aws_mcp_server` is intentionally minimal: it only exposes the three tools
-needed for a static-site deployment, each of which independently re-checks
-the IAM allow-list and cost ceiling before doing anything — so approval
-isn't just a prompt-level gate that a differently-phrased request could talk
-its way around.
+**MCP Servers.** We use Skills for procedure and MCP for reach — and
+specifically chose to *route to existing, officially maintained servers*
+rather than write our own: AWS Labs' `aws-iac-mcp-server` (CDK/CloudFormation
+docs, `cfn-lint`, `cfn-guard` — validation only, no execution) paired with
+`ccapi-mcp-server` (the actual create/update/delete via AWS Cloud Control
+API), or HashiCorp's official Terraform MCP Server for teams on HCP
+Terraform. This is a stronger "clever use of existing toolsets" story than
+a hand-rolled server, at the cost of a wider tool surface we had to
+explicitly re-scope in the security review (see below).
 
 ## Security & Guardrails
 
@@ -115,21 +125,29 @@ Security isn't a bolt-on feature here, it's the reason the architecture is
 split the way it is:
 
 - **Least privilege by construction**: `infra/iam-policy.json` allow-lists
-  exactly the actions the MCP server needs (S3 bucket + website config,
-  CloudFront distribution management) — nothing broader. The credentials
-  used by the agent are scoped to this policy, not to a general-purpose AWS
-  account.
-- **Defense in depth**: the Security Agent's review and the MCP server's own
-  internal checks are two independent enforcement points. A compromised
-  prompt that talks the Provisioning Agent into skipping the review step
-  still hits the same allow-list and cost-ceiling check inside the MCP
-  server itself before anything executes.
+  exactly the actions our credentials need — nothing broader. The
+  credentials used by the agent are scoped to this policy, not to a
+  general-purpose account.
+- **A second allow-list where IAM alone isn't enough**: `ccapi-mcp-server`'s
+  tools accept an arbitrary CloudFormation-style resource type as a
+  parameter, so being IAM-permitted to call its API doesn't by itself bound
+  *which* resource types get touched. `infra/allowed-resource-types.json` is
+  an application-level allow-list the Security Agent checks explicitly —
+  we treat this as equally load-bearing as the IAM policy, not a
+  nice-to-have, precisely because routing to a more powerful existing tool
+  (CCAPI covers 1,100+ resource types) means we can't rely on IAM scoping
+  alone the way our original narrow custom server did.
+- **Defense in depth**: the Security Agent's review runs before any
+  execution attempt; on the Terraform path, an `ENABLE_TF_OPERATIONS` flag
+  is additionally required and can only be set by the human operator, never
+  toggled by the agent itself — a second, independent gate on the riskiest
+  operation.
 - **Plain-English approval gate**: every provisioning action is preceded by
-  a human-readable summary of exactly what will be created and what it will
-  cost, reviewed before execution — not after.
+  a human-readable "Vibe Diff" summary of exactly what will be created and
+  what it will cost, reviewed before execution — not after.
 - **Cost ceiling as a hard stop**: `MAX_ESTIMATED_MONTHLY_COST_USD` is
-  checked at both the skill level and the MCP tool level; a plan that
-  exceeds it is rejected, not flagged-and-continued.
+  checked by the Security Agent on every plan; a plan that exceeds it is
+  rejected, not flagged-and-continued.
 - **Deterministic compliance checks**: `check_compliance.py` runs as a plain
   script, not a model call, specifically so its results are reproducible and
   can be included in an audit log without worrying about non-determinism.
@@ -151,9 +169,19 @@ recording.]
 
 ## Implementation & Technical Decisions
 
-- **Stack**: Python, Google ADK for agent orchestration, the MCP Python SDK
-  (`FastMCP`) for the AWS tool server, `boto3` for AWS calls, plain YAML for
-  the structured infra spec input.
+- **Stack**: Python, Google ADK for agent orchestration, plain YAML for the
+  structured infra spec input. Notably, no `boto3` and no hand-written cloud
+  SDK calls in this project's own code — provisioning routes entirely
+  through third-party MCP servers (`aws-iac-mcp-server`, `ccapi-mcp-server`,
+  HashiCorp's Terraform MCP Server) launched as subprocesses.
+- **Why route to existing MCP servers instead of writing our own**: we
+  researched what's already officially maintained before building anything
+  — AWS Labs and HashiCorp both publish and actively maintain servers that
+  cover far more of the CDK/CloudFormation and Terraform surface than we
+  could build in the time we had, and staying current with provider APIs
+  becomes their maintenance burden, not ours. The cost is a wider,
+  less-bespoke tool surface, which is why the security review skill has
+  explicit path-specific checks rather than one simple allow-list.
 - **Why a structured spec instead of diagram image parsing for the MVP**:
   diagram-to-structure extraction is a real, separate problem (OCR/vision +
   disambiguation), and we didn't want to ship an unreliable version of it
@@ -176,17 +204,19 @@ recording.]
 matching `spec/example_submission.yaml`:]
 
 1. Submit a request to deploy a static blog site (`demo-blog`, `us-east-1`,
-   low traffic tier).
+   low traffic tier), stating a tool preference — e.g. "using CDK, deploy...".
 2. `sdlc-diagram-compliance-check` runs against the spec — PASS, with the
    specific rules checked shown in the output.
-3. Provisioning Agent estimates cost (~$1/month) and produces the
-   plain-English action summary: bucket name, CloudFront distribution,
-   region.
-4. Security Agent reviews against `infra/iam-policy.json` and the cost
-   ceiling — approves.
-5. MCP server creates the S3 bucket + CloudFront distribution; the agent
-   reports back the resulting URL.
-6. [Optional] Show a *rejected* case — e.g., a spec requesting public write
+3. `provisioning_agent` routes to `cdk_provisioning_agent`, which validates
+   a CloudFormation template via `aws-iac-mcp-server` and produces the
+   plain-English Vibe Diff summary: resource types, region, estimated cost.
+4. Security Agent reviews against `infra/iam-policy.json`,
+   `infra/allowed-resource-types.json`, and the cost ceiling — approves.
+5. `ccapi-mcp-server` creates the S3 bucket + CloudFront distribution; the
+   agent reports back the resulting URL.
+6. [Optional] Repeat the same request with "using Terraform" instead, to
+   show the routing actually switches provisioning sub-agent and toolchain.
+7. [Optional] Show a *rejected* case — e.g., a spec requesting public write
    access on the bucket — to demonstrate the compliance check and security
    review actually blocking a real violation, not just a happy path.
 
@@ -214,7 +244,16 @@ or CloudFront API details.]
 
 ## Roadmap
 
-This is intentionally a minimal, extensible core:
+This is intentionally a minimal, extensible core. We researched the current
+MCP ecosystem specifically so the next contributor doesn't have to:
+- **GCP**: Google's managed MCP servers (50+, GA/preview as of Google Cloud
+  Next '26) — specifically the GCE MCP server for compute provisioning.
+- **Azure**: Azure MCP Server 2.0 (self-hosted/remote, 276 tools across 57
+  services) or the newer Azure Resource Manager MCP Server for
+  CloudFormation-style declarative parity with our CDK path.
+- **Terraform on GCP/Azure**: no new server needed — HashiCorp's server is
+  already cloud-agnostic via Terraform providers, so this is a config change,
+  not a new integration.
 - Diagram image upload → vision-based structured spec extraction, feeding
   the same `check_compliance.py`.
 - Additional AWS provisioning surfaces (compute, networking) behind the same
@@ -222,7 +261,6 @@ This is intentionally a minimal, extensible core:
 - Distributed agents behind an Agent-to-Agent (A2A) protocol with individual
   Agent Cards, so the Security/Compliance agent could be a shared service
   reused across multiple provisioning agents/teams, not just this one.
-- Multi-cloud support using the same skill/MCP-server separation.
 - A messaging-app input surface (Slack/Teams) so requests can be submitted
   conversationally, reusing this same orchestration underneath.
 

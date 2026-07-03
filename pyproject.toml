@@ -7,9 +7,13 @@ requires-python = ">=3.11"
 dependencies = [
     "google-adk",
     "mcp",
-    "boto3",
     "pyyaml",
 ]
+# Note: boto3 is no longer a direct dependency — provisioning now routes
+# through external MCP servers (awslabs.aws-iac-mcp-server, awslabs.ccapi-mcp-server,
+# HashiCorp's terraform-mcp-server) launched as subprocesses via `uvx`/their own
+# install method, rather than calling boto3 in-process. `uv` (which provides
+# `uvx`) is required at runtime; see README.md setup.
 
 [project.optional-dependencies]
 dev = ["pytest"]

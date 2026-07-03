@@ -23,6 +23,20 @@
           "aws:RequestTag/Name": "platformops-demo-*"
         }
       }
+    },
+    {
+      "Sid": "PlatformOpsDemoCloudControlApiMetaActions",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateResource",
+        "cloudformation:GetResource",
+        "cloudformation:GetResourceRequestStatus",
+        "cloudformation:UpdateResource",
+        "cloudformation:DeleteResource",
+        "cloudformation:ListResources",
+        "cloudformation:CancelResourceRequest"
+      ],
+      "Resource": "*"
     }
   ]
 }

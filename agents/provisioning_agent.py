@@ -1,23 +1,19 @@
-# Verify import paths/signatures against the installed google-adk version —
-# ADK's MCP integration API has moved across releases.
+# Verify import paths/signatures against the installed google-adk version.
 from google.adk.agents import Agent
-from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters
 
-AWS_MCP_SERVER = StdioServerParameters(
-    command="python",
-    args=["-m", "mcp_server.aws_mcp_server"],
-)
+from .cdk_provisioning_agent import cdk_provisioning_agent
+from .terraform_provisioning_agent import terraform_provisioning_agent
 
 provisioning_agent = Agent(
     name="provisioning_agent",
     model="gemini-2.5-flash",
-    description="Provisions AWS infrastructure (S3 static site + CloudFront) from a structured spec.",
+    description="Routes a provisioning request to the CDK-native or Terraform sub-agent based on the user's tool preference.",
     instruction=(
-        "You provision AWS infrastructure described in the user's spec. "
-        "Load the 'provision-static-web-app' skill for the exact procedure. "
-        "Before calling any MCP tool that creates or modifies AWS resources, produce a "
-        "plain-English summary of what will happen (resources, cost estimate, region) and "
-        "wait for the security_agent to approve it before proceeding."
+        "Follow the 'provision-infra' skill's Step 0 to determine the "
+        "user's IaC tool preference. Delegate to cdk_provisioning_agent for "
+        "'cdk' (the default when unstated), or terraform_provisioning_agent "
+        "for 'terraform'. Do not draft or execute a provisioning plan "
+        "yourself — always delegate to the matching sub-agent."
     ),
-    tools=[MCPToolset(connection_params=AWS_MCP_SERVER)],
+    sub_agents=[cdk_provisioning_agent, terraform_provisioning_agent],
 )
