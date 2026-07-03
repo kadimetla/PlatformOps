@@ -1,0 +1,11 @@
+# Example input for spec/check_compliance.py
+app_name: demo-blog
+region: us-east-1
+estimated_monthly_usd: 1.0
+resources:
+  - type: s3_bucket
+    name: platformops-demo-blog
+    public_write: false
+  - type: cloudfront_distribution
+    name: platformops-demo-blog-cdn
+    viewer_protocol_policy: redirect-to-https
