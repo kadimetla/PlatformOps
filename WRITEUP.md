@@ -237,7 +237,7 @@ types, real diagrams, more clouds) plugs into the same pattern.
 
 ---
 
-**Public Project Link**: [GitHub repo URL — include setup instructions,
-already in README.md]
+**Public Project Link**: https://github.com/kadimetla/PlatformOps
+(setup instructions in README.md)
 **Video**: [YouTube URL, ≤5 min]
 **Cover image**: [architecture diagram from this writeup, as an image asset]
