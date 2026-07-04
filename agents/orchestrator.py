@@ -1,12 +1,13 @@
 # Verify import paths/signatures against the installed google-adk version.
 from google.adk.agents import Agent
 
+from .model_config import get_model
 from .provisioning_agent import provisioning_agent
 from .security_agent import security_agent
 
 root_agent = Agent(
     name="platformops_orchestrator",
-    model="gemini-2.5-flash",
+    model=get_model("orchestration"),
     description="Routes infra requests to the provisioning agent, gated by the security agent's approval.",
     instruction=(
         "You are the entry point for platform-ops requests. Given a structured infra spec "

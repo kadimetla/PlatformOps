@@ -1,9 +1,11 @@
 # Verify import paths/signatures against the installed google-adk version.
 from google.adk.agents import Agent
 
+from .model_config import get_model
+
 security_agent = Agent(
     name="security_agent",
-    model="gemini-2.5-flash",
+    model=get_model("review"),
     description="Reviews provisioning plans for least-privilege and policy compliance before AWS actions execute.",
     instruction=(
         "You review provisioning plans proposed by provisioning_agent before they execute. "

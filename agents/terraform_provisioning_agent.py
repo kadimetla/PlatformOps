@@ -4,9 +4,11 @@ from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 
 from mcp_server.external_servers import TERRAFORM_MCP_SERVER
 
+from .model_config import get_model
+
 terraform_provisioning_agent = Agent(
     name="terraform_provisioning_agent",
-    model="gemini-2.5-flash",
+    model=get_model("execution"),
     description="Provisions AWS infrastructure using HashiCorp's official Terraform MCP Server against HCP Terraform.",
     instruction=(
         "Follow the 'provision-infra' skill's Path B (terraform). Requires "

@@ -4,9 +4,11 @@ from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
 
 from mcp_server.external_servers import AWS_IAC_MCP_SERVER, CCAPI_MCP_SERVER
 
+from .model_config import get_model
+
 cdk_provisioning_agent = Agent(
     name="cdk_provisioning_agent",
-    model="gemini-2.5-flash",
+    model=get_model("execution"),
     description="Provisions AWS infrastructure using CDK-native tooling: aws-iac-mcp-server for design/validation, ccapi-mcp-server for execution.",
     instruction=(
         "Follow the 'provision-infra' skill's Path A (cdk). Use "

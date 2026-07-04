@@ -244,7 +244,14 @@ or CloudFront API details.]
 
 ## Roadmap
 
-This is intentionally a minimal, extensible core. We researched the current
+This is intentionally a minimal, extensible core, and one slice of a larger
+intended product: a multi-channel, multi-tenant harness — chat-app input,
+per-workspace session isolation, a human-in-the-loop approval queue for
+higher-risk changes — modeled on OpenClaw's gateway pattern, so any team
+could configure this for their own cloud, tools, and risk tolerance rather
+than fork it. `docs/HARNESS_DESIGN.md` in the repo lays this out in full,
+including exactly which pieces (agent layer, model config) are real today
+versus designed for later (the Gateway itself). We researched the current
 MCP ecosystem specifically so the next contributor doesn't have to:
 - **GCP**: Google's managed MCP servers (50+, GA/preview as of Google Cloud
   Next '26) — specifically the GCE MCP server for compute provisioning.

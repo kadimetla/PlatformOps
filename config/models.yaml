@@ -1,0 +1,20 @@
+# Agent role -> model identifier. Edit this file to change which model
+# backs which agent; no agent code should ever hardcode a model string.
+# See docs/HARNESS_DESIGN.md for the role-tier rationale.
+routing:
+  # provisioning_agent (router): high volume, low ambiguity decisions.
+  model: gemini-2.5-flash
+
+execution:
+  # cdk_provisioning_agent, terraform_provisioning_agent: needs reliable
+  # tool use against external MCP servers.
+  model: gemini-2.5-flash
+
+review:
+  # security_agent: low volume, high stakes — worth the most capable
+  # available model.
+  model: gemini-2.5-pro
+
+orchestration:
+  # platformops_orchestrator: top-level delegation only.
+  model: gemini-2.5-flash

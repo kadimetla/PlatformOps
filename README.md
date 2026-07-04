@@ -5,6 +5,12 @@ request (or a structured architecture spec), checks it for SDLC compliance,
 provisions the approved AWS infrastructure, and gates every real-world action
 behind an explicit security review.
 
+This repo is a working slice of a larger intended product — a multi-channel,
+multi-tenant harness any team could configure for their own cloud/tool needs,
+in the spirit of [OpenClaw](https://docs.openclaw.ai/)'s gateway pattern. See
+`docs/HARNESS_DESIGN.md` for that design and exactly which parts of it exist
+today versus which are designed for later.
+
 ## Problem
 Every org running workloads on AWS needs a platform ops function to turn app
 requirements into provisioned, secure, compliant infrastructure. That's
@@ -214,14 +220,19 @@ Finally, check the Billing console once more before walking away.
 
 ## Project layout
 - `agents/` — ADK orchestrator, the provisioning router, its two sub-agents
-  (`cdk_provisioning_agent`, `terraform_provisioning_agent`), and
-  `security_agent`
+  (`cdk_provisioning_agent`, `terraform_provisioning_agent`),
+  `security_agent`, and `model_config.py` (config-driven model selection —
+  see `docs/HARNESS_DESIGN.md`)
+- `config/models.yaml` — which model backs which agent role
 - `skills/` — Agent Skills (procedure/decision logic, not cloud access)
 - `mcp_server/external_servers.py` — connection configs for the third-party
   MCP servers this project routes to (no longer hosts our own AWS server)
 - `spec/` — reference architecture (BDD-style rules) + compliance checker
 - `infra/` — IAM policy + resource-type allow-list for the agent's credentials
 - `scripts/` — teardown script for demo cleanup
+- `docs/HARNESS_DESIGN.md` — the product-level design for a multi-channel,
+  multi-tenant harness (OpenClaw-inspired) that this hackathon build is one
+  slice of; not built yet, see that doc for the built-vs-designed line
 
 ## Roadmap: multi-cloud and other IaC tools
 This MVP covers AWS via two tool paths. Extending it means adding a new
