@@ -71,6 +71,97 @@ implies (a `gemini-*` string vs. an `openai:*` / `anthropic:*` prefix, for
 instance), so an adopting org isn't locked into Gemini just because we
 started there.
 
+### Current model implementation deep dive
+The model layer is intentionally narrow today:
+
+- `config/models.yaml` maps four roles to model identifiers:
+  `routing`, `execution`, `review`, and `orchestration`.
+- `agents/model_config.py#get_model(role)` loads that YAML and returns the
+  configured `model` string for the requested role.
+- Each ADK agent calls `get_model(...)` at construction time:
+  `platformops_orchestrator` uses `orchestration`,
+  `provisioning_agent` uses `routing`, both provisioning sub-agents use
+  `execution`, and `security_agent` uses `review`.
+
+That gives us the most important MVP property: model choice is no longer
+buried in individual agent files. The boundary is still not a full model
+abstraction, though. There is no schema validation, no per-BU override
+mechanism, no runtime reload, and no provider adapter selection yet.
+`get_model()` returns a raw ADK-compatible string, not a provider-neutral
+model object. This is acceptable for the hackathon slice and exactly the
+part to replace when the Gateway starts loading per-BU workspace config.
+
+## Current agent implementation deep dive
+
+The code that exists today is an ADK agent graph, not the production
+Gateway/harness described below:
+
+```
+platformops_orchestrator
+  ├── provisioning_agent
+  │     ├── cdk_provisioning_agent
+  │     │     ├── aws-iac-mcp-server tools  (docs/validation)
+  │     │     └── ccapi-mcp-server tools    (AWS mutation)
+  │     └── terraform_provisioning_agent
+  │           └── HashiCorp Terraform MCP Server tools
+  └── security_agent
+```
+
+The agents are wired as follows:
+
+- `agents/orchestrator.py` defines `platformops_orchestrator`, delegates
+  planning to `provisioning_agent`, and instructs the flow to require
+  explicit `security_agent` approval before AWS-modifying tools execute.
+- `agents/provisioning_agent.py` is only a router. It follows
+  `skills/provision-infra/SKILL.md` Step 0 and delegates to CDK by default
+  or Terraform when the user requests it.
+- `agents/cdk_provisioning_agent.py` attaches both the read-only
+  `aws-iac-mcp-server` toolset and the mutating `ccapi-mcp-server` toolset.
+  Its prompt requires template validation, a Vibe Diff, and security
+  approval before any Cloud Control API create/update/delete call.
+- `agents/terraform_provisioning_agent.py` attaches the Terraform MCP
+  Server toolset and requires a Vibe Diff plus security approval before
+  applying a run.
+- `agents/security_agent.py` is a review agent with no tools. It uses the
+  `security-review-checklist` skill as procedure and returns approve/reject
+  reasoning.
+
+This split is the right shape for PlatformOps: routing, execution, and
+review are separate roles with different model tiers and different failure
+modes. The current enforcement level is still prompt-level, however. The
+mutating MCP tools are attached directly to the provisioning agents, and
+the approval rule is an instruction, not a runtime policy guard. In a
+production harness, mutating tool calls should pass through a policy-aware
+tool gateway that checks for a recorded approval object before dispatching
+to CCAPI or Terraform apply.
+
+The same distinction applies to compliance. `spec/check_compliance.py` is
+deterministic and should remain outside the LLM model layer, but it is not
+currently exposed as an ADK tool or mandatory preflight step in the agent
+graph. For production, the Gateway should run deterministic checks before
+provisioning and attach their results to the request context reviewed by
+`security_agent`.
+
+### PlatformOps runtime boundary to build next
+The next implementation step is not a UI; it is a small runtime boundary
+that turns prompt-level procedure into enforceable workflow:
+
+1. Normalize every inbound request into a typed envelope:
+   requester, channel, org, BU, workspace bundle, text, attachments, and
+   requested action.
+2. Resolve the envelope through an org registry:
+   `org_id -> bu_id -> agentId/workspace_config_ref`.
+3. Load per-BU workspace config: credentials, allowed resource types, cost
+   ceiling, region, model overrides, and review policy.
+4. Run deterministic preflight checks such as `spec/check_compliance.py`
+   before provisioning starts.
+5. Route mutating tool calls through a gateway-controlled dispatcher rather
+   than exposing them directly to provisioning agents.
+6. Represent review as data: plan ID, Vibe Diff, reviewer/agent decision,
+   approval state, expiry, and audit log entry.
+7. Dispatch CCAPI or Terraform apply only when the dispatcher sees a valid
+   approval for the exact plan being executed.
+
 ## Harness layer design (not built — this section is the design to build toward)
 
 ```
@@ -167,6 +258,387 @@ below for why this shape, not some other one):
   org means minting one fresh `agentId` per BU and registering it here —
   never reusing an existing `agentId`, which is an OpenClaw hard rule (see
   deep dive).
+
+## PlatformOps harness deep dive: features to borrow from OpenClaw
+
+OpenClaw is useful here because it treats the harness as the product
+boundary: one Gateway owns channel ingress, routing, sessions, tools,
+configuration, and operator surfaces. For PlatformOps, the same shape is
+right, but the safety model has to be stricter because the agent is not
+editing files in a workspace — it is proposing and applying cloud
+infrastructure changes.
+
+### Borrow: Gateway as the single control plane
+OpenClaw's Gateway is the source of truth for sessions, routing, and
+channel connections. PlatformOps should use the same control-plane pattern:
+all Slack/Teams/CLI/webhook input enters the Gateway, and all agent runs,
+plan records, approval records, mutation dispatches, and audit events are
+created there.
+
+PlatformOps adaptation:
+
+- The Gateway owns the request envelope, not the ADK agent.
+- The Gateway assigns `request_id`, `plan_id`, `org_id`, `bu_id`,
+  `workspace_bundle_ref`, requester identity, and source channel metadata.
+- The Gateway records each state transition: received, normalized,
+  compliance-checked, planned, reviewed, approved/rejected, dispatched,
+  verified, failed, or rolled back.
+- Agents may draft plans and explanations, but they do not decide whether a
+  cloud-mutating tool call is allowed to leave the process.
+
+### Borrow: deterministic bindings, but map them to org/BU routing
+OpenClaw bindings route inbound channel accounts/peers to an `agentId`,
+with most-specific matches winning. PlatformOps should keep that
+deterministic routing rule, but the target of routing is not a persona; it
+is a business unit isolation scope.
+
+PlatformOps binding shape:
+
+```yaml
+bindings:
+  - match:
+      channel: slack
+      workspace_id: T123
+      channel_id: C-platform-payments
+    org_id: acme
+    bu_id: payments
+    agent_id: acme-payments
+
+  - match:
+      channel: webhook
+      source: github
+      repo: acme/payments-infra
+    org_id: acme
+    bu_id: payments
+    agent_id: acme-payments
+```
+
+Validation rules to build:
+
+- No binding may route two BUs to the same `agent_id`.
+- DM fallbacks are disabled for production PlatformOps unless they resolve
+  to exactly one BU and one reviewer policy.
+- Channel/thread bindings must be preferred for shared Slack/Teams
+  workspaces.
+- A default route is allowed only in a single-BU sandbox deployment.
+
+### Borrow: per-agent isolation, but do not treat it as tenant security
+OpenClaw's `agentId` owns workspace files, auth profiles, model registry,
+and session history. It also warns that one shared Gateway is a personal or
+single-trust-boundary deployment, not a hostile multi-tenant security
+boundary. PlatformOps should take both lessons seriously.
+
+For a self-hosted single-company deployment, one Gateway can host multiple
+BU scopes if everyone is inside the same organizational trust boundary and
+each BU has separate credentials, sessions, policy files, and tool
+permissions. For a managed SaaS deployment, orgs should not share one
+Gateway trust boundary. Use one Gateway or one hardened runtime namespace
+per tenant, backed by separate cloud credentials and storage.
+
+Isolation levels:
+
+| Level | Use | Boundary |
+|---|---|---|
+| BU scope | Teams inside one trusted org | Separate `agent_id`, workspace bundle, sessions, credentials, policy |
+| Org scope | One customer/tenant | Separate Gateway/runtime namespace, registry rows, secret store prefix |
+| Host scope | Mixed-trust or regulated tenants | Separate host, container namespace, service account, network policy |
+
+The PlatformOps rule is stricter than OpenClaw's personal-assistant
+default: never rely on `agent_id` alone for adversarial tenant isolation.
+`agent_id` is the BU routing and workspace unit; tenant isolation belongs
+to the deployment boundary and secret boundary.
+
+### Borrow: schema-validated, hot-reloadable config
+OpenClaw validates configuration strictly and refuses bad config at startup
+or reload. PlatformOps should copy that behavior for org registry and
+workspace bundles. A malformed binding or policy file should fail closed,
+not fall back to a permissive default.
+
+PlatformOps config families:
+
+- `orgs.yaml`: org metadata and allowed domains/channels.
+- `bindings.yaml`: channel/webhook/CLI route matches to org, BU, and
+  `agent_id`.
+- `workspace_bundles/*.yaml`: region, cloud account, credential reference,
+  cost ceiling, allowed resource types, model overrides, and review policy.
+- `review_policies/*.yaml`: which resource types can auto-approve, which
+  require human approval, and which are always denied.
+- `model_catalog.yaml`: provider/model IDs, role defaults, fallbacks, and
+  org/BU overrides.
+
+Startup/reload behavior:
+
+1. Parse all config with a real schema.
+2. Validate referential integrity: every binding points to an existing
+   org, BU, workspace bundle, and agent ID.
+3. Validate uniqueness: no cross-org reuse of agent IDs, credential refs,
+   or mutable state paths.
+4. Validate policy completeness: every mutating tool route has a review
+   policy and audit sink.
+5. Promote the config only after all checks pass.
+6. Keep the last accepted config active if reload fails.
+
+### Borrow: plugin and tool policy, but make mutation tools brokered
+OpenClaw has plugin allow/deny policy, tool allow/deny controls, sandbox
+settings, and runtime inspection. PlatformOps needs the same operator
+visibility, but infrastructure mutation should be brokered by the Gateway
+regardless of what the underlying ADK agent supports.
+
+Do not attach mutating cloud tools directly to execution agents in the
+production harness. Instead:
+
+```
+execution agent -> proposed ToolIntent -> Gateway policy dispatcher -> MCP/cloud tool
+```
+
+`ToolIntent` should include:
+
+- `plan_id` and exact plan version hash
+- org, BU, requester, and source channel
+- target provider/account/region
+- tool name and normalized action
+- resource type, resource identifier, and operation
+- expected diff and estimated monthly cost
+- approval requirement and approval record ID
+
+The dispatcher denies by default unless the intent matches an approved plan
+and the workspace bundle permits the resource type, account, region, and
+operation. This is the key difference between a demo agent graph and a
+PlatformOps harness.
+
+### Borrow: Control UI, but center it on review and audit
+OpenClaw's Control UI covers chat, config, sessions, and nodes. PlatformOps
+should have a Control UI too, but the main object is the Vibe Diff review
+queue, not general chat.
+
+Required PlatformOps Control UI views:
+
+- Pending approvals: plan summary, risk tier, requester, BU, cost, region,
+  resource types, and policy findings.
+- Plan detail: raw structured diff, deterministic compliance results, MCP
+  validation results, security-agent recommendation, and human comments.
+- Audit log: immutable timeline of request, plan, approval, dispatch,
+  verification, failure, and rollback events.
+- Config health: active registry version, last reload, validation failures,
+  missing policy coverage, stale credentials.
+- Break-glass panel: time-limited manual approval or deny override, always
+  requiring a human identity and reason.
+
+### Borrow: health, doctor, and runtime inspection
+OpenClaw exposes operational checks such as health, doctor, logs, metrics,
+and plugin/runtime inspection. PlatformOps should expose equivalent checks
+because a broken harness can either block deployments or, worse, allow
+unreviewed mutation.
+
+Minimum diagnostics:
+
+- `platformops doctor`: validates config, credentials reachability, MCP
+  server availability, policy coverage, and audit sink writability.
+- `platformops bindings list --effective`: shows the exact route a Slack
+  channel, Teams thread, CLI identity, or webhook source will take.
+- `platformops plans inspect <plan_id>`: shows plan hash, policy result,
+  approval state, and dispatch eligibility.
+- `platformops tools inspect`: lists read-only tools, mutating tools, and
+  which dispatcher policy gates each mutating action.
+- Metrics: request latency, planning latency, review latency, dispatch
+  latency, approval counts, denial reasons, failed validations, and policy
+  reload failures.
+
+### Borrow: plugin extensibility, but define a narrow PlatformOps plugin ABI
+OpenClaw plugins can add channels, providers, tools, skills, hooks, and
+runtimes. PlatformOps should support plugins, but only through narrow
+interfaces that preserve the approval and audit boundary.
+
+Plugin types to allow:
+
+- Channel adapter: Slack, Teams, Jira, ServiceNow, GitHub webhooks.
+- Provisioning backend: AWS CCAPI, Terraform, future Azure/GCP backends.
+- Policy pack: resource allow-lists, cost estimators, compliance checks.
+- Model provider adapter: Gemini, OpenAI, Anthropic, local provider.
+- Notification sink: Slack reply, ticket comment, SIEM/audit export.
+
+Plugin rules:
+
+- Plugins can propose capabilities; the Gateway grants them explicitly.
+- Mutating capabilities must be declared as such and routed through the
+  dispatcher.
+- Plugins cannot write org registry, workspace bundles, approvals, or audit
+  records except through Gateway APIs.
+- Plugin install/update should be version-pinned and policy-checked before
+  the Gateway loads it.
+
+### Source-informed design features we should adopt
+
+| OpenClaw feature | PlatformOps adaptation | Why it matters |
+|---|---|---|
+| Single Gateway control plane | PlatformOps Gateway owns request, plan, approval, dispatch, audit | One enforcement point |
+| Bindings with most-specific routing | Channel/thread/webhook to org/BU/agent ID | Deterministic tenant/BU routing |
+| Per-agent workspace/session/auth | Per-BU workspace bundle and session store | Prevents accidental BU mixing |
+| Strict config validation | Schema-checked org registry and policies | Fails closed on bad config |
+| Plugin allow/deny policy | Narrow plugin ABI with declared capabilities | Extensible without bypassing review |
+| Tool policy/sandboxing | Gateway-brokered mutation dispatcher | Converts prompt rules into runtime rules |
+| Control UI | Approval queue plus audit/config health | Human-in-the-loop infra governance |
+| Doctor/health/metrics | PlatformOps operational diagnostics | Makes the harness supportable |
+
+## Similar open-source harnesses to use or borrow from
+
+OpenClaw is the best fit for the outer harness shape, but it is not the
+only useful open-source reference. PlatformOps should treat these projects
+as composable design sources, not as mutually exclusive choices.
+
+| Project | What it is best at | PlatformOps use | Fit |
+|---|---|---|---|
+| [OpenClaw](https://docs.openclaw.ai/) | Multi-channel Gateway, bindings, sessions, Control UI, plugin policy | Borrow the Gateway/channel/session/control-plane shape | Strong outer harness reference |
+| [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) | Long-running stateful agent orchestration, persistence, interrupts, human-in-the-loop | Candidate workflow runtime for plan/review/apply state machine | Strong implementation candidate |
+| [Temporal](https://docs.temporal.io/) | Durable workflow execution, replay, retries, long waits, event history | Candidate durable backbone for approvals, apply, verification, rollback | Strong reliability layer |
+| [AutoGen](https://microsoft.github.io/autogen/stable/) | Event-driven multi-agent systems, AgentChat, MCP workbench, Docker executors, distributed runtimes | Useful for multi-agent conversation patterns and distributed worker ideas | Medium fit |
+| [CrewAI](https://docs.crewai.com/) | Crews, flows, task processes, guardrails, callbacks, human-in-the-loop triggers | Useful for role/task modeling and controlled business workflows | Medium fit |
+| [Semantic Kernel](https://learn.microsoft.com/en-us/semantic-kernel/overview/) | Enterprise SDK for connecting models to existing APIs/plugins with telemetry/hooks/filters | Useful plugin/function abstraction for existing enterprise APIs | Medium fit |
+| [OpenHands](https://docs.openhands.dev/overview/introduction) | Agent server, browser UI, SDK, integrations, permissions/RBAC/budgeting in hosted editions | Useful reference for developer-facing agent workspace UX and server packaging | Low-to-medium fit |
+
+### Recommended implementation stance
+Use a layered design rather than picking one framework to own everything:
+
+- **Gateway layer**: custom PlatformOps Gateway, heavily inspired by
+  OpenClaw's channel adapters, bindings, config validation, Control UI, and
+  runtime inspection. This layer is domain-specific because it owns org/BU
+  routing, approvals, credentials, and audit.
+- **Workflow layer**: use LangGraph or Temporal for the plan/review/apply
+  lifecycle. LangGraph is a natural fit if the workflow remains agent-heavy
+  and Python-native. Temporal is a natural fit if approval waits, retries,
+  rollbacks, and exactly-once-ish operational behavior become the dominant
+  concern.
+- **Agent layer**: keep the current Google ADK agent graph initially. The
+  Gateway should call it as one planning/review backend, not let it own
+  mutation dispatch.
+- **Tool layer**: continue using MCP servers for cloud reach, but expose
+  mutating tools only through the Gateway policy dispatcher.
+- **Observability layer**: model traces, workflow events, policy decisions,
+  and cloud mutation results as one request timeline.
+
+### Visual architecture diagram
+
+```mermaid
+flowchart TB
+  subgraph Inputs[Input surfaces]
+    Slack[Slack / Teams]
+    CLI[CLI]
+    Webhook[GitHub / CI webhook]
+    Ticket[Jira / ServiceNow]
+  end
+
+  subgraph Gateway[PlatformOps Gateway - custom]
+    Adapters[Channel adapters]
+    Normalize[Request normalizer]
+    Bindings["Binding resolver<br/>channel/thread/webhook -> org/BU/agent_id"]
+    Registry[Org registry + workspace bundles]
+    Config[Schema validation + hot reload]
+    Audit[Audit event writer]
+  end
+
+  subgraph Workflow[Workflow runtime - LangGraph or Temporal]
+    Preflight["Deterministic preflight<br/>spec/check_compliance.py"]
+    Plan[Plan / Vibe Diff state]
+    Review[Security review state]
+    Approval{Approval required?}
+    WaitHuman[Human approval wait]
+    DispatchIntent[Create ToolIntent]
+    Verify[Verify + report]
+    Rollback[Rollback / compensation path]
+  end
+
+  subgraph Agents[Agent backends - current ADK graph]
+    Orchestrator[platformops_orchestrator]
+    Router[provisioning_agent]
+    CDK[cdk_provisioning_agent]
+    TF[terraform_provisioning_agent]
+    Sec[security_agent]
+  end
+
+  subgraph Policy[Policy dispatcher - hard enforcement]
+    Match[Match ToolIntent to plan hash]
+    Check[Check approval, region, cost, resource type, credentials]
+    Deny[Deny + audit reason]
+    Allow[Allow dispatch]
+  end
+
+  subgraph Tools[MCP / cloud tools]
+    IAC["aws-iac-mcp-server<br/>read/validate"]
+    CCAPI["ccapi-mcp-server<br/>create/update/delete"]
+    Terraform["Terraform MCP Server<br/>plan/apply"]
+    Cloud["AWS now<br/>future: Azure/GCP"]
+  end
+
+  subgraph Ops[Operator surfaces]
+    UI["Control UI<br/>approvals + config health"]
+    Doctor[platformops doctor]
+    Metrics[Logs / metrics / traces]
+  end
+
+  Slack --> Adapters
+  CLI --> Adapters
+  Webhook --> Adapters
+  Ticket --> Adapters
+  Adapters --> Normalize --> Bindings --> Registry --> Preflight
+  Config --> Bindings
+  Config --> Registry
+  Preflight --> Orchestrator
+  Orchestrator --> Router
+  Router --> CDK
+  Router --> TF
+  CDK --> IAC
+  TF --> Terraform
+  Orchestrator --> Sec
+  Sec --> Review
+  CDK --> Plan
+  TF --> Plan
+  Plan --> Review --> Approval
+  Approval -- low-risk auto-approved --> DispatchIntent
+  Approval -- human required --> WaitHuman --> DispatchIntent
+  DispatchIntent --> Match --> Check
+  Check -- no --> Deny --> Audit
+  Check -- yes --> Allow
+  Allow --> CCAPI --> Cloud
+  Allow --> Terraform --> Cloud
+  Cloud --> Verify --> Audit
+  Verify --> Adapters
+  Check -. failure .-> Rollback --> Audit
+  UI --> WaitHuman
+  UI --> Config
+  Doctor --> Config
+  Doctor --> Registry
+  Audit --> Metrics
+```
+
+### How the flow works
+
+1. A request arrives through Slack, CLI, webhook, or ticketing.
+2. The Gateway normalizes it into a typed request envelope and resolves the
+   effective org, BU, `agent_id`, workspace bundle, model overrides, and
+   policy bundle through deterministic bindings.
+3. The workflow runtime starts a durable request lifecycle and runs
+   deterministic checks before invoking LLM agents.
+4. The ADK agent graph drafts a plan and Vibe Diff, using read-only
+   validation tools where possible.
+5. The security agent reviews the plan, but approval is recorded as
+   structured data in the workflow state, not just text in chat.
+6. If policy requires a human, the workflow pauses and the Control UI shows
+   the pending approval.
+7. Any cloud mutation becomes a `ToolIntent`; the policy dispatcher checks
+   the exact plan hash, approval, workspace policy, cost, region, resource
+   type, and credential scope.
+8. Only an allowed `ToolIntent` reaches CCAPI or Terraform apply. Every
+   denial, dispatch, result, and verification step is written to audit.
+
+### What to implement first
+The practical first slice is small:
+
+1. Define `RequestEnvelope`, `WorkspaceBundle`, `PlanRecord`,
+   `ApprovalRecord`, and `ToolIntent` schemas.
+2. Add config validation for bindings and workspace bundles.
+3. Wrap the existing ADK graph behind a `plan_request(envelope)` call.
+4. Move mutating MCP calls behind a local dispatcher function.
+5. Add a file-backed or SQLite audit log before building the Control UI.
 
 ## What's built vs. designed
 | Piece | Status |
