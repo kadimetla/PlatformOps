@@ -23,6 +23,10 @@ rather than repeating this one:
   comparison of Temporal/LangGraph/CrewAI as the workflow layer.
 - `docs/planned_implementation.md` — the 5-phase build order for the spike
   described below in "What to implement first."
+- `docs/ui_and_multitenancy_deep_dive.md` — analysis (not yet built) of a
+  CopilotKit/AG-UI/A2UI channel for input and review, and the team-member
+  layer underneath Org/BU — read this for "how does an individual person
+  fit into a BU's shared workspace," which this file doesn't cover.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
@@ -257,6 +261,14 @@ below for why this shape, not some other one):
   org means minting one fresh `agentId` per BU and registering it here —
   never reusing an existing `agentId`, which is an OpenClaw hard rule (see
   deep dive).
+- **Team member** (the layer underneath BU): distinguished at the
+  session/request level via `RequestEnvelope.channel_user_id`, **not** at
+  the workspace level — OpenClaw's `agent-workspace` docs confirm the
+  workspace (persona, memory, instructions) is one-per-`agent_id`, shared
+  by everyone in that BU, not one-per-person. See
+  `docs/ui_and_multitenancy_deep_dive.md` for the full reasoning and a
+  real gap this surfaces: `harness/tool_dispatcher.py`'s audit log
+  currently doesn't record `channel_user_id`, only `org_id`/`bu_id`.
 
 ## PlatformOps harness deep dive: features to borrow from OpenClaw
 

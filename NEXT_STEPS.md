@@ -38,6 +38,15 @@ have the Gateway — not the agent — call the real MCP tool only after
   register it, wire its workspace config bundle) — currently manual steps.
 - Control UI (approval queue, plan detail, audit log, config health,
   break-glass panel) — comes after the schemas/dispatcher above, not before.
+  See `docs/ui_and_multitenancy_deep_dive.md` for an analyzed-not-built
+  candidate: CopilotKit/AG-UI transport + A2UI (Google's declarative,
+  pre-approved-component-catalog UI format) for both the input channel
+  and the approval-card rendering.
+- **Small, cheap fix worth doing regardless of the UI decision**: add
+  `channel_user_id` to `harness/tool_dispatcher.py`'s `audit_logs` table —
+  currently only `org_id`/`bu_id` are recorded, so "which person approved
+  this" isn't in the audit trail, only "which BU." Identified while
+  analyzing the team-member layer underneath Org/BU.
 - Revisit the declined "register PlatformOps as an MCP tool source on a
   real OpenClaw Gateway" path if the custom Gateway build proves heavier
   than expected (see "Superseded" section in the design doc for why it was
