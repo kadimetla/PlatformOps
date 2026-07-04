@@ -29,7 +29,9 @@ session isolation and multiple output surfaces (control UI, CLI, mobile).
 We're borrowing that shape, not its code — our Gateway talks to our own
 ADK agent tree instead of a coding agent, and adds a review-queue concept
 OpenClaw doesn't need (approving cloud-infra changes, not approving code
-edits).
+edits). See "Deep dive: mapping onto OpenClaw's actual primitives" below for
+exactly how that borrowing works once you look past the marketing diagram
+and into OpenClaw's real data model.
 
 ## Model layer design
 
@@ -86,9 +88,9 @@ started there.
                               ▼
                   ┌───────────────────────────┐
                   │   Session & Routing layer   │
-                  │  per-sender / per-workspace  │
-                  │  isolation; maps identity →   │
-                  │  which config applies below   │
+                  │  binding: channel account →   │
+                  │  agentId (= one Business Unit) │
+                  │  org registry: org → [BU→agentId] │
                   └───────────────────────────┘
                               │
                               ▼
@@ -109,14 +111,16 @@ teams already live there), then a generic webhook adapter for CI/CD
 triggers (a PR that changes an infra spec), then other chat platforms.
 
 ### Session & routing layer
-Per-sender and per-workspace session isolation, directly modeled on
-OpenClaw's pattern — Team A's pending approvals, cost ceilings, and
-allow-lists must never leak into Team B's session. This layer is also
-where **per-workspace configuration** lives: which AWS account/credentials,
-which `infra/allowed-resource-types.json`, which cost ceiling, which model
-tier overrides apply to this requester. This is the single biggest thing
-that turns this from "our demo" into "a tool other teams configure for
-themselves" — see Adoption story below.
+Modeled directly on OpenClaw's binding/`agentId` primitives (see the deep
+dive below for the exact mechanics): a channel account binds to an
+`agentId`, and each `agentId` **is** one business unit's fully isolated
+scope — workspace, auth, sessions. An org registry sits above this mapping
+`org_id` to its set of BUs/`agentId`s. This layer is also where **per-BU
+configuration** lives: which cloud account/credentials, which
+`infra/allowed-resource-types.json`, which cost ceiling, which model tier
+overrides apply. This is the single biggest thing that turns this from
+"our demo" into "a tool other orgs configure for themselves" — see
+Adoption story below.
 
 ### Agent layer
 Unchanged from what's built — the Gateway is agnostic to what's behind it,
@@ -141,12 +145,28 @@ as long as it accepts the Gateway's request shape.
   security-review-checklist skill's existing requirement) surfaces here,
   not just in application logs.
 
-### Multi-tenancy
-A single Gateway deployment should be able to serve multiple teams/orgs by
-mapping session identity to a config bundle (credentials, allow-lists, cost
-ceiling, model tier overrides) rather than requiring a code fork per
-adopter. This is the concrete mechanism behind "anyone can adopt this for
-their needs" — adoption becomes a config change, not a fork.
+### Multi-tenancy: Org → Business Unit → isolation unit
+A single Gateway deployment must serve multiple **orgs**, each with
+multiple **business units**, without any mixing across either boundary —
+not just "multiple teams" as a flat list. Concretely (see the deep dive
+below for why this shape, not some other one):
+
+- **Org** = a customer/tenant. Exists only in *our* config layer — OpenClaw
+  has no native concept of it.
+- **Business unit** = the actual isolation unit, mapped 1:1 onto an OpenClaw
+  `agentId` (its workspace, auth profiles, and session store). This is
+  non-negotiable: OpenClaw's isolation guarantee only exists at the
+  `agentId` level, so a BU that shares an `agentId` with another BU is not
+  actually isolated, regardless of what our own config layer claims.
+- **Workspace config bundle** (credentials, `infra/allowed-resource-types.json`
+  equivalent, cost ceiling, model tier overrides) attaches per BU
+  (per-`agentId`), not per org — an org with three BUs on three clouds needs
+  three bundles, not one.
+- **Org registry** (new, not yet built): a config store mapping
+  `org_id → [{bu_id, agentId, workspace_bundle_ref}]`, so onboarding a new
+  org means minting one fresh `agentId` per BU and registering it here —
+  never reusing an existing `agentId`, which is an OpenClaw hard rule (see
+  deep dive).
 
 ## What's built vs. designed
 | Piece | Status |
@@ -156,26 +176,101 @@ their needs" — adoption becomes a config change, not a fork.
 | True model-agnosticism (non-Gemini models) | Designed, not built |
 | Gateway process, channel adapters, session/routing layer | Designed, not built |
 | Control UI / human-in-the-loop approval queue | Designed, not built |
-| Multi-tenant config-per-workspace | Designed, not built |
+| Org → Business Unit → agentId multi-tenancy model | Designed, not built |
+| Org registry + onboarding automation | Designed, not built |
+| OpenClaw plugin-harness integration (running our ADK tree as a registered runtime) | Design direction chosen (plugin-harness over CLI-backend); contract not yet spiked |
 
 ## Adoption story
-A team wanting to use this for their own AWS/GCP/Azure setup would, in the
-end-state design: point the Gateway at their chat platform, drop in their
-own `infra/iam-policy.json` / `allowed-resource-types.json` / cost ceiling
-as a workspace config bundle, optionally override which model backs which
-agent role, and — if they want a new cloud or tool — add one new
-provisioning sub-agent following the existing pattern (a skill + an MCP
-server routing table entry), without touching the Gateway, session layer,
-or Security Agent's review logic at all.
+A new org onboards by: registering itself in the org registry, minting one
+fresh `agentId` (never reused) per business unit, binding each BU's
+channel(s) to its `agentId`, and attaching a workspace config bundle per BU
+— cloud credentials, `infra/allowed-resource-types.json`, cost ceiling,
+optional model tier overrides. If a BU wants a new cloud or tool, that's
+one new provisioning sub-agent following the existing pattern (a skill + an
+MCP server routing table entry) — none of this touches the Gateway,
+routing/binding layer, org registry, or Security Agent's review logic.
+
+## Deep dive: mapping onto OpenClaw's actual primitives
+
+The "borrow the shape" framing above undersells how specific OpenClaw's
+actual data model is. This section is the result of reading its real docs
+(`agent-runtime-architecture`, `plugins/sdk-overview`, `concepts/multi-agent`)
+rather than inferring from the marketing page, and it changes some earlier
+assumptions.
+
+### The isolation unit is `agentId`, and it's flat
+Per OpenClaw's own docs: *"An agent is the full per-persona scope: workspace
+files, auth profiles, model registry, and session store."* Concretely, each
+`agentId` owns:
+- `~/.openclaw/workspace-<agentId>` — files, `SOUL.md`, `AGENTS.md`, `USER.md`
+- `~/.openclaw/agents/<agentId>/agent` — auth profiles, model registry
+- `~/.openclaw/agents/<agentId>/sessions` — chat history
+
+This is **not hierarchical** — there's no built-in concept of an org
+containing business units. That's why our Org/BU model above treats
+`agentId` as the BU-level primitive and layers "org" entirely in our own
+registry on top. **Hard rule from the docs, worth repeating verbatim**:
+*"Never reuse `agentDir` across agents (it causes auth/session
+collisions)."* Our org-onboarding process must always mint a new `agentId`
+— reusing one to save setup steps is exactly the mistake OpenClaw warns
+against, and would silently break tenant isolation.
+
+### Routing is binding-based, most-specific-wins
+*"A binding maps a channel account (e.g. a Slack workspace or a WhatsApp
+number) to one of those agents."* Precedence, most to least specific:
+exact peer (DM/group ID) → thread inheritance (`parentPeer`) → Discord
+role+guild → guild/team ID → account ID fallback → channel-level wildcard
+→ default agent. For our use case: **one Slack workspace per org is the
+simplest binding**, with per-BU routing inside that workspace handled via
+channel- or thread-level bindings mapped to each BU's `agentId`.
+
+**Real risk this surfaces, not hypothetical**: *"Direct chats collapse to
+the agent's main session key, so true isolation requires one agent per
+person."* If two people from different BUs DM the bot without a binding
+specific enough to separate them, they land on the same session. Our
+Gateway design must enforce that BU-level bindings are always
+channel/thread-scoped, never "whoever DMs this bot" — a config validation
+rule to build, not just a recommendation to document.
+
+### Two paths to plug our ADK agent tree in as the backend
+1. **CLI Backend Plugin** (`api.registerCliBackend(...)`) — the documented
+   extension point, but it's built for *existing CLI tools*: it configures
+   argument translation (`resolveExecutionArgs`) and config merging for a
+   CLI that already exists, not a full execution layer. To use this path,
+   our ADK agent tree would need its own CLI entry point that accepts
+   whatever arguments the plugin resolves — an adapter shim, not a native
+   fit.
+2. **Plugin harness registering a new runtime ID** — *"Plugin harnesses can
+   register additional runtime ids. `auto` selects a supporting plugin
+   harness when one exists and otherwise uses the built-in OpenClaw
+   runtime."* This is the deeper integration: implement the
+   `openclaw/plugin-sdk/*` runtime contract directly, so our ADK agents run
+   as a first-class runtime rather than being shelled out to via a CLI
+   wrapper. More upfront work (implementing an undocumented-in-what-we-
+   reviewed contract, without importing `src/**` internals directly), but
+   avoids CLI-argument-marshaling overhead and gives us structured
+   session/tool-call fidelity end to end.
+
+**Recommendation**: build toward the plugin-harness path, not the CLI
+backend path. The CLI path is faster to prototype but would mean losing
+structured tool-call/session data at the CLI boundary — exactly the
+fidelity our security review and audit logging depend on. This needs a
+prototype spike against OpenClaw's actual plugin-sdk source (the packages
+under `openclaw/plugin-sdk/*`) before committing further design detail;
+the docs describe the shape but not a full worked example for a
+non-coding-agent backend.
 
 ## Open questions / risks
-- Where does workspace config actually live (a database, config files per
-  workspace, a secrets manager)? Not decided — depends on target deployment
-  (self-hosted vs. managed).
+- Where does workspace config (and now, the org registry) actually live (a
+  database, config files per workspace, a secrets manager)? Not decided —
+  depends on target deployment (self-hosted vs. managed).
 - How does the Control UI's human-approval path affect latency/UX for
   low-risk requests that would otherwise be instant? Needs the risk-tier
   threshold to be genuinely useful, not a rubber stamp.
-- OpenClaw itself is MIT-licensed and self-hostable — worth revisiting
-  whether to build our Gateway from scratch or fork/extend OpenClaw
-  directly once its custom-agent extension points (not yet documented in
-  what we reviewed) are better understood.
+- The plugin-harness runtime contract needs a real spike, not just doc
+  reading — we don't yet know its exact interface shape, only that it
+  exists and that `auto` runtime selection can dispatch to it.
+- Org-onboarding automation (minting a fresh `agentId` per BU, registering
+  it in our org registry, wiring its workspace config bundle) doesn't exist
+  yet — right now this would all be manual steps, which is fine for one
+  org and wrong the moment there's a second.
