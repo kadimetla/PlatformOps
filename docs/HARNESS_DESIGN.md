@@ -650,7 +650,8 @@ The practical first slice is small:
 | Control UI / human-in-the-loop approval queue | Designed, not built |
 | Org → Business Unit → agentId multi-tenancy model | Designed, not built |
 | Org registry + onboarding automation | Designed, not built |
-| OpenClaw plugin-harness integration (running our ADK tree as a registered runtime) | Design direction chosen (plugin-harness over CLI-backend); contract not yet spiked |
+| Custom PlatformOps Gateway (own runtime, not OpenClaw's) | **Decided direction** — see "Recommended implementation stance" / "What to implement first"; no code yet |
+| `RequestEnvelope`/`WorkspaceBundle`/`PlanRecord`/`ApprovalRecord`/`ToolIntent` schemas | Designed, not built — next spike target |
 
 ## Adoption story
 A new org onboards by: registering itself in the org registry, minting one
@@ -704,33 +705,45 @@ Gateway design must enforce that BU-level bindings are always
 channel/thread-scoped, never "whoever DMs this bot" — a config validation
 rule to build, not just a recommendation to document.
 
-### Two paths to plug our ADK agent tree in as the backend
-1. **CLI Backend Plugin** (`api.registerCliBackend(...)`) — the documented
-   extension point, but it's built for *existing CLI tools*: it configures
-   argument translation (`resolveExecutionArgs`) and config merging for a
-   CLI that already exists, not a full execution layer. To use this path,
-   our ADK agent tree would need its own CLI entry point that accepts
-   whatever arguments the plugin resolves — an adapter shim, not a native
-   fit.
-2. **Plugin harness registering a new runtime ID** — *"Plugin harnesses can
-   register additional runtime ids. `auto` selects a supporting plugin
-   harness when one exists and otherwise uses the built-in OpenClaw
-   runtime."* This is the deeper integration: implement the
-   `openclaw/plugin-sdk/*` runtime contract directly, so our ADK agents run
-   as a first-class runtime rather than being shelled out to via a CLI
-   wrapper. More upfront work (implementing an undocumented-in-what-we-
-   reviewed contract, without importing `src/**` internals directly), but
-   avoids CLI-argument-marshaling overhead and gives us structured
-   session/tool-call fidelity end to end.
+### Superseded: "plug into OpenClaw's runtime" framing
+An earlier version of this doc recommended building a plugin-harness that
+would run inside OpenClaw's runtime. That was written before we'd read
+`concepts/agent`, which states plainly: *"OpenClaw runs a single embedded
+agent runtime — one agent process per Gateway... The embedded agent
+runtime is OpenClaw-owned... share one integrated runtime surface."* That
+contradicts the "plugin harnesses register additional runtime ids" reading
+from `agent-runtime-architecture` — the more likely correct interpretation
+is that "runtime ids" there means swapping which *CLI coding-agent*
+backend answers prompts (Claude Code vs. Codex vs. a custom CLI), not
+hosting an entirely separate multi-agent system like ours. **Do not build
+toward a plugin-harness runtime ID** — that path was based on a misread,
+not a confirmed extension point.
 
-**Recommendation**: build toward the plugin-harness path, not the CLI
-backend path. The CLI path is faster to prototype but would mean losing
-structured tool-call/session data at the CLI boundary — exactly the
-fidelity our security review and audit logging depend on. This needs a
-prototype spike against OpenClaw's actual plugin-sdk source (the packages
-under `openclaw/plugin-sdk/*`) before committing further design detail;
-the docs describe the shape but not a full worked example for a
-non-coding-agent backend.
+Three ways to relate to OpenClaw were considered once that was corrected:
+
+1. **CLI Backend Plugin** (`api.registerCliBackend(...)`) — wraps
+   *existing CLI tools*, translating arguments/config for a CLI that
+   already exists. Would need an adapter shim CLI in front of our ADK
+   graph. Declined: loses structured tool-call/session fidelity at the CLI
+   boundary.
+2. **Register PlatformOps as an MCP tool source on a real, running
+   OpenClaw Gateway** — a genuine, low-integration-cost path found via
+   `tools.catalog`'s *"already-discovered MCP server tools"* and the
+   documented `mcp.servers` config (stdio `command`/`args` or remote
+   `url`, with `toolFilter` allow-listing — the same shape we already use
+   for `aws-iac-mcp-server` etc.). Gets channel adapters, bindings,
+   Control UI shell, and audit logging for free. **Declined for now**: it
+   ties PlatformOps to OpenClaw's roadmap/licensing and a Control UI built
+   for personal-assistant chat, not infra-approval queues, which would
+   need extending regardless. Worth revisiting if the custom Gateway build
+   below turns out to be more work than it's worth.
+3. **Build a fully custom PlatformOps Gateway**, using OpenClaw purely as a
+   design reference (bindings, per-agent isolation, config validation,
+   Control UI, plugin policy) — not running on its runtime at all. **This
+   is the chosen direction** — see "Recommended implementation stance" and
+   "What to implement first" above, which already describe this path in
+   detail. Full control over the approval/dispatch model, no dependency on
+   OpenClaw's runtime, more build work up front.
 
 ## Open questions / risks
 - Where does workspace config (and now, the org registry) actually live (a
@@ -739,10 +752,16 @@ non-coding-agent backend.
 - How does the Control UI's human-approval path affect latency/UX for
   low-risk requests that would otherwise be instant? Needs the risk-tier
   threshold to be genuinely useful, not a rubber stamp.
-- The plugin-harness runtime contract needs a real spike, not just doc
-  reading — we don't yet know its exact interface shape, only that it
-  exists and that `auto` runtime selection can dispatch to it.
-- Org-onboarding automation (minting a fresh `agentId` per BU, registering
-  it in our org registry, wiring its workspace config bundle) doesn't exist
-  yet — right now this would all be manual steps, which is fine for one
-  org and wrong the moment there's a second.
+- Org-onboarding automation (minting a fresh `agent_id`/BU scope,
+  registering it in our org registry, wiring its workspace config bundle)
+  doesn't exist yet — right now this would all be manual steps, which is
+  fine for one org and wrong the moment there's a second.
+- **Resolved**: whether to plug into OpenClaw's runtime or build our own
+  Gateway — decided in favor of a custom Gateway (see "Superseded: 'plug
+  into OpenClaw's runtime' framing" above for what was considered and
+  declined, including a real MCP-registration path worth revisiting later
+  if the custom build proves heavier than expected).
+- Next concrete spike target, per "What to implement first": define the
+  `RequestEnvelope`/`WorkspaceBundle`/`PlanRecord`/`ApprovalRecord`/
+  `ToolIntent` schemas and wrap the existing ADK graph behind a
+  `plan_request(envelope)` call — not any OpenClaw-runtime integration.
