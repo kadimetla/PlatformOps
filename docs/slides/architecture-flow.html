@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PlatformOps Agent — Harness Architecture Deep Dive</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1420;
+    --panel: #161d2e;
+    --panel-2: #1d2740;
+    --border: #2a3654;
+    --text: #e6ecff;
+    --muted: #93a2c9;
+    --accent: #5fd0ff;
+    --accent-2: #7fffa0;
+    --warn: #ffcc66;
+    --danger: #ff7a90;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+    overflow: hidden;
+  }
+  .deck { position: relative; width: 100vw; height: 100vh; }
+  .slide {
+    position: absolute; inset: 0;
+    display: none;
+    flex-direction: column;
+    padding: 5vh 7vw 8vh 7vw;
+    overflow-y: auto;
+  }
+  .slide.active { display: flex; }
+  .slide h1 {
+    font-size: 2.4em; margin: 0 0 0.2em 0; color: var(--text);
+  }
+  .slide h2 {
+    font-size: 1.9em; margin: 0 0 0.6em 0; color: var(--accent);
+    border-bottom: 2px solid var(--border); padding-bottom: 0.3em;
+  }
+  .kicker {
+    color: var(--accent); text-transform: uppercase; letter-spacing: 0.12em;
+    font-size: 0.85em; margin-bottom: 0.6em;
+  }
+  .subtitle { color: var(--muted); font-size: 1.2em; margin-bottom: 1em; }
+  p { line-height: 1.5; color: var(--text); }
+  .muted { color: var(--muted); }
+  ul { line-height: 1.6; }
+  code {
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 4px; padding: 0.1em 0.4em; color: var(--accent-2);
+    font-size: 0.92em;
+  }
+  .grid { display: grid; gap: 1em; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.1em 1.3em;
+  }
+  .card h3 { margin: 0 0 0.4em 0; color: var(--accent); font-size: 1.05em; }
+  .card.built { border-color: var(--accent-2); }
+  .card.designed { border-color: var(--warn); }
+  .card.declined { border-color: var(--danger); opacity: 0.85; }
+  .tag {
+    display: inline-block; font-size: 0.72em; padding: 0.15em 0.6em;
+    border-radius: 999px; margin-left: 0.5em; vertical-align: middle;
+  }
+  .tag.built { background: rgba(127,255,160,0.15); color: var(--accent-2); border: 1px solid var(--accent-2); }
+  .tag.designed { background: rgba(255,204,102,0.15); color: var(--warn); border: 1px solid var(--warn); }
+  .tag.declined { background: rgba(255,122,144,0.15); color: var(--danger); border: 1px solid var(--danger); }
+  .tag.decided { background: rgba(95,208,255,0.15); color: var(--accent); border: 1px solid var(--accent); }
+
+  .flow-steps { display: flex; flex-direction: column; gap: 0.6em; margin-top: 0.5em; }
+  .flow-step {
+    display: flex; align-items: flex-start; gap: 0.9em;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.7em 1em;
+  }
+  .flow-step .num {
+    flex: 0 0 auto; width: 1.8em; height: 1.8em; border-radius: 50%;
+    background: var(--accent); color: #06131f; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .tree { font-family: "Consolas", monospace; font-size: 0.95em; line-height: 1.7; }
+  .tree .node { color: var(--accent); }
+  .tree .leaf { color: var(--accent-2); }
+  .tree .dim { color: var(--muted); }
+
+  .hier { display: flex; flex-direction: column; align-items: center; gap: 0.4em; margin-top: 1em; }
+  .hier .org {
+    background: var(--panel-2); border: 1px solid var(--accent);
+    border-radius: 10px; padding: 0.6em 1.4em; font-weight: 700;
+  }
+  .hier .bus { display: flex; gap: 1.2em; margin-top: 0.6em; }
+  .hier .bu {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.8em 1.1em; min-width: 220px; text-align: left;
+  }
+  .hier .bu h4 { margin: 0 0 0.3em 0; color: var(--accent-2); }
+  .hier .bu .field { font-size: 0.85em; color: var(--muted); }
+  .connector { width: 2px; height: 1em; background: var(--border); }
+
+  .mermaid-wrap {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1em; overflow: auto; max-height: 68vh;
+  }
+
+  .footer-note {
+    margin-top: auto; padding-top: 1em; color: var(--muted); font-size: 0.85em;
+    border-top: 1px solid var(--border);
+  }
+
+  .nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.8em 1.4em; background: rgba(15,20,32,0.9);
+    border-top: 1px solid var(--border); z-index: 10;
+  }
+  .nav button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.5em 1.1em; cursor: pointer; font-size: 0.95em;
+  }
+  .nav button:hover { border-color: var(--accent); color: var(--accent); }
+  .nav button:disabled { opacity: 0.35; cursor: default; }
+  .nav .counter { color: var(--muted); font-size: 0.9em; }
+  .nav .dots { display: flex; gap: 0.4em; }
+  .nav .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--border);
+    cursor: pointer;
+  }
+  .nav .dot.active { background: var(--accent); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <!-- 1: Title -->
+  <section class="slide active">
+    <div class="kicker">PlatformOps Agent</div>
+    <h1>Harness Architecture Deep Dive</h1>
+    <p class="subtitle">From a chat message to reviewed, approved, provisioned cloud infrastructure — the flow, the layers, and what's built vs. designed.</p>
+    <div class="card" style="margin-top:2em; max-width:640px;">
+      <p class="muted" style="margin:0;">Source of truth for everything in this deck: <code>docs/HARNESS_DESIGN.md</code> in this repo. This deck is a visual companion to that doc, not a replacement for it.</p>
+    </div>
+  </section>
+
+  <!-- 2: Why a harness -->
+  <section class="slide">
+    <h2>Why a harness, not just an agent script</h2>
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>Today</h3>
+        <p><code>agents/orchestrator.py</code> is invoked directly: one process, one session, one requester, no identity across requests. Fine for a hackathon demo.</p>
+      </div>
+      <div class="card">
+        <h3>Real usage needs</h3>
+        <ul>
+          <li>Multiple teams, multiple concurrent requests</li>
+          <li>Requests from wherever people already work — Slack, a ticket, a CLI</li>
+          <li>A human able to see and approve a pending action before it runs</li>
+          <li>Isolation so one org/team's data never leaks into another's</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-note">Wrong tool for this job: a bigger prompt. Right tool: a harness that owns sessions, routing, and review as first-class concepts.</div>
+  </section>
+
+  <!-- 3: Borrowed shape, custom build -->
+  <section class="slide">
+    <h2>Borrow OpenClaw's shape, build our own Gateway</h2>
+    <p class="muted">OpenClaw solves a structurally similar problem for coding agents. We use it as a <strong>design reference</strong>, not as infrastructure we run on — see the decision trail below.</p>
+    <div class="grid grid-3" style="margin-top:0.8em;">
+      <div class="card declined">
+        <h3>Considered: CLI Backend Plugin <span class="tag declined">declined</span></h3>
+        <p class="muted" style="margin:0;">Wraps existing CLI tools only. Would need an adapter-shim CLI in front of our ADK graph, losing structured session/tool-call fidelity.</p>
+      </div>
+      <div class="card declined">
+        <h3>Considered: Register as MCP tool on real OpenClaw <span class="tag declined">declined for now</span></h3>
+        <p class="muted" style="margin:0;">Genuinely low-cost via OpenClaw's documented <code>mcp.servers</code> config. Declined because it ties us to OpenClaw's roadmap and a Control UI built for chat, not infra approval.</p>
+      </div>
+      <div class="card built">
+        <h3>Chosen: Custom PlatformOps Gateway <span class="tag decided">decided</span></h3>
+        <p class="muted" style="margin:0;">Full control over the approval/dispatch model. OpenClaw is a pattern library (bindings, isolation, config validation, Control UI, plugin policy) — not our runtime.</p>
+      </div>
+    </div>
+    <div class="footer-note">Earlier design draft recommended a "plugin-harness" running inside OpenClaw's runtime — corrected after reading <code>concepts/agent</code>, which states OpenClaw's embedded runtime is single and non-pluggable.</div>
+  </section>
+
+  <!-- 4: Org -> BU -> agent_id -->
+  <section class="slide">
+    <h2>Multi-tenancy: Org → Business Unit → isolation unit</h2>
+    <p class="muted">OpenClaw's isolation unit (<code>agent_id</code>) is flat — no native org/BU nesting. We layer that hierarchy in our own config.</p>
+    <div class="hier">
+      <div class="org">Org: <code>acme</code> &nbsp;(exists only in our config layer)</div>
+      <div class="connector"></div>
+      <div class="bus">
+        <div class="bu">
+          <h4>BU: payments</h4>
+          <div class="field"><code>agent_id: acme-payments</code></div>
+          <div class="field">workspace bundle: AWS creds, allowed resource types, cost ceiling, model overrides</div>
+        </div>
+        <div class="bu">
+          <h4>BU: platform</h4>
+          <div class="field"><code>agent_id: acme-platform</code></div>
+          <div class="field">workspace bundle: separate AWS creds, separate allow-list, separate ceiling</div>
+        </div>
+      </div>
+    </div>
+    <div class="footer-note">Hard rule from OpenClaw's own docs: <em>"never reuse agentDir across agents"</em> — onboarding must always mint a fresh <code>agent_id</code> per BU, never reuse one.</div>
+  </section>
+
+  <!-- 5: Agent layer today (built) -->
+  <section class="slide">
+    <h2>Agent layer — what's actually built today</h2>
+    <div class="tree">
+      <div><span class="node">platformops_orchestrator</span></div>
+      <div>&nbsp;&nbsp;├── <span class="node">provisioning_agent</span> <span class="dim">(router)</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;├── <span class="node">cdk_provisioning_agent</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;├── <span class="leaf">aws-iac-mcp-server</span> <span class="dim">(docs / validation, read-only)</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;└── <span class="leaf">ccapi-mcp-server</span> <span class="dim">(AWS mutation)</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;└── <span class="node">terraform_provisioning_agent</span></div>
+      <div>&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── <span class="leaf">HashiCorp Terraform MCP Server</span></div>
+      <div>&nbsp;&nbsp;└── <span class="node">security_agent</span> <span class="dim">(no tools — approve/reject only)</span></div>
+    </div>
+    <div class="grid grid-2" style="margin-top:1.2em;">
+      <div class="card built">
+        <h3>What's solid <span class="tag built">built</span></h3>
+        <p style="margin:0;">Routing, execution, and review are separate roles with different model tiers. <code>security_agent</code> has zero mutating tools.</p>
+      </div>
+      <div class="card designed">
+        <h3>What's still prompt-level <span class="tag designed">gap</span></h3>
+        <p style="margin:0;">Mutating MCP tools are attached <em>directly</em> to provisioning agents. The approval rule is an instruction, not a runtime guard — that's the enforcement gap the Gateway closes.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6: End to end flow -->
+  <section class="slide">
+    <h2>End-to-end request flow</h2>
+    <div class="flow-steps">
+      <div class="flow-step"><div class="num">1</div><div>Request arrives via Slack, CLI, webhook, or ticketing.</div></div>
+      <div class="flow-step"><div class="num">2</div><div>Gateway normalizes it into a typed envelope and resolves org, BU, <code>agent_id</code>, workspace bundle, model overrides, and policy bundle via deterministic bindings.</div></div>
+      <div class="flow-step"><div class="num">3</div><div>Workflow runtime starts a durable lifecycle and runs deterministic checks (<code>spec/check_compliance.py</code>) before any LLM agent runs.</div></div>
+      <div class="flow-step"><div class="num">4</div><div>ADK agent graph drafts a plan and Vibe Diff, using read-only validation tools first.</div></div>
+      <div class="flow-step"><div class="num">5</div><div>Security agent reviews the plan; approval is recorded as structured data, not just chat text.</div></div>
+      <div class="flow-step"><div class="num">6</div><div>If policy requires a human, the workflow pauses and the Control UI shows the pending approval.</div></div>
+      <div class="flow-step"><div class="num">7</div><div>Any cloud mutation becomes a <code>ToolIntent</code>; the policy dispatcher checks plan hash, approval, workspace policy, cost, region, resource type, credential scope.</div></div>
+      <div class="flow-step"><div class="num">8</div><div>Only an allowed <code>ToolIntent</code> reaches CCAPI or Terraform apply. Every denial, dispatch, result, and verification is written to audit.</div></div>
+    </div>
+  </section>
+
+  <!-- 7: Full architecture diagram -->
+  <section class="slide">
+    <h2>Full architecture — everything at once</h2>
+    <div class="mermaid-wrap">
+      <div class="mermaid">
+flowchart TB
+  subgraph Inputs[Input surfaces]
+    Slack[Slack / Teams]
+    CLI[CLI]
+    Webhook[GitHub / CI webhook]
+    Ticket[Jira / ServiceNow]
+  end
+
+  subgraph Gateway[PlatformOps Gateway - custom]
+    Adapters[Channel adapters]
+    Normalize[Request normalizer]
+    Bindings["Binding resolver<br/>channel/thread/webhook -> org/BU/agent_id"]
+    Registry[Org registry + workspace bundles]
+    Config[Schema validation + hot reload]
+    Audit[Audit event writer]
+  end
+
+  subgraph Workflow[Workflow runtime - LangGraph or Temporal]
+    Preflight["Deterministic preflight<br/>spec/check_compliance.py"]
+    Plan[Plan / Vibe Diff state]
+    Review[Security review state]
+    Approval{Approval required?}
+    WaitHuman[Human approval wait]
+    DispatchIntent[Create ToolIntent]
+    Verify[Verify + report]
+    Rollback[Rollback / compensation path]
+  end
+
+  subgraph Agents[Agent backends - current ADK graph]
+    Orchestrator[platformops_orchestrator]
+    Router[provisioning_agent]
+    CDK[cdk_provisioning_agent]
+    TF[terraform_provisioning_agent]
+    Sec[security_agent]
+  end
+
+  subgraph Policy[Policy dispatcher - hard enforcement]
+    Match[Match ToolIntent to plan hash]
+    Check[Check approval, region, cost, resource type, credentials]
+    Deny[Deny + audit reason]
+    Allow[Allow dispatch]
+  end
+
+  subgraph Tools[MCP / cloud tools]
+    IAC["aws-iac-mcp-server<br/>read/validate"]
+    CCAPI["ccapi-mcp-server<br/>create/update/delete"]
+    Terraform["Terraform MCP Server<br/>plan/apply"]
+    Cloud["AWS now<br/>future: Azure/GCP"]
+  end
+
+  subgraph Ops[Operator surfaces]
+    UI["Control UI<br/>approvals + config health"]
+    Doctor[platformops doctor]
+    Metrics[Logs / metrics / traces]
+  end
+
+  Slack --> Adapters
+  CLI --> Adapters
+  Webhook --> Adapters
+  Ticket --> Adapters
+  Adapters --> Normalize --> Bindings --> Registry --> Preflight
+  Config --> Bindings
+  Config --> Registry
+  Preflight --> Orchestrator
+  Orchestrator --> Router
+  Router --> CDK
+  Router --> TF
+  CDK --> IAC
+  TF --> Terraform
+  Orchestrator --> Sec
+  Sec --> Review
+  CDK --> Plan
+  TF --> Plan
+  Plan --> Review --> Approval
+  Approval -- low-risk auto-approved --> DispatchIntent
+  Approval -- human required --> WaitHuman --> DispatchIntent
+  DispatchIntent --> Match --> Check
+  Check -- no --> Deny --> Audit
+  Check -- yes --> Allow
+  Allow --> CCAPI --> Cloud
+  Allow --> Terraform --> Cloud
+  Cloud --> Verify --> Audit
+  Verify --> Adapters
+  Check -. failure .-> Rollback --> Audit
+  UI --> WaitHuman
+  UI --> Config
+  Doctor --> Config
+  Doctor --> Registry
+  Audit --> Metrics
+      </div>
+    </div>
+    <div class="footer-note">Identical to the Mermaid diagram in <code>docs/HARNESS_DESIGN.md</code> — kept in sync deliberately, this deck doesn't fork the source of truth.</div>
+  </section>
+
+  <!-- 8: Policy dispatcher / ToolIntent -->
+  <section class="slide">
+    <h2>The enforcement gap this closes: ToolIntent</h2>
+    <p class="muted">Today, mutating MCP tools are attached directly to provisioning agents and the approval rule is a prompt instruction. The Gateway replaces that with a hard runtime boundary:</p>
+    <div class="card" style="text-align:center; font-family:Consolas,monospace; margin:0.6em 0 1em 0;">
+      execution agent&nbsp;→&nbsp;proposed <span style="color:var(--accent)">ToolIntent</span>&nbsp;→&nbsp;Gateway policy dispatcher&nbsp;→&nbsp;MCP / cloud tool
+    </div>
+    <div class="grid grid-2">
+      <div class="card">
+        <h3>ToolIntent carries</h3>
+        <ul style="margin:0;">
+          <li><code>plan_id</code> + exact plan version hash</li>
+          <li>org, BU, requester, source channel</li>
+          <li>target provider/account/region</li>
+          <li>tool name + normalized action</li>
+          <li>resource type, resource id, operation</li>
+          <li>expected diff + estimated monthly cost</li>
+          <li>approval requirement + approval record id</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Dispatcher rule</h3>
+        <p style="margin:0;">Deny by default. Only dispatches when the intent matches an <strong>approved plan</strong> and the workspace bundle permits the resource type, account, region, and operation.</p>
+        <p class="muted" style="margin-top:0.6em;">This is the difference between a demo agent graph and a production harness.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9: Status -->
+  <section class="slide">
+    <h2>What's built vs. designed, right now</h2>
+    <div class="grid grid-2">
+      <div class="card built">
+        <h3>Built <span class="tag built">built</span></h3>
+        <ul style="margin:0;">
+          <li>Agent layer: orchestrator, router, CDK/Terraform sub-agents, security agent</li>
+          <li>Model config file + loader (<code>config/models.yaml</code>, <code>agents/model_config.py</code>)</li>
+        </ul>
+      </div>
+      <div class="card designed">
+        <h3>Designed, not built <span class="tag designed">designed</span></h3>
+        <ul style="margin:0;">
+          <li>Gateway process, channel adapters, session/routing layer</li>
+          <li>Control UI / human-in-the-loop approval queue</li>
+          <li>Org → BU → <code>agent_id</code> multi-tenancy model + org registry</li>
+          <li>True model-agnosticism beyond Gemini</li>
+          <li><code>RequestEnvelope</code> / <code>WorkspaceBundle</code> / <code>PlanRecord</code> / <code>ApprovalRecord</code> / <code>ToolIntent</code> schemas</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-note">Decided direction: custom PlatformOps Gateway (own runtime, not OpenClaw's). See <code>docs/HARNESS_DESIGN.md</code> for the full decision trail.</div>
+  </section>
+
+  <!-- 10: Next spike -->
+  <section class="slide">
+    <h2>What to implement first</h2>
+    <div class="flow-steps">
+      <div class="flow-step"><div class="num">1</div><div>Define <code>RequestEnvelope</code>, <code>WorkspaceBundle</code>, <code>PlanRecord</code>, <code>ApprovalRecord</code>, <code>ToolIntent</code> schemas.</div></div>
+      <div class="flow-step"><div class="num">2</div><div>Add config validation for bindings and workspace bundles — fail closed on bad config.</div></div>
+      <div class="flow-step"><div class="num">3</div><div>Wrap the existing ADK graph behind a <code>plan_request(envelope)</code> call.</div></div>
+      <div class="flow-step"><div class="num">4</div><div>Move mutating MCP calls behind a local dispatcher function.</div></div>
+      <div class="flow-step"><div class="num">5</div><div>Add a file-backed or SQLite audit log <em>before</em> building the Control UI.</div></div>
+    </div>
+    <div class="footer-note">Full outstanding list, including the hackathon-submission track, is tracked in <code>NEXT_STEPS.md</code>.</div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <button id="prevBtn" onclick="go(-1)">&larr; Prev</button>
+  <div class="dots" id="dots"></div>
+  <span class="counter"><span id="cur">1</span> / <span id="total"></span></span>
+  <button id="nextBtn" onclick="go(1)">Next &rarr;</button>
+</div>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: "dark",
+    themeVariables: { background: "#161d2e", primaryColor: "#1d2740",
+      primaryTextColor: "#e6ecff", primaryBorderColor: "#5fd0ff",
+      lineColor: "#93a2c9", secondaryColor: "#1d2740", tertiaryColor: "#161d2e" } });
+
+  const slides = document.querySelectorAll(".slide");
+  const total = slides.length;
+  let idx = 0;
+  document.getElementById("total").textContent = total;
+  const dotsEl = document.getElementById("dots");
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement("div");
+    d.className = "dot" + (i === 0 ? " active" : "");
+    d.onclick = () => { idx = i; render(); };
+    dotsEl.appendChild(d);
+  }
+
+  function render() {
+    slides.forEach((s, i) => s.classList.toggle("active", i === idx));
+    document.getElementById("cur").textContent = idx + 1;
+    document.querySelectorAll(".dot").forEach((d, i) => d.classList.toggle("active", i === idx));
+    document.getElementById("prevBtn").disabled = idx === 0;
+    document.getElementById("nextBtn").disabled = idx === total - 1;
+    location.hash = String(idx + 1);
+  }
+  function go(delta) {
+    idx = Math.min(total - 1, Math.max(0, idx + delta));
+    render();
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === " ") go(1);
+    if (e.key === "ArrowLeft") go(-1);
+  });
+  const initial = parseInt(location.hash.replace("#", ""), 10);
+  if (!isNaN(initial) && initial >= 1 && initial <= total) idx = initial - 1;
+  render();
+</script>
+</body>
+</html>
