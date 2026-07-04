@@ -20,6 +20,18 @@ have the Gateway — not the agent — call the real MCP tool only after
    ADK Runner invocation API verified against the installed `google-adk`
    version first (untested from this environment).
 
+**Small, separate, verifiable bug found while tracing a request through
+the system** (see `docs/current_architecture.md` Section 4's worked
+example): `README.md`'s "Run the agent" step says
+`python -m agents.orchestrator`, but `agents/orchestrator.py` only
+defines `root_agent = Agent(...)` — there's no `Runner`/`Session`
+construction or `if __name__ == "__main__":` block anywhere in this
+codebase, so that command constructs the Agent objects and exits without
+processing any input. The likely correct command is ADK's own CLI
+(`adk web agents/` or `adk run agents/`, which auto-discovers
+`root_agent`) — needs verifying against the installed `google-adk`
+version, then fixing in `README.md`.
+
 ### Already done (for reference, not action items)
 1. ~~Define `RequestEnvelope`, `WorkspaceBundle`, `PlanRecord`,
    `ApprovalRecord`, `ToolIntent` schemas.~~ **Done** — `harness/schemas.py`.

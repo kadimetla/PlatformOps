@@ -91,9 +91,50 @@ When a user submits a request (e.g., *"Deploy a static web portal using CDK"*), 
                              calls get_resource to verify, and returns final URL
 ```
 
+**Read this diagram as the *intended* flow per the agents' prompts and
+skill instructions, not a code-enforced sequence.** Nothing today wires
+these 5 steps together programmatically — there is no orchestration code
+that runs step 1 before step 2, or that stops step 5 from happening
+without step 4 having occurred. Section 4 below traces one concrete
+request through what's actually real code versus what's currently just an
+instruction the LLM is trusted to follow.
+
 ---
 
-## 4. Defense-in-Depth Guardrail Layering
+## 4. Worked Example: What Actually Happens for One Request
+
+Input: Slack user `U456`, workspace `T123`, channel
+`C-platform-payments`, message: *"Using CDK, deploy a static site called
+demo-blog in us-east-1."* This traces the same request through real files
+and real gaps — see `docs/harness_deep_dive.md` and
+`docs/planned_implementation.md` for the design this is measured against.
+
+| # | What should happen | Reality today |
+|---|---|---|
+| 1 | Look up the inbound channel/workspace/channel-id against `config/bindings.yaml` to resolve `org_id`/`bu_id`/`agent_id` | **Gap** — `ConfigLoader` loads and validates the binding list (real, tested), but no `resolve(channel, workspace_id, channel_id)` lookup function exists yet |
+| 2 | Construct a `RequestEnvelope` from the message | **Gap** — the schema is real (`harness/schemas.py`), nothing constructs one from a real message yet |
+| 3 | Load the `WorkspaceBundle` for that BU (region, allowed resource types, cost ceiling) | **Real** — `harness/config_engine.py` + `config/workspace_bundles/acme-payments.yaml`, tested |
+| 4 | Run `spec/check_compliance.py` against a structured version of the request | **Gap** — it expects a YAML dict shaped like `spec/example_submission.yaml`; nothing translates natural-language text into that shape automatically, and nothing calls it automatically before provisioning starts |
+| 5 | `plan_request(envelope)` starts an ADK Runner around `root_agent` | **Doesn't exist** — `agents/orchestrator.py` only defines `root_agent = Agent(...)`; there's no `Runner`/`Session` construction anywhere in this codebase, and no `if __name__ == "__main__":` block. Running `python -m agents.orchestrator` per `README.md`'s current instructions just constructs the Agent objects and exits — it processes no input at all. (ADK's actual convention is almost certainly `adk web agents/` or `adk run agents/`, which auto-discovers `root_agent`; the README instruction needs fixing, tracked in `NEXT_STEPS.md`.) |
+| 6 | `platformops_orchestrator` → `provisioning_agent` reads "Using CDK" → delegates to `cdk_provisioning_agent` | **Real, live ADK graph** — functional today if a Runner were actually invoking it |
+| 7 | `cdk_provisioning_agent` calls `aws-iac-mcp-server`'s validation tools to draft a template | **Real** — read-only MCP calls, functional once `uvx`/AWS creds are set up per `README.md` |
+| 8 | Produce a `ToolIntent` via a non-executing `propose_tool_intent(...)` tool instead of calling a real mutating tool | **Doesn't exist — and this is a live gap, not just a missing feature**: `agents/cdk_provisioning_agent.py` has `ccapi-mcp-server`'s *mutating* tools (`create_resource`/`update_resource`/`delete_resource`) attached **directly** to the agent today. As currently wired, if a Runner were invoking this graph against a real AWS account, the agent could call a real mutation itself — the "wait for approval" rule is a prompt instruction only, with no code stopping it. |
+| 9 | `security_agent` reviews the Vibe Diff and approves | **Real** LLM reasoning step, but its decision isn't connected to any table or gate — it's text the orchestrator relays, not a recorded, checkable fact |
+| 10 | Record the approval: `dispatcher.record_approval(plan_id, plan_hash, agent_approved=True)` | **Real, tested in isolation** — `tests/test_harness.py` proves this call works, but with fabricated test data, not a real plan from step 9 |
+| 11 | Gate execution: `dispatcher.evaluate_intent(intent)` — checks bundle exists, resource type allow-listed, region matches, approval hash matches and isn't tampered | **Real, tested, deny-by-default** — but nothing calls this before a mutating tool runs, per #8 |
+| 12 | Only on `True`, call the real `ccapi-mcp-server` `create_resource` | **Doesn't exist as a separate, gated step** — see #8 |
+| 13 | Write the result to `audit_logs`, relay it back to the originating Slack channel | **Partially real** — the SQLite write is tested in isolation; there is no channel adapter to relay anything back to Slack at all |
+
+**The one-sentence version**: the harness (`harness/`) is fully tested in
+isolation but not invoked by anything real yet, and the live agent graph
+(`agents/`) currently has no runtime enforcement between "the agent
+decides to mutate AWS" and "it happens" — only a prompt telling it to
+wait. Closing this is exactly `docs/planned_implementation.md`'s Phase 3
+(the one required item in the current spike), not a new design.
+
+---
+
+## 5. Defense-in-Depth Guardrail Layering
 
 Security is enforced at multiple layers to prevent a single point of failure (such as an LLM reasoning error or prompt injection) from deploying unauthorized resources:
 
@@ -134,3 +175,29 @@ Security is enforced at multiple layers to prevent a single point of failure (su
    * [iam-policy.json](file:///opt/wecan/aiml_learning_gang_ws/vibecoding_ws/capstone_project/infra/iam-policy.json) restricts AWS account actions (IAM tier).
    * [allowed-resource-types.json](file:///opt/wecan/aiml_learning_gang_ws/vibecoding_ws/capstone_project/infra/allowed-resource-types.json) restricts target CloudFormation types (App tier). This blocks the agent from requesting resources like `AWS::EC2::Instance` even if IAM allows Cloud Control API actions.
 3. **Operator Control Switch for Terraform**: On the Terraform path, the system requires the environment variable `ENABLE_TF_OPERATIONS=true` to be set by the human operator. The agent cannot toggle this flag itself, serving as an operational kill-switch.
+
+### Which of these are actually code-enforced today (correction)
+The diagram above is best read as the intended defense-in-depth model,
+not a guarantee about the current build — see Section 4's worked example
+for the specific gaps. As of now:
+- **Layer 4 (Cloud IAM Policy)** is the only layer enforced independently
+  of this codebase's own logic — it's AWS itself refusing an action
+  outside `infra/iam-policy.json`, regardless of what our code does or
+  doesn't do.
+- **Layer 1 (Compliance Script)** is real, deterministic code
+  (`spec/check_compliance.py`), but nothing calls it automatically before
+  provisioning starts — it has to be run by hand today.
+- **Layer 2 (Security Agent Check)** is a real LLM reasoning step, but
+  it's a prompt instruction, not a code-level gate — there's no
+  mechanism stopping `cdk_provisioning_agent` from calling a mutating
+  tool without waiting for it.
+- **Layer 3 (Application Allow-List)** — `infra/allowed-resource-types.json`
+  is real data, and `harness/tool_dispatcher.py`'s `BrokeredToolDispatcher`
+  really does check it — but that dispatcher isn't wired into the live
+  agent graph yet (see `harness_deep_dive.md`), so this check currently
+  runs only in `tests/test_harness.py`, not on a real request.
+
+So today, layer 4 is the only one AWS itself would actually stop you at;
+layers 1-3 are real code or real reasoning, but none of them are
+mechanically wired between "the agent decides to act" and "the action
+happens." Closing that gap is `docs/planned_implementation.md` Phase 3.

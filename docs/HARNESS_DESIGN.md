@@ -16,8 +16,10 @@ This is the entry point; the following docs go deeper on specific slices
 rather than repeating this one:
 - `docs/current_architecture.md` — deep dive on the ADK agent graph and
   defense-in-depth layering **as built today**, with diagrams and direct
-  code links. Read this for "how does the current hackathon build actually
-  work," not this file.
+  code links, plus a worked example (Section 4) tracing one concrete
+  request through what's real code versus what's still a prompt-level
+  instruction. Read this for "how does the current hackathon build
+  actually work, mechanically," not this file.
 - `docs/harness_deep_dive.md` — the production harness design: the
   Brokered Tool Dispatcher pattern, OpenClaw-primitive mapping, and a
   comparison of Temporal/LangGraph/CrewAI as the workflow layer.
