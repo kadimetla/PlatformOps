@@ -144,7 +144,12 @@ works):
    bundle's region. Not yet built: actually intercepting `cdk_provisioning_agent`
    / `terraform_provisioning_agent`'s real MCP tool calls and routing them
    through this dispatcher — today it's tested standalone, not wired into
-   the agent graph.
+   the agent graph. See `docs/planned_implementation.md` Phase 3 for the
+   concrete mechanism: pull the mutating `ccapi-mcp-server` toolset off
+   the agent entirely, replace it with a non-executing
+   `propose_tool_intent(...)` function tool, and have the Gateway call the
+   real MCP tool only after the dispatcher approves — this is the single
+   required item left in the spike, everything else here is done.
 6. **Built**: approval as data, not chat text — `ApprovalRecord` plus the
    dispatcher's `approvals`/`audit_logs` SQLite tables.
 7. **Built** (as the standalone dispatcher check): dispatch only proceeds

@@ -53,15 +53,56 @@ The validation logic will:
 
 ---
 
-## Phase 3: Wrap the ADK Agent Graph (`plan_request`) — NOT STARTED
+## Phase 3: Wrap the ADK Agent Graph (`plan_request`) — REQUIRED, NOT STARTED
 
-Currently, [root_agent](file:///opt/wecan/aiml_learning_gang_ws/vibecoding_ws/capstone_project/agents/orchestrator.py#L8-L20) runs as a standalone process and directly triggers cloud mutations. We will wrap the existing ADK agents inside a modular function `plan_request(envelope: RequestEnvelope)`.
+This is the one remaining required item from the spike — everything else
+in Phases 1/2/4/5 is done and tested. Currently,
+[root_agent](file:///opt/wecan/aiml_learning_gang_ws/vibecoding_ws/capstone_project/agents/orchestrator.py#L8-L20)
+runs as a standalone process, and — this is the concrete gap, not just a
+principle — [cdk_provisioning_agent](file:///opt/wecan/aiml_learning_gang_ws/vibecoding_ws/capstone_project/agents/cdk_provisioning_agent.py#L21-L24)
+has `ccapi-mcp-server`'s mutating tools attached **directly**, so the agent
+itself can call `create_resource`/`update_resource`/`delete_resource` today
+with nothing but a prompt instruction standing in the way.
 
-* **Role Change**: The agent graph no longer decides when to execute mutating tools. Instead, its role is restricted to **designing and reviewing**:
-  1. The agent parses the envelope payload.
-  2. The agent runs deterministic compliance checks (via [check_compliance](file:///opt/wecan/aiml_learning_gang_ws/vibecoding_ws/capstone_project/spec/check_compliance.py#L15-L38)).
-  3. The agent interacts with read-only MCP resources (like [AWS_IAC_MCP_SERVER](file:///opt/wecan/aiml_learning_gang_ws/vibecoding_ws/capstone_project/mcp_server/external_servers.py#L25-L29)) to draft a plan.
-  4. The agent writes a user-friendly plan explanation (Vibe Diff) and returns a proposed `PlanRecord`.
+### The mechanism (resolves the "how", not just the "don't do this")
+Both `docs/HARNESS_DESIGN.md` and `docs/harness_deep_dive.md` state the
+principle — "do not attach mutating cloud tools directly to execution
+agents" — without specifying how an agent proposes a change without being
+able to execute one. Concretely:
+
+1. **Remove** `MCPToolset(connection_params=CCAPI_MCP_SERVER)` from
+   `cdk_provisioning_agent`'s `tools=[...]` list (and the equivalent
+   mutating toolset from `terraform_provisioning_agent`). Keep only
+   read-only/validation tools (`aws-iac-mcp-server`, Terraform registry
+   search) attached directly — those are safe for an LLM to call freely.
+2. **Add a `propose_tool_intent(...)` function tool** (a plain Python
+   function, not an MCP toolset) that the agent calls instead of a real
+   mutating tool. Its implementation does not touch AWS or Terraform at
+   all — it just captures the proposed `resource_type`,
+   `resource_identifier`, `operation`, `region`, `estimated_monthly_cost`,
+   and `payload` into a `harness.schemas.ToolIntent`, and returns it as
+   part of the agent's structured output. This is the "propose" half.
+3. **`plan_request(envelope: RequestEnvelope) -> PlanRecord`**: runs
+   `spec/check_compliance.py` as a mandatory preflight, then invokes the
+   ADK Runner against `platformops_orchestrator` with the envelope's
+   `raw_payload`. Collects the Vibe Diff text and the `ToolIntent`(s) the
+   agent proposed via step 2, hashes the plan text into `plan_hash`, and
+   returns a `PlanRecord` — **no cloud call has happened at this point,
+   by construction**, not just by convention.
+4. **The Gateway, not the agent, executes**: once `security_agent` (and,
+   per review policy, a human) approves the `PlanRecord`, the Gateway
+   calls `harness.tool_dispatcher.BrokeredToolDispatcher.record_approval()`
+   then `.evaluate_intent()`. Only on `True` does the Gateway itself call
+   the real `ccapi-mcp-server`/Terraform MCP tool directly (same
+   connection params as `mcp_server/external_servers.py`, invoked outside
+   the LLM agent's tool-calling loop) — the agent graph is never in the
+   execution path for a mutating call, not even indirectly.
+
+**Verify before implementing**: the exact ADK Runner/session invocation
+API for step 3 (how to run `platformops_orchestrator` programmatically and
+extract structured tool-call output) needs checking against the installed
+`google-adk` version — same caveat as elsewhere in this codebase, not yet
+tested from this environment.
 
 ---
 
