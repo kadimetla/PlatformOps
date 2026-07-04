@@ -1,0 +1,21 @@
+# Channel/thread/webhook -> org/BU/agent_id routing, per docs/HARNESS_DESIGN.md's
+# "Borrow: deterministic bindings, but map them to org/BU routing" section.
+# workspace_bundle_ref must match a bundle_id under config/workspace_bundles/.
+bindings:
+  - match:
+      channel: slack
+      workspace_id: T123
+      channel_id: C-platform-payments
+    org_id: acme
+    bu_id: payments
+    agent_id: acme-payments
+    workspace_bundle_ref: acme-payments
+
+  - match:
+      channel: webhook
+      source: github
+      repo: acme/payments-infra
+    org_id: acme
+    bu_id: payments
+    agent_id: acme-payments
+    workspace_bundle_ref: acme-payments

@@ -11,6 +11,21 @@ Only the model-layer config described below has real code behind it today.
 The Gateway/harness described below is design only — see "What's built vs.
 designed" at the bottom for the exact line.
 
+### Document map
+This is the entry point; the following docs go deeper on specific slices
+rather than repeating this one:
+- `docs/current_architecture.md` — deep dive on the ADK agent graph and
+  defense-in-depth layering **as built today**, with diagrams and direct
+  code links. Read this for "how does the current hackathon build actually
+  work," not this file.
+- `docs/harness_deep_dive.md` — the production harness design: the
+  Brokered Tool Dispatcher pattern, OpenClaw-primitive mapping, and a
+  comparison of Temporal/LangGraph/CrewAI as the workflow layer.
+- `docs/planned_implementation.md` — the 5-phase build order for the spike
+  described below in "What to implement first."
+- `harness/` — real, tested code for the schemas and dispatcher (see
+  `tests/test_harness.py`), the first slice of the design below.
+
 ## Why a harness, and why OpenClaw's pattern
 
 Right now, `agents/orchestrator.py` is invoked directly — one process, one
@@ -91,76 +106,55 @@ mechanism, no runtime reload, and no provider adapter selection yet.
 model object. This is acceptable for the hackathon slice and exactly the
 part to replace when the Gateway starts loading per-BU workspace config.
 
-## Current agent implementation deep dive
-
+## Current agent implementation
 The code that exists today is an ADK agent graph, not the production
-Gateway/harness described below:
-
-```
-platformops_orchestrator
-  ├── provisioning_agent
-  │     ├── cdk_provisioning_agent
-  │     │     ├── aws-iac-mcp-server tools  (docs/validation)
-  │     │     └── ccapi-mcp-server tools    (AWS mutation)
-  │     └── terraform_provisioning_agent
-  │           └── HashiCorp Terraform MCP Server tools
-  └── security_agent
-```
-
-The agents are wired as follows:
-
-- `agents/orchestrator.py` defines `platformops_orchestrator`, delegates
-  planning to `provisioning_agent`, and instructs the flow to require
-  explicit `security_agent` approval before AWS-modifying tools execute.
-- `agents/provisioning_agent.py` is only a router. It follows
-  `skills/provision-infra/SKILL.md` Step 0 and delegates to CDK by default
-  or Terraform when the user requests it.
-- `agents/cdk_provisioning_agent.py` attaches both the read-only
-  `aws-iac-mcp-server` toolset and the mutating `ccapi-mcp-server` toolset.
-  Its prompt requires template validation, a Vibe Diff, and security
-  approval before any Cloud Control API create/update/delete call.
-- `agents/terraform_provisioning_agent.py` attaches the Terraform MCP
-  Server toolset and requires a Vibe Diff plus security approval before
-  applying a run.
-- `agents/security_agent.py` is a review agent with no tools. It uses the
-  `security-review-checklist` skill as procedure and returns approve/reject
-  reasoning.
-
-This split is the right shape for PlatformOps: routing, execution, and
-review are separate roles with different model tiers and different failure
-modes. The current enforcement level is still prompt-level, however. The
-mutating MCP tools are attached directly to the provisioning agents, and
-the approval rule is an instruction, not a runtime policy guard. In a
-production harness, mutating tool calls should pass through a policy-aware
-tool gateway that checks for a recorded approval object before dispatching
-to CCAPI or Terraform apply.
-
-The same distinction applies to compliance. `spec/check_compliance.py` is
-deterministic and should remain outside the LLM model layer, but it is not
-currently exposed as an ADK tool or mandatory preflight step in the agent
-graph. For production, the Gateway should run deterministic checks before
-provisioning and attach their results to the request context reviewed by
-`security_agent`.
+Gateway/harness described below — see `docs/current_architecture.md` for
+the full breakdown (agent topology diagram, request lifecycle, and the
+4-layer defense-in-depth guardrail chain), rather than repeating it here.
+Short version: routing, execution, and review are separate ADK agents with
+different model tiers; `security_agent` has zero mutating tools; the
+enforcement gap is that mutating MCP tools are still attached *directly* to
+the provisioning agents, and the approval rule is a prompt instruction, not
+yet a runtime guard.
 
 ### PlatformOps runtime boundary to build next
 The next implementation step is not a UI; it is a small runtime boundary
-that turns prompt-level procedure into enforceable workflow:
+that turns prompt-level procedure into enforceable workflow. Status as of
+the harness spike in `harness/` (see `tests/test_harness.py` for proof it
+works):
 
-1. Normalize every inbound request into a typed envelope:
-   requester, channel, org, BU, workspace bundle, text, attachments, and
-   requested action.
-2. Resolve the envelope through an org registry:
-   `org_id -> bu_id -> agentId/workspace_config_ref`.
-3. Load per-BU workspace config: credentials, allowed resource types, cost
-   ceiling, region, model overrides, and review policy.
-4. Run deterministic preflight checks such as `spec/check_compliance.py`
-   before provisioning starts.
-5. Route mutating tool calls through a gateway-controlled dispatcher rather
-   than exposing them directly to provisioning agents.
-6. Represent review as data: plan ID, Vibe Diff, reviewer/agent decision,
-   approval state, expiry, and audit log entry.
-7. Dispatch CCAPI or Terraform apply only when the dispatcher sees a valid
-   approval for the exact plan being executed.
+1. **Built**: typed schemas for the envelope, workspace bundle, plan,
+   approval, and tool intent — `harness/schemas.py`.
+2. **Partially built**: config loading + referential-integrity/uniqueness
+   validation for bindings and workspace bundles —
+   `harness/config_engine.py`. Not yet built: resolving org/BU into a full
+   *org registry* (today it's one flat `config/bindings.yaml`, no
+   org-level grouping on top).
+3. **Not yet built**: loading per-BU workspace config (credentials, cost
+   ceiling, model overrides, review policy) into the actual agent run —
+   the schema and config loader exist, but nothing wires them into
+   `agents/orchestrator.py` yet.
+4. **Not yet built**: running `spec/check_compliance.py` as a mandatory
+   preflight step before the ADK agent graph runs, with results attached
+   to what `security_agent` reviews.
+5. **Built**: mutating-call brokering — `harness/tool_dispatcher.py`'s
+   `BrokeredToolDispatcher.evaluate_intent()` denies by default and only
+   allows a `ToolIntent` that matches a recorded, valid, non-tampered
+   approval, has an allow-listed resource type, and matches the workspace
+   bundle's region. Not yet built: actually intercepting `cdk_provisioning_agent`
+   / `terraform_provisioning_agent`'s real MCP tool calls and routing them
+   through this dispatcher — today it's tested standalone, not wired into
+   the agent graph.
+6. **Built**: approval as data, not chat text — `ApprovalRecord` plus the
+   dispatcher's `approvals`/`audit_logs` SQLite tables.
+7. **Built** (as the standalone dispatcher check): dispatch only proceeds
+   on a matching, valid approval. **Not yet built**: this gating actually
+   sitting between the agents and CCAPI/Terraform apply in a real run.
+
+The single biggest remaining gap is #3/#5's "not yet wired into the agent
+graph" — the schemas, config validation, and dispatcher logic are real and
+tested in isolation, but `agents/orchestrator.py` doesn't call any of it
+yet. That's the next slice, not a new design.
 
 ## Harness layer design (not built — this section is the design to build toward)
 
@@ -516,6 +510,12 @@ Use a layered design rather than picking one framework to own everything:
 - **Observability layer**: model traces, workflow events, policy decisions,
   and cloud mutation results as one request timeline.
 
+This doc leaves LangGraph vs. Temporal open. `docs/harness_deep_dive.md`
+goes further with pros/cons for each against PlatformOps's specific needs
+(long approval waits, retries, rollback) and lands on a firmer
+recommendation — a layered Temporal-outer/ADK-inner topology — worth
+reading before actually building the workflow layer.
+
 ### Visual architecture diagram
 
 ```mermaid
@@ -631,27 +631,39 @@ flowchart TB
    denial, dispatch, result, and verification step is written to audit.
 
 ### What to implement first
-The practical first slice is small:
+See `docs/planned_implementation.md` for the detailed 5-phase walkthrough.
+Status against that plan:
 
-1. Define `RequestEnvelope`, `WorkspaceBundle`, `PlanRecord`,
-   `ApprovalRecord`, and `ToolIntent` schemas.
-2. Add config validation for bindings and workspace bundles.
-3. Wrap the existing ADK graph behind a `plan_request(envelope)` call.
-4. Move mutating MCP calls behind a local dispatcher function.
-5. Add a file-backed or SQLite audit log before building the Control UI.
+1. ~~Define `RequestEnvelope`, `WorkspaceBundle`, `PlanRecord`,
+   `ApprovalRecord`, and `ToolIntent` schemas.~~ **Built** — `harness/schemas.py`.
+2. ~~Add config validation for bindings and workspace bundles.~~ **Built** —
+   `harness/config_engine.py` (referential integrity + agent_id/BU uniqueness).
+3. Wrap the existing ADK graph behind a `plan_request(envelope)` call. **Not
+   built** — this is the actual next step.
+4. ~~Move mutating MCP calls behind a local dispatcher function.~~ **Built**
+   standalone — `harness/tool_dispatcher.py`'s `BrokeredToolDispatcher`, but
+   not yet wired to intercept the real CCAPI/Terraform MCP tool calls the
+   agents make.
+5. ~~Add a file-backed or SQLite audit log before building the Control UI.~~
+   **Built** — the dispatcher's `audit_logs`/`approvals` SQLite tables,
+   proven in `tests/test_harness.py`.
 
 ## What's built vs. designed
 | Piece | Status |
 |---|---|
 | Agent layer (orchestrator, routing, CDK/Terraform sub-agents, security agent) | Built |
 | Model config file + loader | Built |
+| `RequestEnvelope`/`WorkspaceBundle`/`PlanRecord`/`ApprovalRecord`/`ToolIntent` schemas | **Built** — `harness/schemas.py` |
+| Config loader + binding/bundle validation | **Built** — `harness/config_engine.py`, tested |
+| Brokered tool dispatcher (deny-by-default `ToolIntent` gate) | **Built** standalone — `harness/tool_dispatcher.py`, tested; not yet wired into the live agent graph |
+| SQLite audit log | **Built** — part of the dispatcher, tested |
+| Wrapping the ADK graph behind `plan_request(envelope)` | Designed, not built — the actual next step |
 | True model-agnosticism (non-Gemini models) | Designed, not built |
 | Gateway process, channel adapters, session/routing layer | Designed, not built |
 | Control UI / human-in-the-loop approval queue | Designed, not built |
-| Org → Business Unit → agentId multi-tenancy model | Designed, not built |
+| Org → Business Unit → agentId multi-tenancy model | Partially built — `config/bindings.yaml` binds agent_id to org/BU with uniqueness enforced; no org-level registry grouping yet |
 | Org registry + onboarding automation | Designed, not built |
-| Custom PlatformOps Gateway (own runtime, not OpenClaw's) | **Decided direction** — see "Recommended implementation stance" / "What to implement first"; no code yet |
-| `RequestEnvelope`/`WorkspaceBundle`/`PlanRecord`/`ApprovalRecord`/`ToolIntent` schemas | Designed, not built — next spike target |
+| Custom PlatformOps Gateway (own runtime, not OpenClaw's) | **Decided direction** — see "Recommended implementation stance"; schemas/config/dispatcher exist, the Gateway process itself doesn't |
 
 ## Adoption story
 A new org onboards by: registering itself in the org registry, minting one

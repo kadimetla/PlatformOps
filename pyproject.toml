@@ -8,6 +8,7 @@ dependencies = [
     "google-adk",
     "mcp",
     "pyyaml",
+    "pydantic",
 ]
 # Note: boto3 is no longer a direct dependency — provisioning now routes
 # through external MCP servers (awslabs.aws-iac-mcp-server, awslabs.ccapi-mcp-server,

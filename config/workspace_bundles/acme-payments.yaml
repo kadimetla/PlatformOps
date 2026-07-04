@@ -1,0 +1,9 @@
+bundle_id: acme-payments
+aws_region: us-east-1
+aws_profile: platformops-sandbox
+cost_ceiling_usd: 5.0
+allowed_resource_types:
+  - "AWS::S3::Bucket"
+  - "AWS::CloudFront::Distribution"
+tfe_workspace: null
+enable_tf_operations: false

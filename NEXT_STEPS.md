@@ -6,20 +6,23 @@ actual architecture decisions and reasoning.
 
 ## On this branch (`design/harness-architecture`)
 
-Next spike, per `docs/HARNESS_DESIGN.md`'s "What to implement first":
-1. Define `RequestEnvelope`, `WorkspaceBundle`, `PlanRecord`,
-   `ApprovalRecord`, and `ToolIntent` schemas.
-2. Add config validation for bindings and workspace bundles (fail closed on
-   malformed config, per the "Borrow: schema-validated, hot-reloadable
-   config" section).
-3. Wrap the existing ADK graph (`agents/orchestrator.py`) behind a
-   `plan_request(envelope)` call — the Gateway calls this, it doesn't own
-   mutation dispatch itself.
-4. Move mutating MCP calls (CCAPI, Terraform apply) behind a local
-   dispatcher function that checks a `ToolIntent` against an approval
-   record before executing — this is the enforcement gap between
-   "prompt-level rule" (what exists today) and "runtime-enforced rule."
-5. Add a file-backed or SQLite audit log before building any Control UI.
+Detailed phase-by-phase plan lives in `docs/planned_implementation.md`;
+this is just the status summary:
+
+1. ~~Define `RequestEnvelope`, `WorkspaceBundle`, `PlanRecord`,
+   `ApprovalRecord`, `ToolIntent` schemas.~~ **Done** — `harness/schemas.py`.
+2. ~~Add config validation for bindings and workspace bundles.~~ **Done** —
+   `harness/config_engine.py`, fail-closed on bad config, tested.
+3. **Not done — the actual next step**: wrap the existing ADK graph
+   (`agents/orchestrator.py`) behind a `plan_request(envelope)` call — the
+   Gateway calls this, it doesn't own mutation dispatch itself.
+4. ~~Move mutating MCP calls behind a local dispatcher function.~~ **Done**
+   standalone — `harness/tool_dispatcher.py`'s `BrokeredToolDispatcher`,
+   deny-by-default, tested. Not yet wired to intercept the real
+   CCAPI/Terraform MCP tool calls the agents make — that's part of step 3.
+5. ~~Add a file-backed or SQLite audit log.~~ **Done** —
+   `harness/tool_dispatcher.py`'s `audit_logs`/`approvals` tables, proven
+   by the 8 passing tests in `tests/test_harness.py`.
 
 Longer-horizon, not urgent:
 - Org registry + onboarding automation (mint a fresh `agent_id`/BU scope,
