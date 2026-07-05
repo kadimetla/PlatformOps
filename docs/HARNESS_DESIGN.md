@@ -36,6 +36,12 @@ rather than repeating this one:
   agent authors a brand-new infra pattern that might become a reusable
   skill — read this for "how do skills stay reusable across orgs while
   still allowing BU-specific overrides," which this file doesn't cover.
+- `docs/end_to_end_flow_example.md` — a single worked example tracing one
+  request through *all* of the above (CopilotKit input, org/BU/team
+  resolution, skill-registry lookup, reuse-vs-author branch, approval,
+  execution) in one ordered walkthrough, with a real-vs-design-only table
+  per step — read this when you want the whole path in one place instead
+  of assembled from the docs above.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
