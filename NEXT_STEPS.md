@@ -58,7 +58,17 @@ version, then fixing in `README.md`.
   `channel_user_id` to `harness/tool_dispatcher.py`'s `audit_logs` table —
   currently only `org_id`/`bu_id` are recorded, so "which person approved
   this" isn't in the audit trail, only "which BU." Identified while
-  analyzing the team-member layer underneath Org/BU.
+  analyzing the team-member layer underneath Org/BU. Naturally the same
+  piece of work as adding a `members: list[TeamMember]` field to
+  `WorkspaceBundle` — see `docs/skills_and_workspace_design.md`.
+- **New design surface, analyzed not built**: a bundled→org→BU skill
+  precedence hierarchy, and a governance-gated workflow for when an agent
+  drafts a novel infra pattern that could become a reusable skill
+  (`SkillProposal`, requiring human approval before it's trusted, never
+  auto-promoted beyond the originating BU). See
+  `docs/skills_and_workspace_design.md` for the full design and its open
+  questions (where proposals persist, what triggers promotion review,
+  when semantic skill-matching becomes necessary).
 - Revisit the declined "register PlatformOps as an MCP tool source on a
   real OpenClaw Gateway" path if the custom Gateway build proves heavier
   than expected (see "Superseded" section in the design doc for why it was

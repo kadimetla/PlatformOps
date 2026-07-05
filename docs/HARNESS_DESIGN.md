@@ -29,6 +29,13 @@ rather than repeating this one:
   CopilotKit/AG-UI/A2UI channel for input and review, and the team-member
   layer underneath Org/BU — read this for "how does an individual person
   fit into a BU's shared workspace," which this file doesn't cover.
+- `docs/skills_and_workspace_design.md` — analysis (not yet built) of what
+  OpenClaw's workspace files (`AGENTS.md`, `USER.md`, `BOOTSTRAP.md`,
+  `skills/`, ...) concretely become for PlatformOps, a bundled→org→BU
+  skill precedence hierarchy, and the governance gate needed when an
+  agent authors a brand-new infra pattern that might become a reusable
+  skill — read this for "how do skills stay reusable across orgs while
+  still allowing BU-specific overrides," which this file doesn't cover.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
