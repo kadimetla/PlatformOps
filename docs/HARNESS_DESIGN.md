@@ -42,6 +42,11 @@ rather than repeating this one:
   execution) in one ordered walkthrough, with a real-vs-design-only table
   per step — read this when you want the whole path in one place instead
   of assembled from the docs above.
+- `docs/skill_submission_flow.md` — disambiguates two things both called
+  "submission" elsewhere: submitting an infra *spec* (deterministic,
+  every request) vs. submitting a *skill* (`SkillProposal`, human-reviewed,
+  only on the no-match branch) — read this when "how does a skill get
+  submitted and turned into infra" is unclear from the docs above.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
