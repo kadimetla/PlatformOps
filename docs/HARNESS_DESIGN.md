@@ -51,6 +51,11 @@ rather than repeating this one:
   config/org registry actually live" (YAML vs. database vs. object
   storage), with a `DbConfigLoader` sketch — read this before actually
   building the org registry.
+- `docs/harness_memory_design.md` — designs `memory/YYYY-MM-DD.md` and
+  `MEMORY.md`, which existed only as unexplained lines in a directory
+  sketch until now: a `MemoryEntry` schema, the human- vs. agent-authored
+  trust split, and the "memory is context, never authority" rule that
+  keeps it from becoming a compliance/approval bypass.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 

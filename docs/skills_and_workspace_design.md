@@ -34,8 +34,8 @@ workspaces/<agent_id>/           # BU-level — highest precedence
   IDENTITY.md
   TOOLS.md                       # guidance only, not enforcement
   BOOTSTRAP.md                   # BU onboarding ritual, deleted after first run
-  memory/YYYY-MM-DD.md
-  MEMORY.md
+  memory/YYYY-MM-DD.md           # see docs/harness_memory_design.md
+  MEMORY.md                      # see docs/harness_memory_design.md
   skills/                        # BU-level skill overrides
 ```
 
