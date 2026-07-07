@@ -81,6 +81,17 @@ rather than repeating this one:
   separate `containers/kubernetes-mcp-server` for app-layer Helm
   deploys — plus a new cross-BU kubeconfig-scoping risk this research
   surfaced.
+- `docs/infra_discovery_and_platform_app_split.md` — research on
+  discovering *existing* infra (not just creating it: `ccapi-mcp-server`'s
+  broader `list_resources`, AWS Resource Explorer, Terraform-state-vs-
+  live-API drift), corrects the IAM section above to four roles instead
+  of three with a scoped-`iam:PassRole` rule, and adds the `TeamMember.scope`
+  ("foundation" | "app" | "both") dimension the platform-team/
+  application-team split needs.
+- `docs/foundation_and_app_deploy_flow_example.md` — worked example (a
+  platform engineer setting up a foundation, an app developer deploying
+  onto it) tracing everything in the three docs above end to end, same
+  role as `docs/end_to_end_flow_example.md` for this path.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 

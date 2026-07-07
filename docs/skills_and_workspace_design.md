@@ -78,7 +78,8 @@ Not a workspace file — a small addition to `WorkspaceBundle`
 class TeamMember(BaseModel):
     channel_user_id: str
     display_name: str
-    role: str  # "requester" | "approver" | "admin"
+    role: str   # "requester" | "approver" | "admin"
+    scope: str  # "foundation" | "app" | "both" — see below
 
 # Added to WorkspaceBundle:
 members: list[TeamMember] = Field(default_factory=list)
@@ -87,6 +88,16 @@ members: list[TeamMember] = Field(default_factory=list)
 This is what a review policy would check against when deciding whether
 `ApprovalRecord.human_reviewer` (== some `channel_user_id`) was actually
 allowed to approve — today nothing checks this at all.
+
+**`scope` added by later research** (see
+`docs/infra_discovery_and_platform_app_split.md` Part C) — `role` alone
+conflates "how much authority" with "over what." A platform engineer and
+an app developer at the same BU need genuinely different access, not
+just different amounts of the same access: someone can be
+`role="admin", scope="app"` — full control over their own app-layer
+deploys — with zero access to foundation-layer changes (VPC/EKS)
+regardless of role. `scope` is that orthogonal axis, checked
+independently of `role`.
 
 ## Part B: Skill precedence — bundled → org → BU
 

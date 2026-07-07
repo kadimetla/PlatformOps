@@ -69,17 +69,32 @@ a third path bolted onto `provision-infra`, because its approval rule
 (always human, no exception) is categorically different from app-tier's
 conditional rule, not just a different tool choice.
 
-## Part B: IAM has to layer into three tiers, not one
+## Part B: IAM has to layer into four roles, not one
+**Corrected by research** — see `docs/infra_discovery_and_platform_app_split.md`
+Part B for the sourced detail. What's below was originally written as
+three tiers; AWS's own EKS docs split "foundation-runtime" into two
+separate, non-interchangeable roles, and add a scoping rule this
+section originally missed entirely.
+
 1. **Provisioning credentials** (exists today, extend) — what the
    agent/MCP server itself can call to create resources:
    `iam-policy.json`'s current scope, extended with
    `eks:CreateCluster`, `ec2:CreateVpc`, `lambda:CreateFunction`, and
-   (carefully — see below) `iam:CreateRole`.
-2. **Foundation-runtime IAM** (new) — roles the infrastructure itself
-   needs to exist to function: the EKS cluster IAM role, node instance
-   role, VPC CNI role. Not about what the agent can do — about what AWS
-   requires EKS/VPC to have in order to run at all.
-3. **App/workload IAM** (new, the trickiest tier) — least-privilege,
+   (carefully — see below) `iam:CreateRole` **and a scoped
+   `iam:PassRole`** — a well-known privilege-escalation vector if
+   granted as `Resource: "*"` instead of scoped to the exact role ARNs
+   this BU is allowed to create/pass. See
+   `docs/infra_discovery_and_platform_app_split.md` Part B for why this
+   is a separate rule from the permissions-boundary one below, not
+   covered by it.
+2. **EKS cluster service role** — what the cluster itself assumes at
+   runtime.
+3. **Node IAM role** — a **separate** role for worker nodes. AWS states
+   this as a hard rule: *"you can't use the same role that is used to
+   create any clusters."* Roles #2 and #3 were originally lumped into
+   one "foundation-runtime IAM" tier here — they're two distinct,
+   non-reusable roles.
+4. **App/workload IAM** (the trickiest tier) — least-privilege,
    per-app roles so a deployed workload reaches only the resources it
    needs, not everything the provisioning credentials could touch. On
    EKS this is IRSA (IAM Roles for Service Accounts — a pod assumes a
