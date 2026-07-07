@@ -56,6 +56,11 @@ rather than repeating this one:
   sketch until now: a `MemoryEntry` schema, the human- vs. agent-authored
   trust split, and the "memory is context, never authority" rule that
   keeps it from becoming a compliance/approval bypass.
+- `docs/session_memory_design.md` — maps skills/memory onto the classic
+  session/episodic/procedural/long-term memory taxonomy, and designs the
+  one concept with no prior analog anywhere in this project: session
+  (working) memory — a `SessionState` schema, its relationship to ADK's
+  own Session/Runner, and the "continuity, never authority" rule.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 

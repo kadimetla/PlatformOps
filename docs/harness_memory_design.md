@@ -165,6 +165,10 @@ every other design doc in this set has to Phase 3.
   above is settled.
 
 ## How this relates to the existing docs
+- See `docs/session_memory_design.md` for how this (episodic + semantic)
+  and skills (procedural) map onto the classic session/episodic/
+  procedural/long-term memory taxonomy, and for the one concept this doc
+  doesn't cover: session/working memory.
 - Gives `docs/skills_and_workspace_design.md`'s directory sketch
   (lines listing `memory/YYYY-MM-DD.md`, `MEMORY.md`) the design
   treatment its sibling files already got there — doesn't change that
