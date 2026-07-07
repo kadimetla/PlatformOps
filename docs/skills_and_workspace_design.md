@@ -1,7 +1,12 @@
 # Workspace Files, Skill Precedence, and Skill-Authoring — Design
 
 ## Status
-Analysis and design only — **nothing in this document is built**. It goes
+Analysis and design only — **nothing in this document is built**. That
+includes the *bundled* tier this precedence hierarchy sits on top of —
+see `docs/skill_loading_and_enforcement_gap.md` for the finding that no
+code today loads a `SKILL.md`'s content or enforces its `allowed-tools`,
+which the precedence/authoring design below implicitly assumes works.
+It goes
 one level deeper than `docs/ui_and_multitenancy_deep_dive.md`'s Org → BU →
 team-member mapping, which this doc doesn't repeat — read that one first
 for the tenancy model this builds on. This doc covers three things that

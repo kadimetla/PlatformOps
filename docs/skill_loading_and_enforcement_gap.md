@@ -1,0 +1,156 @@
+# Skill Loading & Enforcement — What's Real vs. Assumed
+
+## Status
+Analysis, not a design doc in the usual sense — this doesn't propose
+something new, it establishes a fact about the *existing, bundled*
+skill tier that every other skill-related doc in this project has
+silently assumed: **no code loads a `SKILL.md`'s content, and no code
+enforces its `allowed-tools` list.** Every other doc in this set
+(`docs/skills_and_workspace_design.md`, `docs/skill_submission_flow.md`,
+`docs/session_memory_design.md`'s procedural-memory mapping) treats
+"the bundled skill tier" as a working foundation to layer precedence and
+authoring on top of. This doc is the evidence that foundation doesn't
+exist yet, and needs to be built before any of the layers on top of it
+mean anything at runtime.
+
+## What a skill physically is today
+Three bundled skills exist, each a `SKILL.md` — YAML frontmatter
+(`name`, `description` as the trigger phrase, `version`,
+`allowed-tools`) plus a markdown procedure body:
+
+| Skill | Triggers on | `allowed-tools` | Used by |
+|---|---|---|---|
+| `provision-infra` | "deploy/host/provision infrastructure on AWS" | 10 MCP tool names spanning the CDK and Terraform paths | `provisioning_agent` (routing), `cdk_provisioning_agent` (Path A), `terraform_provisioning_agent` (Path B) |
+| `security-review-checklist` | any provisioning plan submitted for approval | `[]` — deliberately none, it's a pure reasoning gate | `security_agent` |
+| `sdlc-diagram-compliance-check` | "does this architecture comply?" | `check_compliance` | **not wired to any agent** — see below |
+
+The files themselves (`skills/provision-infra/SKILL.md`,
+`skills/security-review-checklist/SKILL.md`,
+`skills/sdlc-diagram-compliance-check/SKILL.md`) are well-formed and
+well-written procedures. The gap isn't in the files — it's in what
+connects them to a running agent.
+
+## Finding 1: nothing loads a `SKILL.md`'s content
+A repo-wide search confirms it directly:
+```
+grep -rn "SKILL\|skills/" --include="*.py" .   →   no results
+```
+Every reference to a skill in the actual agent code is a plain-English
+sentence inside an ADK `Agent`'s `instruction=` string, trusting the
+underlying model to honor it:
+- `agents/security_agent.py:12` — *"Load the 'security-review-checklist'
+  skill for the exact checks to run."*
+- `agents/cdk_provisioning_agent.py:14` — *"Follow the 'provision-infra'
+  skill's Path A (cdk)."*
+- `agents/terraform_provisioning_agent.py:14` — *"Follow the
+  'provision-infra' skill's Path B (terraform)."*
+
+None of these are backed by a function call, a file read, or a
+configured ADK skill-discovery mechanism. There is no code path that
+guarantees a `SKILL.md`'s actual content ever reaches the model's
+context — the "loading" is a naming convention the LLM is trusted to
+resolve on its own. This is categorically different from the gaps
+documented elsewhere in this project (which are *designed-but-not-wired*
+mechanisms with real code sitting next to them, e.g.
+`harness/tool_dispatcher.py`); here there's no code to wire up at all
+yet.
+
+## Finding 2: `allowed-tools` is not enforced
+A second, related consequence: each `SKILL.md`'s `allowed-tools`
+frontmatter is documentation of intent, not a runtime allow-list.
+`agents/cdk_provisioning_agent.py:21-24` attaches the *entire*
+`AWS_IAC_MCP_SERVER` and `CCAPI_MCP_SERVER` toolsets:
+```python
+tools=[
+    MCPToolset(connection_params=AWS_IAC_MCP_SERVER),
+    MCPToolset(connection_params=CCAPI_MCP_SERVER),
+]
+```
+Nothing filters this down to the specific tool names
+`provision-infra/SKILL.md`'s frontmatter lists. This is the same
+"guidance, not enforcement" limitation already named for `TOOLS.md` in
+`docs/skills_and_workspace_design.md` — but that doc was talking about
+a *workspace*-level file describing tool *preference*. This is a
+different instance of the identical pattern showing up one level down,
+in the skill file itself, which nobody had connected before.
+
+## Finding 3: one bundled skill isn't wired to any agent at all
+`sdlc-diagram-compliance-check` is arguably the strongest of the three
+skills, because its one tool — `check_compliance` — maps to real,
+deterministic code (`spec/check_compliance.py`), not an LLM-followed
+procedure. But no agent in `agents/` has it in a `tools=[]` list or
+references it in an `instruction=` string. There is currently no path
+from a user's "does this architecture comply?" question to this skill
+executing at all.
+
+## What this means for the layers built on top
+Everything else designed about skills in this project — precedence
+(`docs/skills_and_workspace_design.md` Part B), authoring/`SkillProposal`
+(Part C), the procedural-memory framing
+(`docs/session_memory_design.md`) — implicitly assumes "the bundled
+skill tier works" as its foundation, and designs *additional* tiers and
+governance on top of that assumption. None of it is wrong, but all of
+it is layered on a foundation that itself doesn't exist yet:
+
+- `resolve_skill()`'s bundled-tier fallback (`docs/skills_and_workspace_design.md`
+  Part B) assumes a bundled skill, once matched, actually gets loaded.
+  Today, matching would still just be a naming convention.
+- A materialized `SkillProposal` (Part C) would face the identical gap
+  the moment it's approved — writing a new `SKILL.md` to
+  `workspaces/<agent_id>/skills/` doesn't help if nothing loads BU-level
+  `SKILL.md`s either.
+- The "skill = procedural memory" framing
+  (`docs/session_memory_design.md`) is conceptually sound, but a
+  procedure that never reaches the executor's working context isn't
+  procedural memory yet — it's an unread manual sitting next to the
+  agent.
+
+So there are two separate builds hiding under "skills," not one:
+1. **Foundational** (not previously identified as a gap anywhere): a
+   real `load_skill(name) -> str` that reads a matched `SKILL.md`'s body
+   into the agent's context, plus tool-filtering that actually restricts
+   an agent's `tools=[]` to what `allowed-tools` lists, plus wiring
+   `sdlc-diagram-compliance-check` to an agent.
+2. **Layered on top** (already designed in prior docs): bundled → org →
+   BU precedence, and the `SkillProposal` authoring/promotion gate.
+
+(1) has to exist before (2) does anything real at runtime, even though
+(2) is what all the design effort so far has gone into.
+
+## What's real vs. designed, restated
+| Piece | Status |
+|---|---|
+| `SKILL.md` files exist, well-written, correct frontmatter/procedure | Real |
+| Code that loads a `SKILL.md`'s content into an agent's context | **Does not exist** |
+| `allowed-tools` enforced as a runtime allow-list | **Does not exist** |
+| `sdlc-diagram-compliance-check` wired to any agent | **Does not exist** |
+| Bundled → org → BU precedence, `resolve_skill()` | Design only (`docs/skills_and_workspace_design.md`) |
+| `SkillProposal` authoring/promotion gate | Design only (`docs/skills_and_workspace_design.md`) |
+
+## Open questions / not yet decided
+- Should `load_skill()` inject the full `SKILL.md` body into the
+  instruction string at agent-construction time (static, simple, but
+  means restarting the process to pick up a changed skill), or be a
+  callable tool the agent invokes mid-run (dynamic, matches how
+  `resolve_skill()` is sketched as a per-request lookup, closer to how
+  real skill precedence would need to work)? Leaning toward the latter
+  since precedence resolution is inherently per-request (depends on
+  `bu_id`/`org_id`), but not decided.
+- Tool-filtering mechanism: does it live in the Gateway/dispatcher layer
+  (consistent with `harness/tool_dispatcher.py` already being the
+  brokered-enforcement point for mutating calls), or as a thinner
+  per-agent wrapper around `MCPToolset`? Not decided.
+
+## How this relates to the existing docs
+- Doesn't change anything in `docs/skills_and_workspace_design.md`'s
+  precedence or authoring design — establishes that both depend on a
+  foundation (this doc's Finding 1–3) that needs building first.
+- Sharpens `docs/session_memory_design.md`'s "skills = procedural
+  memory" mapping with the caveat that a skill isn't functioning as
+  memory yet if nothing loads it.
+- Doesn't change the one required next step
+  (`plan_request(envelope)`, `docs/planned_implementation.md` Phase 3),
+  but is arguably a *sibling* required step, not purely "layered on
+  top" the way the rest of the skill docs are — `load_skill()` and
+  tool-filtering are foundational gaps in the currently-bundled tier,
+  independent of the Gateway/session wiring Phase 3 covers.

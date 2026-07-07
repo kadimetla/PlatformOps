@@ -61,6 +61,12 @@ rather than repeating this one:
   one concept with no prior analog anywhere in this project: session
   (working) memory — a `SessionState` schema, its relationship to ADK's
   own Session/Runner, and the "continuity, never authority" rule.
+- `docs/skill_loading_and_enforcement_gap.md` — establishes that the
+  *bundled* skill tier every other skill doc assumes as a working
+  foundation isn't one yet: no code loads a `SKILL.md`'s content, no
+  code enforces its `allowed-tools`, and one bundled skill isn't wired
+  to any agent — read this before building precedence or authoring on
+  top of skills.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
