@@ -75,6 +75,12 @@ rather than repeating this one:
   `AWS::IAM::Role`, and a `FoundationRecord` dependency check the
   dispatcher needs since app deploys require their foundation to exist
   first.
+- `docs/eks_helm_mcp_integration.md` — research (not design) resolving
+  which MCP servers actually front EKS/Helm: `awslabs.eks-mcp-server`
+  for foundation-layer cluster lifecycle (no Helm support), the
+  separate `containers/kubernetes-mcp-server` for app-layer Helm
+  deploys — plus a new cross-BU kubeconfig-scoping risk this research
+  surfaced.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 

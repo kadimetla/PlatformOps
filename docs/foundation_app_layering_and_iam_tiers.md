@@ -133,12 +133,15 @@ procedure genuinely doesn't resemble CDK/CCAPI or Terraform:
    format underneath.
 6. Execute via `helm upgrade --install`.
 
-**Not yet decided, flagged rather than guessed**: which MCP server (if
-any currently-maintained one exists) fronts Helm/kubectl the way
-`aws-iac-mcp-server`/`ccapi-mcp-server` front CDK — this needs the same
-"verify against current docs before relying on it" treatment
-`mcp_server/external_servers.py`'s header comment already applies to
-the Terraform server. No such integration has been researched yet.
+**Researched — see `docs/eks_helm_mcp_integration.md`**: no single MCP
+server covers both foundation-layer EKS lifecycle and app-layer Helm
+deploys. `awslabs.eks-mcp-server` handles cluster create/describe/delete
+but has confirmed **no Helm support**; `containers/kubernetes-mcp-server`
+has real `helm_install`/`helm_list`/`helm_uninstall` tools. That doc also
+surfaces a new cross-BU isolation risk (kubeconfig context scoping) not
+previously named here, and confirms neither server creates IAM roles —
+`AWS::IAM::Role` still goes through the existing CCAPI/Terraform path as
+designed above.
 
 ## Part D: The missing piece today's model has no concept of — dependency ordering
 An app-layer deploy (Helm or Lambda) has a hard, load-bearing dependency
