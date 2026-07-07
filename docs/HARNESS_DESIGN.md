@@ -67,6 +67,14 @@ rather than repeating this one:
   code enforces its `allowed-tools`, and one bundled skill isn't wired
   to any agent — read this before building precedence or authoring on
   top of skills.
+- `docs/foundation_app_layering_and_iam_tiers.md` — designs the
+  compute workloads `README.md`'s roadmap explicitly scopes out today:
+  a foundation layer (VPC/EKS, always human-approved) vs. an app layer
+  (Lambda via CCAPI/Terraform, or Helm-to-EKS as a new third execution
+  backend), a three-tier IAM model with a permissions-boundary rule for
+  `AWS::IAM::Role`, and a `FoundationRecord` dependency check the
+  dispatcher needs since app deploys require their foundation to exist
+  first.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
