@@ -47,6 +47,10 @@ rather than repeating this one:
   every request) vs. submitting a *skill* (`SkillProposal`, human-reviewed,
   only on the no-match branch) — read this when "how does a skill get
   submitted and turned into infra" is unclear from the docs above.
+- `docs/config_storage_backend.md` — resolves "where does workspace
+  config/org registry actually live" (YAML vs. database vs. object
+  storage), with a `DbConfigLoader` sketch — read this before actually
+  building the org registry.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
@@ -795,9 +799,13 @@ Three ways to relate to OpenClaw were considered once that was corrected:
    OpenClaw's runtime, more build work up front.
 
 ## Open questions / risks
-- Where does workspace config (and now, the org registry) actually live (a
-  database, config files per workspace, a secrets manager)? Not decided —
-  depends on target deployment (self-hosted vs. managed).
+- **Resolved**: where workspace config and the org registry live — split
+  by deployment mode, YAML + git for self-hosted/single-org, a database
+  (reusing the same store as `harness/tool_dispatcher.py`'s audit/approval
+  tables) for managed SaaS with many orgs; object storage was considered
+  and declined for this specific data. See `docs/config_storage_backend.md`
+  for the comparison and a `DbConfigLoader` sketch. Still open within that:
+  SQLite vs. Postgres for the managed case, and the YAML→DB migration path.
 - How does the Control UI's human-approval path affect latency/UX for
   low-risk requests that would otherwise be instant? Needs the risk-tier
   threshold to be genuinely useful, not a rubber stamp.
