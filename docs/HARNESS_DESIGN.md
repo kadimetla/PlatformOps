@@ -92,6 +92,14 @@ rather than repeating this one:
   platform engineer setting up a foundation, an app developer deploying
   onto it) tracing everything in the three docs above end to end, same
   role as `docs/end_to_end_flow_example.md` for this path.
+- `docs/iam_permissions_boundary_implementation.md` — the concrete
+  mechanism behind the "`AWS::IAM::Role` requires a permissions
+  boundary" rule stated but never implemented above: the sourced,
+  self-referential `ArnEquals` condition that forces a boundary at role
+  creation and prevents its removal afterward, the new
+  `infra/permissions-boundary-policy.json`/`iam-policy.json` artifacts,
+  `WorkspaceBundle.permissions_boundary_arn`, and the dispatcher check —
+  four defense-in-depth layers, not one.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 

@@ -110,7 +110,11 @@ permissions-boundary rule (Part B of the prior doc) bounds what a
 *created* role can do — it says nothing about what the *operator* is
 allowed to hand off. Both are needed:
 - Every agent-created `AWS::IAM::Role` requires a permissions boundary
-  (existing rule, unchanged).
+  (existing rule, unchanged) — see
+  `docs/iam_permissions_boundary_implementation.md` for the concrete
+  mechanism: the `ArnEquals`-conditioned `iam-policy.json` statement that
+  forces it at creation time, and the dispatcher check that enforces it
+  independent of AWS IAM.
 - **New**: the operator's own `iam:PassRole` grant must carry a
   resource-ARN condition scoping it to exactly the cluster-role and
   node-role ARNs this BU is allowed to create/pass — never

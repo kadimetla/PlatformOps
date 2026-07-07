@@ -117,6 +117,14 @@ habit of treating some checks as structurally different from others
 resource-type allow-list is separate from, not redundant with, the IAM
 policy).
 
+**Mechanism specified in `docs/iam_permissions_boundary_implementation.md`**:
+this rule was originally stated without a concrete implementation — that
+doc gives it one: the exact `iam-policy.json` condition that forces the
+boundary at creation time, why omitting `iam:DeleteRolePermissionsBoundary`
+from the allow-list prevents removing it afterward, and the
+`BrokeredToolDispatcher` check that enforces this independent of AWS
+IAM's own enforcement.
+
 ## Part C: Helm-to-EKS is a third execution backend, not a third tool path
 CCAPI and Terraform both talk to **AWS's control plane** — that's why
 they share a shape (`ToolIntent`, resource type + operation, checked by
