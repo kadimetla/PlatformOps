@@ -136,12 +136,17 @@ resource the way an S3 bucket is — it's a chart (from a repo, itself a
 supply-chain surface) applied as a set of Kubernetes manifests, with its
 own upgrade/rollback semantics CCAPI/Terraform don't have.
 
-### New skill: `deploy-to-eks`
-A sibling skill to `provision-infra`, not a path inside it — the
-procedure genuinely doesn't resemble CDK/CCAPI or Terraform:
-1. Confirm the target EKS cluster is an **approved foundation** for this
-   BU (see Part D — this is the actual new mechanism, not just a
-   procedure step).
+### New skill: `deploy-to-k8s`
+**Renamed from `deploy-to-eks`** — `docs/multi_cloud_foundation_and_iam.md`
+found that `kubernetes-mcp-server`'s Helm tools talk directly to the
+Kubernetes API, not any cloud-specific control plane, so this skill was
+never actually AWS-specific; it just hadn't been checked against GCP/
+Azure yet when it was named. A sibling skill to `provision-infra`, not a
+path inside it — the procedure genuinely doesn't resemble CDK/CCAPI or
+Terraform:
+1. Confirm the target cluster (EKS, GKE, or AKS) is an **approved
+   foundation** for this BU (see Part D — this is the actual new
+   mechanism, not just a procedure step).
 2. Confirm the chart source is from an approved repo — same
    supply-chain-shaped concern `docs/skills_and_workspace_design.md`
    already raises for promoted skills ("version-pinned," not silently
@@ -201,7 +206,7 @@ plans instead of a single plan's own fields.
 | Foundation/app tier distinction, tiered `allowed-resource-types.json` | Design only |
 | `provision-foundation` skill | Design only |
 | Three-tier IAM model, permissions-boundary rule for `AWS::IAM::Role` | Design only |
-| `deploy-to-eks` skill / Helm execution backend | Design only — MCP server integration point not yet researched |
+| `deploy-to-k8s` skill / Helm execution backend | Design only — MCP server integration researched (`docs/eks_helm_mcp_integration.md`), confirmed cloud-agnostic (`docs/multi_cloud_foundation_and_iam.md`) |
 | `FoundationRecord` + dependency-ordering dispatcher check | Design only |
 
 ## Open questions / not yet decided

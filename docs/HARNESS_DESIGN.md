@@ -100,6 +100,17 @@ rather than repeating this one:
   `infra/permissions-boundary-policy.json`/`iam-policy.json` artifacts,
   `WorkspaceBundle.permissions_boundary_arn`, and the dispatcher check —
   four defense-in-depth layers, not one.
+- `docs/multi_cloud_foundation_and_iam.md` — extends the foundation/app/
+  IAM design from AWS-only to GCP and Azure: a per-provider concept
+  mapping (VPC/VPC-Network/VNet, EKS/GKE/AKS, IRSA/Workload Identity
+  Federation/Azure AD Workload Identity), the finding that GKE's own MCP
+  server is read-only (so foundation-layer creation should route through
+  the already-integrated, provider-agnostic Terraform path rather than
+  three divergent native integrations), confirmation that the Helm
+  app-layer deploy is *already* provider-agnostic (renaming
+  `deploy-to-eks` to `deploy-to-k8s`), and a `CloudIAMAdapter` pattern
+  for enforcing the same abstract IAM rules through each provider's own
+  mechanism.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 

@@ -64,8 +64,10 @@ hers can succeed against real compute infra, not a different BU.
     is an app-layer request, so it passes without needing
     `scope="foundation"`. Same check as step 2, opposite outcome,
     because it's checking against a different request's tier.
-11. `resolve_skill()` matches `deploy-to-eks` — the new bundled skill
-    from `docs/foundation_app_layering_and_iam_tiers.md` Part C.
+11. `resolve_skill()` matches `deploy-to-k8s` (named `deploy-to-eks`
+    until `docs/multi_cloud_foundation_and_iam.md` confirmed it isn't
+    AWS-specific) — the new bundled skill from
+    `docs/foundation_app_layering_and_iam_tiers.md` Part C.
 12. **Dependency check**: the skill's procedure requires an active
     foundation. The Gateway looks up `FoundationRecord` for
     `bu_id="payments"` — finds the one Bob created in Phase 1,
@@ -119,7 +121,7 @@ have to fit together, not a claim that any of it works today.
   synthesis role, for the foundation/app path instead of the static-
   hosting path.
 - Exercises `docs/foundation_app_layering_and_iam_tiers.md`'s
-  `provision-foundation`/`deploy-to-eks` skills and `FoundationRecord`,
+  `provision-foundation`/`deploy-to-k8s` skills and `FoundationRecord`,
   `docs/eks_helm_mcp_integration.md`'s two-MCP-server split and
   kubeconfig-scoping rule, and
   `docs/infra_discovery_and_platform_app_split.md`'s discovery-before-

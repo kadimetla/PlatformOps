@@ -18,7 +18,9 @@ realistic integration is:
 - **`awslabs.eks-mcp-server`** — foundation-layer cluster lifecycle
   (Part A of `docs/foundation_app_layering_and_iam_tiers.md`)
 - **`containers/kubernetes-mcp-server`** — app-layer Helm deploys
-  (Part C's `deploy-to-eks` skill)
+  (Part C's `deploy-to-k8s` skill — named `deploy-to-eks` when this doc
+  was written; renamed in `docs/multi_cloud_foundation_and_iam.md` once
+  research confirmed the Helm execution backend isn't AWS-specific)
 
 ## Part A: `awslabs.eks-mcp-server` — foundation-layer fit
 
