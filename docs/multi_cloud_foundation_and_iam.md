@@ -173,17 +173,12 @@ Same conditional-field shape `tfe_workspace` already uses today
 choice instead of tool choice.
 
 ### `FoundationRecord` gains the same discriminator
-```python
-class FoundationRecord(BaseModel):
-    foundation_id: str
-    org_id: str
-    bu_id: str
-    cloud_provider: str  # new — "aws" | "gcp" | "azure"
-    resource_type: str   # e.g. "AWS::EKS::Cluster" | "google_container_cluster" | "Microsoft.ContainerService/managedClusters"
-    resource_identifier: str
-    approved_plan_id: str
-    status: str = "active"
-```
+`cloud_provider` was added here first, then merged into the canonical
+schema in `docs/foundation_app_layering_and_iam_tiers.md` Part D
+alongside `discovered_capabilities`
+(`docs/foundation_discovery_and_capability_matching.md`) — see that doc
+for the current, single-source-of-truth version rather than a second
+copy here.
 
 ## Open questions / not yet decided
 - `roles/iam.serviceAccountUser`'s escalation risk was stated by analogy

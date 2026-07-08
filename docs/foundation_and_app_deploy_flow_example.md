@@ -5,10 +5,14 @@ Synthesis, not a build log — same role as
 `docs/end_to_end_flow_example.md`, but for the foundation/app-layer path
 instead of the static-hosting path that doc already traces. Ties
 together `docs/foundation_app_layering_and_iam_tiers.md`,
-`docs/eks_helm_mcp_integration.md`, and
-`docs/infra_discovery_and_platform_app_split.md` into one ordered
-walkthrough. Introduces no new decisions — see those three docs for the
-reasoning behind each step.
+`docs/eks_helm_mcp_integration.md`,
+`docs/infra_discovery_and_platform_app_split.md`, and
+`docs/foundation_discovery_and_capability_matching.md` into one ordered
+walkthrough. Introduces no new decisions — see those docs for the
+reasoning behind each step. **Note**: this walkthrough exercises only
+the "nothing found" and "reuse an already-recorded foundation" branches
+— the unmanaged-foundation adoption-review branch isn't dramatized here,
+see the capability-matching doc's Part D for that case on its own.
 
 ## The example
 Same Acme Payments BU as `docs/end_to_end_flow_example.md`'s Alice
@@ -36,8 +40,16 @@ hers can succeed against real compute infra, not a different BU.
    checks whether a foundation already exists for this BU — any
    existing `FoundationRecord`, cross-checked against a live
    `ccapi-mcp-server list_resources`/Resource Explorer query
-   (`docs/infra_discovery_and_platform_app_split.md` Part A). None
-   found — proceeds to draft.
+   (`docs/infra_discovery_and_platform_app_split.md` Part A). This is
+   actually a three-way branch, not a yes/no check — see
+   `docs/foundation_discovery_and_capability_matching.md` Part A for
+   the other two outcomes this walkthrough doesn't exercise: an
+   existing, already-recorded foundation (reuse it, load its
+   `discovered_capabilities`, skip straight to Alice's phase) or an
+   *unmanaged* foundation found live with no `FoundationRecord`
+   (requires an adoption review at the same approval bar as creating
+   one, Part D of that doc). For Bob specifically: none found either
+   way — proceeds to draft.
 5. Draft via `awslabs.eks-mcp-server`'s `manage_eks_stacks`
    (`--allow-write`): the VPC, the EKS cluster service role, and a
    **separate** node IAM role — never reused across the two, per the
@@ -68,6 +80,13 @@ hers can succeed against real compute infra, not a different BU.
     until `docs/multi_cloud_foundation_and_iam.md` confirmed it isn't
     AWS-specific) — the new bundled skill from
     `docs/foundation_app_layering_and_iam_tiers.md` Part C.
+11a. **New step 0 of `deploy-to-k8s`**: load the found
+    `FoundationRecord`'s `discovered_capabilities` — K8s version,
+    installed add-ons, available ingress/storage classes, the workload-
+    identity target Alice's new app identity must bind to — and select
+    chart values compatible with them, rejecting or flagging anything
+    the foundation can't actually satisfy
+    (`docs/foundation_discovery_and_capability_matching.md` Part C/E).
 12. **Dependency check**: the skill's procedure requires an active
     foundation. The Gateway looks up `FoundationRecord` for
     `bu_id="payments"` — finds the one Bob created in Phase 1,

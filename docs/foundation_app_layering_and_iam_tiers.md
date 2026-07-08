@@ -182,11 +182,20 @@ class FoundationRecord(BaseModel):
     foundation_id: str
     org_id: str
     bu_id: str
-    resource_type: str          # e.g. "AWS::EKS::Cluster"
+    cloud_provider: str          # "aws" | "gcp" | "azure" — added in docs/multi_cloud_foundation_and_iam.md
+    resource_type: str           # e.g. "AWS::EKS::Cluster" | "google_container_cluster" | "Microsoft.ContainerService/managedClusters"
     resource_identifier: str
-    approved_plan_id: str       # the PlanRecord that created it, always human-approved
-    status: str = "active"      # "active" | "decommissioned"
+    approved_plan_id: str        # the PlanRecord that created/adopted it, always human-approved
+    status: str = "active"       # "active" | "decommissioned"
+    discovered_capabilities: Dict[str, Any] = Field(default_factory=dict)
+    # what an app-layer deploy needs to pick a compatible stack — see
+    # docs/foundation_discovery_and_capability_matching.md Part C for the shape
 ```
+**Canonical version** — `docs/multi_cloud_foundation_and_iam.md` and
+`docs/foundation_discovery_and_capability_matching.md` both sketched
+additions to this schema separately; this is the merged, single source
+of truth. Update here, not in either of those docs, if this schema
+changes again.
 
 `ToolIntent` (for a Lambda deploy) and its Helm equivalent both gain an
 optional `depends_on_foundation_id: Optional[str]`.

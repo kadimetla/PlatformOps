@@ -113,6 +113,13 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/foundation_discovery_and_capability_matching.md` — closes the
+  gap left in the worked example above: what happens when discovery
+  finds an *existing* foundation (reuse + load `discovered_capabilities`
+  to pick a compatible app stack) or an *unmanaged* one (requires an
+  adoption review at the same bar as creating one — "found" isn't
+  "trusted"), plus a per-provider discovery-tooling table (AWS/Azure
+  solid, GCP has a confirmed gap for VPC-level discovery specifically).
 - `docs/flow_step_spec_decomposition.md` — extends spec-driven
   development to pipeline-stage granularity: one spec file per harness
   flow step (`spec/flow_steps/01`–`08`), each with an input/output
