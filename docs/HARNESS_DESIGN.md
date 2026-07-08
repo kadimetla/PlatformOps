@@ -113,6 +113,13 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/course_concepts_and_project_structure.md` — traces `AGENTS.md`
+  and `CLAUDE.md` (project root) back to the five-day course material
+  they were built from, flags that ADK may already have a native
+  `SkillToolset` mechanism that could resolve
+  `docs/skill_loading_and_enforcement_gap.md` without hand-building a
+  loader (unverified — `google-adk` isn't installed here), and audits
+  the existing `SKILL.md` files against the course's canonical format.
 - `docs/spec_driven_development_scaling.md` — this project states its
   own methodology as spec-driven, but none of the foundation-tier/IAM-
   boundary/`TeamMember.scope` rules designed above exist as checkable

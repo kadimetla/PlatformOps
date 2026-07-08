@@ -219,6 +219,11 @@ finish disabling first — the script prints a reminder to re-run for this).
 Finally, check the Billing console once more before walking away.
 
 ## Project layout
+- `AGENTS.md` — shared, cross-tool foundation for any AI agent working
+  in this repo (stack, conventions, hard rules, workflow, skills
+  catalog); `CLAUDE.md` adds Claude-Code-specific detail on top. See
+  `docs/course_concepts_and_project_structure.md` for where these came
+  from and why they're shaped this way.
 - `agents/` — ADK orchestrator, the provisioning router, its two sub-agents
   (`cdk_provisioning_agent`, `terraform_provisioning_agent`),
   `security_agent`, and `model_config.py` (config-driven model selection —
