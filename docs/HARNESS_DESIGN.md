@@ -120,6 +120,11 @@ rather than repeating this one:
   enumerated above and the schemas in `harness/schemas.py`. States
   plainly that neither course source deck covers this decomposition —
   it's this project's own extension, not taught material.
+- `docs/repo_layout_references.md` — the single consolidated index of
+  every source (5 course PDFs + two web-research passes) behind
+  `AGENTS.md`, `CLAUDE.md`, `spec/flow_steps/`, and this project's
+  documentation conventions — read this first if you want "why is the
+  repo laid out this way" in one place instead of per-doc citations.
 - `docs/course_concepts_and_project_structure.md` — traces `AGENTS.md`
   and `CLAUDE.md` (project root) back to the five-day course material
   they were built from, flags that ADK may already have a native

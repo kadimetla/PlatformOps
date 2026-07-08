@@ -3,8 +3,12 @@
 ## Status
 Reference doc, not a design doc in the usual sense — records where
 `AGENTS.md`, `CLAUDE.md`, and this project's process conventions came
-from, so they're traceable and revisable rather than opaque. Source
-material: five course decks at
+from, so they're traceable and revisable rather than opaque. See
+`docs/repo_layout_references.md` for the consolidated index covering
+this doc's PDF sources *and* the later web-research passes (industry
+validation of spec-driven development, the ADR-vs-`AGENTS.md`
+correction) that this doc predates. Source material: five course decks
+at
 `/opt/wecan/aiml_learning_gang_ws/vibecoding_ws/learning_guides/*.pdf`
 (Google, May 2026) — read in full via subagents, ~241 pages total.
 Nothing here is built; it's the record behind two files that now are
