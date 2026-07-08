@@ -34,10 +34,19 @@ drift-reconciliation case from
 unchanged by this doc.
 
 ## Part B: Per-provider discovery tooling
+**Updated by `docs/iac_based_discovery.md`** — that doc closes the GCP
+gap below via IaC-based discovery (Terraform state, or Config Connector
+status through the same `kubernetes-mcp-server` already planned for
+Helm) rather than a new live-API tool, and corrects this table's
+implicit "live API is primary" framing: when a BU has a registered
+`IacSourceRef`, IaC state is queried first, live API discovery is the
+cross-check — read that doc's Part C before treating "live API" as the
+only or primary column here.
+
 | Provider | Cluster-internal discovery | Network-level (VPC/VNet/subnet) discovery |
 |---|---|---|
 | **AWS** | `awslabs.eks-mcp-server`'s read tools (`list_k8s_resources`, `get_eks_insights`) | `get_eks_vpc_config` (same server) + `ccapi-mcp-server list_resources` for broader `AWS::EC2::VPC` detail — solid coverage |
-| **GCP** | GKE MCP server — confirmed **read-only**, a clean fit for discovery specifically (no write-permission fight needed) | **No confirmed dedicated tool.** GCE MCP server's scope is VM/compute primitives, not VPC networking. Real gap: VPC/subnet discovery would need raw `gcloud compute networks` API access wrapped somehow, or Terraform state if the VPC happens to be Terraform-managed. Not solved here — flagged, not papered over. |
+| **GCP** | GKE MCP server — confirmed **read-only**, a clean fit for discovery specifically (no write-permission fight needed) | **No dedicated live-API tool** (GCE MCP server's scope is VM/compute primitives, not VPC networking) — **but see `docs/iac_based_discovery.md`**: Terraform state or GCP Config Connector status (via `kubernetes-mcp-server`) close this without one. Live-API-only discovery for a BU with no `IacSourceRef` registered remains genuinely unclosed. |
 | **Azure** | AKS's own MCP server integration (`learn.microsoft.com/.../aks-model-context-protocol-server`) | **Confirmed, stronger than expected**: that same server retrieves *"VNets, Subnets, Network Security Groups (NSGs), and Route Tables"* tied to the cluster directly. A separate open-source `azure-resource-graph-mcp-server` (github.com/hardik-id) also exists for broader Resource Graph queries — concrete KQL sample queries exist for listing VNets+subnets+CIDR ranges across subscriptions. |
 
 Worth stating plainly: **discovery capability and creation capability

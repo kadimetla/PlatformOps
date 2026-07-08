@@ -113,6 +113,14 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/iac_based_discovery.md` — closes the GCP VPC-discovery gap by
+  reusing infrastructure already built (`terraform-mcp-server`,
+  `WorkspaceBundle.tfe_workspace`) plus one new finding (GCP Config
+  Connector, readable through the same `kubernetes-mcp-server` already
+  planned for Helm) — and corrects the assumption that live API
+  discovery is primary: IaC state should be queried first when a BU has
+  a registered `IacSourceRef`, since it carries declared intent live
+  discovery can't recover, for all three clouds, not just GCP.
 - `docs/foundation_discovery_and_capability_matching.md` — closes the
   gap left in the worked example above: what happens when discovery
   finds an *existing* foundation (reuse + load `discovered_capabilities`
