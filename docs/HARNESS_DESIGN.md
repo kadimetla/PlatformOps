@@ -113,6 +113,14 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/external_ticket_approval_integration.md` — gives concrete
+  design to the "Jira/ServiceNow" channel mentioned but never
+  elaborated above: two modes (harness creates the change ticket vs.
+  requester references an already-approved one), why neither system's
+  MCP surface can drive the approval gate synchronously (both have
+  confirmed async-workflow limitations), and the central rule —
+  `ticket_scope_verified` is only ever set by a structured-field match
+  against `plan_hash`, never inferred from ticket text.
 - `docs/foundation_discovery_and_creation_chat_walkthrough.md` — an
   annotated chat transcript (discovery of an existing foundation, then
   standing up a new one from scratch) making concrete what no prior doc

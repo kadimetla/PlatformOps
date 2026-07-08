@@ -3,7 +3,11 @@
 ## Owning code
 Not built — no Control UI exists.
 `docs/HARNESS_DESIGN.md`'s "Output surfaces" section designs this as a
-web dashboard showing pending Vibe Diffs.
+web dashboard showing pending Vibe Diffs. An alternative/additional
+path for this same step — approval via an external ServiceNow/Jira
+change ticket instead of a Control UI click — is designed in
+`docs/external_ticket_approval_integration.md`; foundation-tier
+resources default to requiring that path, not just a UI click.
 
 ## Input contract
 `ApprovalRecord` with agent-side fields already populated (from Step 5)
