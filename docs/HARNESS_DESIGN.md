@@ -113,6 +113,12 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/foundation_discovery_and_creation_chat_walkthrough.md` — an
+  annotated chat transcript (discovery of an existing foundation, then
+  standing up a new one from scratch) making concrete what no prior doc
+  did: the literal content of `PlanRecord.plan_text` for a foundation-
+  layer request — a Terraform module-instantiation block or a generated
+  CloudFormation template, not just "a plan gets drafted."
 - `docs/iac_based_discovery.md` — closes the GCP VPC-discovery gap by
   reusing infrastructure already built (`terraform-mcp-server`,
   `WorkspaceBundle.tfe_workspace`) plus one new finding (GCP Config
