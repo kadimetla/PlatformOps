@@ -9,6 +9,12 @@ Scenarios are written Given/When/Then so `spec/check_compliance.py` (or an
 agent) can evaluate them mechanically against a submitted spec (see
 `spec/example_submission.yaml` for the input shape).
 
+This file checks a submitted resource spec's *content*. For specs
+covering the harness *pipeline stages* a request moves through (intake,
+binding resolution, dispatch, etc.), see `spec/flow_steps/` — a separate,
+complementary layer; see `docs/flow_step_spec_decomposition.md` for why
+they're kept apart.
+
 ## Scenario: No public write access
 ```
 Given a submitted infrastructure spec

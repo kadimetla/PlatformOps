@@ -113,6 +113,13 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/flow_step_spec_decomposition.md` — extends spec-driven
+  development to pipeline-stage granularity: one spec file per harness
+  flow step (`spec/flow_steps/01`–`08`), each with an input/output
+  contract and Given/When/Then scenarios, reusing the flow already
+  enumerated above and the schemas in `harness/schemas.py`. States
+  plainly that neither course source deck covers this decomposition —
+  it's this project's own extension, not taught material.
 - `docs/course_concepts_and_project_structure.md` — traces `AGENTS.md`
   and `CLAUDE.md` (project root) back to the five-day course material
   they were built from, flags that ADK may already have a native
