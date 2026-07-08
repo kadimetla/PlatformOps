@@ -1,7 +1,15 @@
+---
+last_updated: 2026-07-08
+owner: platformops-agent maintainers
+scope: Claude Code specifically
+reviewed_by: unreviewed (first draft)
+---
+
 Read `AGENTS.md` first — it's the shared, cross-tool foundation (stack,
 conventions, hard rules, workflow, skills catalog). This file adds
 Claude-Code-specific detail on top; it never repeats or contradicts
-`AGENTS.md`.
+`AGENTS.md`. See `docs/repo_layout_references.md` for every source
+behind why both files are shaped this way.
 
 ## The repeatable process this project uses for design work
 This repo has a consistent habit, established over many design
@@ -36,6 +44,24 @@ touches it.** Concretely, the loop:
    this repo has kept those as separate, explicit steps — don't
    collapse them into "wrote the doc" being treated as permission to
    commit.
+
+**Anti-patterns to avoid (Preferred vs. Avoid):**
+```
+Preferred: edit the original doc, add a note explaining what changed
+and why ("corrected by X — AWS's EKS docs split this into two roles"),
+leave the rest of the doc's history legible.
+
+Avoid: silently rewriting a section to match new findings, or deleting
+the part that turned out to be wrong — that erases the reasoning trail
+this whole project depends on.
+```
+```
+Preferred: "Committed as <hash>. Not pushed — say the word."
+
+Avoid: pushing (or committing) as the natural next step after writing
+a doc, without being asked — writing content and publishing it are two
+separate permissions in this repo.
+```
 
 ## Skills, concretely — what "Agent Skills" means here
 Per Day 3 course material (`docs/course_concepts_and_project_structure.md`
