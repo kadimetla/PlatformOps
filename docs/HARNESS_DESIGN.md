@@ -113,6 +113,15 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/control_ui_approval_queue_design.md` — turns the "Control UI"
+  section below from a five-view shopping list into a real design:
+  the `pending_approval:*` state machine unifying both approval paths
+  into one queue, a self-review-prevention rule this project never had
+  (`ApprovalRecord.human_reviewer` must never equal the requester),
+  `review_policy.approval_mode` (any-of-N vs. unanimous), per-
+  `FoundationRecord` dispatch serialization, and AG-UI's actual
+  snapshot+JSON-Patch update mechanism — grounded against HCP
+  Terraform's run queue and GitHub's required-reviewers pattern.
 - `docs/external_ticket_approval_integration.md` — gives concrete
   design to the "Jira/ServiceNow" channel mentioned but never
   elaborated above: two modes (harness creates the change ticket vs.

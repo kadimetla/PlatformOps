@@ -3,11 +3,14 @@
 ## Owning code
 Not built — no Control UI exists.
 `docs/HARNESS_DESIGN.md`'s "Output surfaces" section designs this as a
-web dashboard showing pending Vibe Diffs. An alternative/additional
-path for this same step — approval via an external ServiceNow/Jira
-change ticket instead of a Control UI click — is designed in
-`docs/external_ticket_approval_integration.md`; foundation-tier
-resources default to requiring that path, not just a UI click.
+web dashboard showing pending Vibe Diffs;
+`docs/control_ui_approval_queue_design.md` gives the actual queue state
+machine, concurrency model, and update mechanism. An alternative/
+additional path for this same step — approval via an external
+ServiceNow/Jira change ticket instead of a Control UI click — is
+designed in `docs/external_ticket_approval_integration.md`;
+foundation-tier resources default to requiring that path, not just a UI
+click.
 
 ## Input contract
 `ApprovalRecord` with agent-side fields already populated (from Step 5)
@@ -29,6 +32,11 @@ Then `ApprovalRecord.human_approved=True` and `human_reviewer` is set to their `
 Given a `TeamMember` with `role="requester"` only, attempting to approve their own plan
 When the approval is processed
 Then it is rejected regardless of the button click — role, not intent, gates this (same `TeamMember.role` check)
+
+## Scenario: A capable approver still cannot approve their own request
+Given a `TeamMember` with `role="approver"` (or `"admin"`) who is also the original requester (`channel_user_id` matches `RequestEnvelope.channel_user_id`)
+When they attempt to approve their own plan
+Then it is rejected — `ApprovalRecord.human_reviewer` must never equal the originating requester, a self-review-prevention rule distinct from the role check above, matching GitHub's environment-protection "prevent self-reviews" pattern (`docs/control_ui_approval_queue_design.md` Part B)
 
 ## Scenario: Scope must match tier, not just role
 Given a `TeamMember` with `role="admin", scope="app"` attempting to approve a foundation-tier plan
