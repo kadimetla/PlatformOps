@@ -110,7 +110,19 @@ rather than repeating this one:
   app-layer deploy is *already* provider-agnostic (renaming
   `deploy-to-eks` to `deploy-to-k8s`), and a `CloudIAMAdapter` pattern
   for enforcing the same abstract IAM rules through each provider's own
-  mechanism.
+  mechanism (since corrected: GCP/Azure have no identity-attached
+  boundary object at all — the ceiling comes from org/policy-scoped
+  guardrails instead, see that doc's correction note).
+- `docs/spec_driven_development_scaling.md` — this project states its
+  own methodology as spec-driven, but none of the foundation-tier/IAM-
+  boundary/`TeamMember.scope` rules designed above exist as checkable
+  `reference_architecture.md` scenarios, only as doc prose. Redesigns
+  `spec/check_compliance.py` from one flat function into a
+  `ComplianceRule`/`ComplianceContext` registry (the same pluggable-
+  implementation pattern as `CloudIAMAdapter`), adds a second
+  Given/When/Then vocabulary for context-shaped rules (who's asking,
+  what already exists) alongside the existing spec-content-shaped one,
+  and adds `PlanRecord.spec_version_checked` for spec provenance.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 

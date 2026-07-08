@@ -79,22 +79,61 @@ all three clouds:
 3. Foundation identity and app/workload identity must never be the same
    object.
 
+**Corrected by follow-up research (see `docs/spec_driven_development_scaling.md`'s
+companion turn) — neither GCP nor Azure has anything that maps 1:1 onto
+AWS's permissions boundary.** A boundary is a policy *attached to the
+identity itself* that intersects with whatever else is attached. GCP and
+Azure achieve the same ceiling effect through resource-hierarchy-scoped
+guardrails instead — the method name below was renamed from
+`validate_workload_identity_bounded` to `validate_ceiling_enforced` to
+stop implying a per-identity artifact exists in all three clouds:
+
+- **GCP**: no per-service-account boundary object. The ceiling comes
+  from two project/org-scoped mechanisms instead: a custom Organization
+  Policy constraint capping which roles are grantable at all within the
+  project, and an IAM Deny policy (a distinct, newer feature — deny
+  bindings always win over any Allow, regardless of role) denying
+  dangerous actions (`iam.serviceAccountKeys.create`,
+  `iam.serviceAccounts.setIamPolicy`) to any service account matching
+  this BU's naming convention. Verified: GCP "does not support 'Deny' in
+  custom role definitions the way AWS policies do" — Deny policies are a
+  separate mechanism layered on top, not part of the role itself.
+- **Azure**: no per-identity boundary either. Azure RBAC has no
+  intersection concept — a role assignment grants exactly what the role
+  defines. The ceiling comes from (a) always assigning a **custom role**
+  with a tightly scoped `Actions`/`NotActions` list, never a broad
+  built-in role, and (b) an **Azure Policy** at management-group/
+  subscription/resource-group scope, with a `deny` effect, backstopping
+  anything broader than the approved custom-role allow-list.
+
 ```python
 class CloudIAMAdapter(Protocol):
     """One implementation per cloud_provider. Enforces the three rules
-    above through provider-specific mechanisms — see Part A for what
-    each provider's mechanism actually is."""
+    above through provider-specific mechanisms — see Part A and the
+    correction note above for what each provider's mechanism actually
+    is; AWS's is identity-attached, GCP/Azure's are resource-hierarchy-
+    scoped, not directly equivalent shapes."""
 
     def validate_escalation_grant_scoped(self, operator_policy: dict) -> bool:
         """AWS: iam:PassRole ArnEquals condition (docs/iam_permissions_boundary_implementation.md).
-        GCP: roles/iam.serviceAccountUser scoped to a specific SA resource, not project-wide.
-        Azure: Managed Identity Operator role scoped to a specific identity, not subscription-wide."""
+        GCP: the operator's roles/iam.serviceAccountUser binding must carry
+        an IAM Condition scoping it to the approved SA name prefix, e.g.
+        resource.name.startsWith('projects/P/serviceAccounts/platformops-demo-').
+        Azure: the Managed Identity Operator role assignment's `scope` field
+        must reference the specific managed identity resource ID, not a
+        subscription- or resource-group-wide scope."""
         ...
 
-    def validate_workload_identity_bounded(self, workload_identity: dict) -> bool:
-        """AWS: IRSA role has a permissions boundary attached.
-        GCP: Workload Identity Federation binding has a scoped IAM policy, not project-wide.
-        Azure: Workload Identity federated credential's role assignment is resource-scoped."""
+    def validate_ceiling_enforced(self, workload_identity: dict) -> bool:
+        """AWS: IRSA role has a PermissionsBoundary attached (identity-level check).
+        GCP: check for (a) a custom Org Policy constraint at this project
+        capping which roles are grantable at all, AND (b) an IAM Deny
+        policy denying key-creation/setIamPolicy to any SA matching this
+        BU's naming convention -- there is no per-identity object to check.
+        Azure: check that (a) the workload's role assignment references a
+        custom role, not a built-in broad one, AND (b) an Azure Policy at
+        a higher scope denies assigning anything broader to identities
+        matching this BU's naming convention."""
         ...
 ```
 This is the pattern this multi-cloud problem actually needs: one
@@ -158,10 +197,12 @@ class FoundationRecord(BaseModel):
   `WorkspaceBundle`s with different `cloud_provider` values) or is
   strictly one-cloud-per-BU — not decided; the current one-bundle-per-BU
   model implies the latter, not confirmed as intentional.
-- `CloudIAMAdapter`'s GCP and Azure implementations are unsketched
-  beyond the docstrings above — the actual policy/role JSON equivalents
-  (like `docs/iam_permissions_boundary_implementation.md` produced for
-  AWS) haven't been drafted for GCP/Azure yet.
+- **Resolved**: `CloudIAMAdapter`'s GCP and Azure mechanisms are now
+  specified (custom Org Policy constraint + IAM Deny policy for GCP;
+  custom RBAC role + Azure Policy deny for Azure) — see the correction
+  above. Still open: the actual policy/constraint JSON equivalents (like
+  `docs/iam_permissions_boundary_implementation.md` produced for AWS)
+  haven't been drafted for GCP/Azure yet, just the mechanism they'd use.
 
 ## How this relates to the existing docs
 - **Extends** `docs/foundation_app_layering_and_iam_tiers.md`,
@@ -181,6 +222,10 @@ class FoundationRecord(BaseModel):
 - [Overview of Managed Identities in AKS — Microsoft Learn](https://learn.microsoft.com/en-us/azure/aks/use-managed-identity)
 - [Concepts - Access and identity in AKS — Microsoft Learn](https://learn.microsoft.com/en-us/azure/aks/concepts-identity)
 - [Google Cloud MCP servers overview — Google Cloud docs](https://docs.cloud.google.com/mcp/overview)
+- [Organization policy constraints — Google Cloud docs](https://docs.cloud.google.com/organization-policy/reference/org-policy-constraints)
+- [Use custom organization policies for allow policies — Google Cloud docs](https://docs.cloud.google.com/iam/docs/org-policy-custom-constraints)
+- [Deny access to resources — Google Cloud docs](https://cloud.google.com/iam/docs/deny-access)
+- [When and where to use IAM permissions boundaries — AWS Security Blog](https://aws.amazon.com/blogs/security/when-and-where-to-use-iam-permissions-boundaries/)
 - [Use the GKE remote MCP server — Google Cloud docs](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/use-gke-mcp)
 - [Azure Kubernetes Service Tools — Azure MCP Server docs](https://learn.microsoft.com/en-us/azure/developer/azure-mcp-server/tools/azure-kubernetes)
 - [Azure/Azure-Resource-Manager-MCP — GitHub](https://github.com/Azure/Azure-Resource-Manager-MCP)
