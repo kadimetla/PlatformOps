@@ -54,7 +54,10 @@ Two real systems, same converged default:
 **Design**: `review_policy` (the config family already named in
 `docs/HARNESS_DESIGN.md`'s "Borrow: schema-validated, hot-reloadable
 config" section, not yet detailed) gains `approval_mode: "any" |
-"unanimous"`, per resource type/tier. Default `"any"` — matches both
+"unanimous"`, per resource type/tier. **A third value, `"automated"`,
+added in `docs/personas_and_tool_blueprints.md` Part C**: no human
+review at all, gated by hard cost/time limits instead — the default for
+sandbox-purpose `CloudAccountBinding`s. Default `"any"` — matches both
 researched systems' default; `"unanimous"` is the opt-in for the
 highest-stakes tiers (plausibly foundation-tier, consistent with that
 tier's existing "always human, no autonomous exception" rule in

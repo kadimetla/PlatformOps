@@ -37,7 +37,7 @@ class CloudAccountBinding(BaseModel):
     bu_id: str
     cloud_provider: str          # "aws" | "gcp" | "azure"
     account_identifier: str      # AWS account ID | GCP project ID | Azure subscription ID
-    purpose: str                 # "prod" | "dev" | "staging" | org-defined convention
+    purpose: str                 # "prod" | "dev" | "staging" | "sandbox" (docs/personas_and_tool_blueprints.md) | org-defined convention
     region: Optional[str] = None # per-binding, not per-BU — accounts can differ by region
     auth_ref: dict
     # role_arn (AWS, via sts:AssumeRole) | service_account_email (GCP,

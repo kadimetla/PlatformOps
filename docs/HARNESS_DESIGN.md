@@ -113,6 +113,15 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/personas_and_tool_blueprints.md` — catalogs every persona
+  implicit across this design set (11, including a previously-unnamed
+  read-only Auditor) with their flow-step touchpoints, lays the per-tool
+  (CDK/CFN, Terraform, Config Connector) discovery/creation mechanics
+  side by side for the first time, and closes a real gap — a
+  sandbox/experimentation tier, grounded in AWS's own named "Sandbox
+  OU" pattern, with a third `approval_mode` ("automated": no human
+  review, hard automated cost/time limits instead) and a `"frozen"`
+  `FoundationRecord.status` distinct from decommissioned.
 - `docs/crossplane_comparison_and_pattern_reuse.md` — grounds
   Crossplane's actual mechanics (Providers, Managed Resources,
   Composition/XRD/Claim) against Terraform/CDK's execution model —

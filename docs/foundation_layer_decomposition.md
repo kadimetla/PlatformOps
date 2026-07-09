@@ -47,7 +47,11 @@ class FoundationRecord(BaseModel):
     resource_type: str
     resource_identifier: str
     approved_plan_id: str        # the creating OR adopting PlanRecord — unchanged
-    status: str = "active"
+    status: str = "active"       # "active" | "decommissioned" | "frozen"
+                                  # (frozen added in docs/personas_and_tool_blueprints.md
+                                  # Part C — paused, unlike decommissioned, can be
+                                  # unfrozen without re-creation; treated as inactive
+                                  # by _foundation_chain_active() either way)
     provenance: str = "created"  # NEW — "created" | "adopted"
     discovered_capabilities: Dict[str, Any] = Field(default_factory=dict)
 ```
