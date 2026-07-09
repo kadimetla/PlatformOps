@@ -197,6 +197,14 @@ additions to this schema separately; this is the merged, single source
 of truth. Update here, not in either of those docs, if this schema
 changes again.
 
+**Superseded by `docs/foundation_layer_decomposition.md`**: what this
+section calls "the foundation layer" (one record) is actually a
+network → compute → identity chain, each layer independently
+discoverable/adoptable. That doc adds `layer` and
+`depends_on_foundation_id` fields and a recursive dispatcher check —
+this schema stays the base shape, that doc is what it needs to become
+before it's accurate for anything beyond a single-cluster BU.
+
 `ToolIntent` (for a Lambda deploy) and its Helm equivalent both gain an
 optional `depends_on_foundation_id: Optional[str]`.
 `BrokeredToolDispatcher.evaluate_intent()` gains one more check, in the

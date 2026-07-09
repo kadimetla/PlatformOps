@@ -113,6 +113,13 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/foundation_layer_decomposition.md` — disambiguates the four
+  different things this project has called a "layer," then decomposes
+  "the foundation layer" (previously one atomic `FoundationRecord`)
+  into a real network → compute → identity dependency chain, a
+  recursive dispatcher check to match, a reverse-dependency check
+  before decommissioning, and per-layer (not per-foundation) discovery
+  — including a worked mixed-provenance example.
 - `docs/control_ui_approval_queue_design.md` — turns the "Control UI"
   section below from a five-view shopping list into a real design:
   the `pending_approval:*` state machine unifying both approval paths
