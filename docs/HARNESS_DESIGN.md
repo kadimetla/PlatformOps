@@ -113,6 +113,14 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/multi_account_per_bu_design.md` — corrects "one BU = one AWS
+  account/GCP project/Azure subscription" to what real multi-account
+  practice actually looks like: a BU can hold several accounts (dev/
+  staging/prod, region-specific, or genuinely multi-cloud), the
+  invariant is only that no account is ever *shared across BUs*.
+  `CloudAccountBinding` replaces `WorkspaceBundle`'s flat single-account
+  fields; `FoundationRecord` and discovery both move from per-BU to
+  per-binding granularity.
 - `docs/compute_paradigm_layering.md` — names what every prior "compute
   layer" doc implicitly assumed: Kubernetes is one compute paradigm
   among four (VMs, managed containers, serverless), each with a

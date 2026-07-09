@@ -205,6 +205,12 @@ discoverable/adoptable. That doc adds `layer` and
 this schema stays the base shape, that doc is what it needs to become
 before it's accurate for anything beyond a single-cluster BU.
 
+**Further extended by `docs/multi_account_per_bu_design.md`**: a BU can
+hold multiple accounts per cloud (dev/staging/prod, region-specific, or
+multi-cloud) — `cloud_provider` alone no longer disambiguates which
+account a `FoundationRecord` belongs to; that doc adds
+`cloud_account_binding_id`.
+
 `ToolIntent` (for a Lambda deploy) and its Helm equivalent both gain an
 optional `depends_on_foundation_id: Optional[str]`.
 `BrokeredToolDispatcher.evaluate_intent()` gains one more check, in the
