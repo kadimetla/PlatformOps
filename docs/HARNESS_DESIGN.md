@@ -113,6 +113,15 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/crossplane_comparison_and_pattern_reuse.md` — grounds
+  Crossplane's actual mechanics (Providers, Managed Resources,
+  Composition/XRD/Claim) against Terraform/CDK's execution model —
+  Crossplane's continuously-reconciling controllers vs. their on-demand
+  plan/apply — and makes a narrow call: borrow the Composition/Claim
+  self-service pattern (already independently arrived at via
+  `IacSourceRef`), refuse the continuous-reconciliation runtime, since
+  auto-healing outside the dispatcher directly conflicts with this
+  project's deny-by-default approval-gate design.
 - `docs/account_vending_machine_design.md` — answers
   `docs/multi_account_per_bu_design.md` Part F's open item with real
   research: AWS's Account Factory for Terraform's actual pipeline shape

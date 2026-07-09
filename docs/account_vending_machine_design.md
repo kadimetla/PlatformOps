@@ -61,7 +61,9 @@ calls."* That's the exact separation `CloudAccountBinding.auth_ref`
 already makes — "how do I authenticate to this account" kept distinct
 from "what's being provisioned." A mature, independent system
 converging on the same shape is a validating signal, not a tool to
-adopt.
+adopt. See `docs/crossplane_comparison_and_pattern_reuse.md` for the
+fuller comparison, including why Crossplane's execution model
+specifically (not just its account-vending gap) shouldn't be adopted.
 
 ## Part D: Mapping AFT's shape onto `CloudAccountBinding` onboarding
 Not AFT's code — its *shape*, the same "borrow the shape, not the code"
