@@ -113,6 +113,15 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/account_vending_machine_design.md` — answers
+  `docs/multi_account_per_bu_design.md` Part F's open item with real
+  research: AWS's Account Factory for Terraform's actual pipeline shape
+  (GitOps request → SQS batching → Step Functions → a fresh per-account
+  execution role), mapped onto minting a `CloudAccountBinding` — and the
+  honest finding that no cross-cloud equivalent exists (Crossplane
+  provisions resources *within* an account, not the account itself),
+  so GCP/Azure vending has to be built from scratch, sketched but not
+  verified.
 - `docs/multi_account_per_bu_design.md` — corrects "one BU = one AWS
   account/GCP project/Azure subscription" to what real multi-account
   practice actually looks like: a BU can hold several accounts (dev/

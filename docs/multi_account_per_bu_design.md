@@ -105,6 +105,11 @@ account, initial `allowed_resource_types`, initial cost ceiling..."*).
 for an *existing* BU (a new environment, a new region, a new cloud)
 should go through the same automated, baseline-applying ritual —
 scoped to one binding instead of the whole BU's first onboarding.
+**Answered concretely in `docs/account_vending_machine_design.md`**:
+AWS's real Account Factory for Terraform pipeline shape mapped onto
+this step, plus the honest finding that no equivalent tool exists for
+GCP/Azure — those need to be built from scratch, sketched but not
+verified.
 
 ## Open questions / not yet decided
 - Whether `cost_ceiling_usd`/`allowed_resource_types` should also become
