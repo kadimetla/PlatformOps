@@ -113,6 +113,14 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/org_registry_design.md` — resolves the "org registry" gap this
+  doc has referenced since its own first sketch: `OrgRegistryEntry`/
+  `OrgMember` schemas (cloud hierarchy anchors, org-level defaults, the
+  previously-unexpressable "who can create a BU under this org"), and
+  the five-step onboarding sequence — org registration → cloud anchors
+  → org-level defaults → BU onboarding → account vending — that
+  `docs/account_vending_machine_design.md` only ever covered the last
+  step of.
 - `docs/personas_and_tool_blueprints.md` — catalogs every persona
   implicit across this design set (11, including a previously-unnamed
   read-only Auditor) with their flow-step touchpoints, lays the per-tool
@@ -989,10 +997,12 @@ Three ways to relate to OpenClaw were considered once that was corrected:
 - How does the Control UI's human-approval path affect latency/UX for
   low-risk requests that would otherwise be instant? Needs the risk-tier
   threshold to be genuinely useful, not a rubber stamp.
-- Org-onboarding automation (minting a fresh `agent_id`/BU scope,
-  registering it in our org registry, wiring its workspace config bundle)
-  doesn't exist yet — right now this would all be manual steps, which is
-  fine for one org and wrong the moment there's a second.
+- **Designed, not built**: org-onboarding automation — `docs/org_registry_design.md`
+  now specifies the `OrgRegistryEntry`/`OrgMember` schemas and the
+  five-step sequence (org registration → cloud hierarchy anchors →
+  org-level defaults → BU onboarding → account vending). Still manual
+  today; the design closing that gap now exists, the automation itself
+  doesn't.
 - **Resolved**: whether to plug into OpenClaw's runtime or build our own
   Gateway — decided in favor of a custom Gateway (see "Superseded: 'plug
   into OpenClaw's runtime' framing" above for what was considered and

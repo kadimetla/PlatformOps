@@ -65,10 +65,9 @@ in override order." `IacSourceRef` resolves **BU-level overrides
 org-level**, the same bundled→org→BU lookup order already established
 for skill resolution — a BU can override its org's shared
 landing-zone reference with its own, exactly like a BU can override an
-org-level skill. (Org-level `IacSourceRef` storage depends on the
-org-registry work already flagged as not-yet-built in
-`docs/HARNESS_DESIGN.md`'s open questions — this doc doesn't add a new
-dependency, just notes the existing one applies here too.)
+org-level skill. (Org-level `IacSourceRef` storage lives on
+`OrgRegistryEntry.default_iac_source`, per `docs/org_registry_design.md`
+Part D — that gap is now designed, not just flagged.)
 
 ## Part C: Discovery-priority correction — IaC first, live API second
 `docs/foundation_discovery_and_capability_matching.md` Part B implicitly
