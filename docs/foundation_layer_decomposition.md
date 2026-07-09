@@ -24,6 +24,14 @@ Categories B–D are already designed elsewhere and unchanged by this
 doc. This doc is entirely about decomposing category A's "foundation"
 into its own internal dependency chain.
 
+**Corrected by `docs/compute_paradigm_layering.md`**: the chain below
+is specifically Kubernetes's shape. VM/managed-container/serverless
+compute paradigms have lighter chains — for serverless, the network
+layer is optional, and non-Kubernetes identity is 1:1 with the compute
+resource rather than shared, so it doesn't get its own `FoundationRecord`
+at all. Read that doc before assuming this chain applies to every
+compute choice.
+
 ## Part B: `FoundationRecord` becomes layer-typed
 ```python
 class FoundationRecord(BaseModel):

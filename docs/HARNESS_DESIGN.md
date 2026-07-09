@@ -113,6 +113,15 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/compute_paradigm_layering.md` — names what every prior "compute
+  layer" doc implicitly assumed: Kubernetes is one compute paradigm
+  among four (VMs, managed containers, serverless), each with a
+  different foundation-dependency shape — for serverless the network
+  layer is optional, and only Kubernetes's identity is shared enough to
+  need its own `FoundationRecord` rather than collapsing into an
+  attribute of the compute record. Also finds the generic tools already
+  integrated (`ccapi-mcp-server`) cover EC2/Lambda already — the gap was
+  the allow-list, not the tooling.
 - `docs/foundation_layer_decomposition.md` — disambiguates the four
   different things this project has called a "layer," then decomposes
   "the foundation layer" (previously one atomic `FoundationRecord`)
