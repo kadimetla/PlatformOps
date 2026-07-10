@@ -219,7 +219,7 @@ When building the state machine that guides a request from **Ingress -> Planning
 | Engine | Ideal Scenario / Best Use Cases | Pros for PlatformOps | Cons / Gaps for PlatformOps |
 | :--- | :--- | :--- | :--- |
 | **Temporal** | Highly reliable, long-running, multi-step transaction lifecycles (e.g., waiting days for manual review, retrying failed CloudFormation deployments, orchestrating rollback workflows). | • Durable execution out of the box.<br/>• Guarantees exactly-once execution.<br/>• Built-in timer support (e.g., auto-expire approvals after 2 hours). | • High operational complexity (requires hosting Temporal clusters).<br/>• Steep learning curve.<br/>• Python SDK is verbose. |
-| **LangGraph** | Complex agentic reasoning loops where the next step is dynamically determined by model evaluations. | • First-class support for LLM conversations.<br/>• Stateful persistence with easy "interrupt" checkpoints (for human-in-the-loop gates). | • Lacks native cluster durability for enterprise scale.<br/>• Heavy dependency on LangChain libraries.<br/>• Harder to audit non-agentic pipelines. |
+| **LangGraph** | Complex agentic reasoning loops where the next step is dynamically determined by model evaluations. | • First-class support for LLM conversations.<br/>• Stateful persistence with easy "interrupt" checkpoints (for human-in-the-loop gates). | • ~~Lacks native cluster durability for enterprise scale~~ **Corrected in `docs/langgraph_vs_adk_inner_layer.md`**: ADK has the identical gap — both are checkpoint-based, not truly durable, per a dedicated comparison of exactly this point. Not a differentiator favoring ADK; the real cons are heavy LangChain dependency and harder auditing of non-agentic pipelines.<br/>• Heavy dependency on LangChain libraries.<br/>• Harder to audit non-agentic pipelines. |
 | **CrewAI** | Role-based task delegation with pre-defined structures and sequence boundaries. | • Simplifies wiring multiple expert agents.<br/>• Built-in tasks and memory contexts. | • Harder to enforce strict, deterministic execution rules.<br/>• Agent-to-agent chatter consumes tokens and increases response latency. |
 
 ### Architectural Recommendation: Layered Temporal + ADK Topology
@@ -227,3 +227,17 @@ To achieve maximum production reliability:
 1. Use **Temporal** to define the outer durable pipeline: `inbound request -> trigger ADK agent planning -> block execution for approval token -> execute dispatch -> verify status`.
 2. Keep the **Google ADK** agent graph encapsulated inside a single, stateless Temporal Activity. The agents do the heavy lifting of drafting proposals, but state, timeouts, and human intervention are managed in Temporal's event history database.
 3. Keep the **Policy Tool Dispatcher** as a local decorator wrapper around all mutating MCP tool calls, validating each mutation call directly against the active database state.
+
+**Second viable topology, added by `docs/langgraph_vs_adk_inner_layer.md`**:
+since neither Temporal nor LangGraph gives true durability on its own
+(the correction above), the deciding factor between them is operational
+cost, not durability — Temporal needs a hosted cluster, LangGraph's
+checkpointer needs a library plus a Postgres database this project
+likely needs anyway. **LangGraph outer + ADK inner** is a legitimate,
+lighter-weight alternative worth weighing against the Temporal
+recommendation above, not a replacement for it. That doc also compares
+LangGraph directly against ADK as a candidate for the *inner* agent
+layer specifically (not just the outer workflow) and finds ADK's
+already-verified `SkillToolset`/`BaseAgent`/`LiteLlm` capabilities have
+no LangGraph-native equivalent for skill loading — the inner-layer
+choice stays ADK regardless of which outer layer is picked.

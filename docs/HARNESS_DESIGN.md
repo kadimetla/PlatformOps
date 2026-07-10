@@ -352,6 +352,16 @@ rather than repeating this one:
   self-modification bypasses every `SkillProposal` approval gate this
   design depends on)" grounds already used for Crossplane and, closer
   still, the OpenClaw precedent this doc already declined to build on.
+- `docs/langgraph_vs_adk_inner_layer.md` — asks the question
+  `docs/harness_deep_dive.md` §6 never posed: could LangGraph replace
+  ADK as the *inner* agent layer, not just compete for the outer
+  workflow role. Corrects that section's durability table in
+  place (LangGraph's "lacks native cluster durability" con applies to
+  ADK equally — both are checkpoint-based, not truly durable), and adds
+  LangGraph-outer + ADK-inner as a second viable topology alongside the
+  existing Temporal-outer + ADK-inner recommendation, differing mainly
+  in operational cost. Finds no LangGraph-native equivalent to ADK's
+  already-verified `SkillToolset` — the inner-layer choice stays ADK.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
