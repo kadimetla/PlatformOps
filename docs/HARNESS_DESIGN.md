@@ -113,6 +113,15 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/org_bootstrap_privilege_boundary.md` — answers
+  `docs/org_registry_design.md`'s open item on cloud-hierarchy-anchor
+  creation with a sharper conclusion than "not yet automated": creating
+  an AWS OU/GCP folder/Azure management group is the single highest-
+  blast-radius privilege in this design and structurally can't go
+  through a request flow that requires the org to already exist —
+  out-of-band by design (a one-time Terraform module, human-applied,
+  never the harness's own automation identity), matching how AFT itself
+  never creates the AWS Organization it vends accounts into.
 - `docs/skill_promotion_thresholds.md` — gives "successfully used N
   times" (`docs/skills_and_workspace_design.md` Part C) an actual N,
   grounded against Argo Rollouts/Flagger's real progressive-delivery

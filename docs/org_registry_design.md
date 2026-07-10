@@ -112,12 +112,14 @@ applied the decision to this specific data. Applied here:
   `TeamMember`'s, given org-level actions (creating a BU, changing a
   default) are rarer but higher-blast-radius than most BU-level ones —
   not decided.
-- Exact process for step 2 (cloud anchor creation) per provider — this
-  doc names the *what* (an AWS OU, GCP folder, Azure management group
-  must exist before step 5's account vending can target it) but not
-  the *how*, since none of the account-vending research
-  (`docs/account_vending_machine_design.md`) covered anchor creation,
-  only account creation within an anchor.
+- **Answered in `docs/org_bootstrap_privilege_boundary.md`**: step 2
+  (cloud anchor creation) turns out not to be a "how" question at all —
+  it's structurally out-of-band, a one-time human-applied Terraform
+  module, never the harness's own automation identity, for both a
+  bootstrapping-paradox reason (no `org_id` exists yet to route a
+  request through) and a privilege-boundary reason (creating an OU/
+  folder/management-group is the highest-blast-radius action in this
+  whole design).
 - Whether `isolation_level` should be settable only at org creation
   time (immutable) or changeable later — changing it after BUs already
   exist under the org has real migration implications not analyzed
