@@ -113,6 +113,16 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/environment_promotion_pipeline.md` — closes a gap none of the
+  environment-related docs addressed: `CloudAccountBinding.purpose`
+  lets `dev`/`qa`/`uat`/`prod` exist as separate accounts, but nothing
+  connected them into an ordered pipeline. Establishes `plan_hash` as
+  the promotion key (the artifact is drafted once, never redrafted per
+  environment — real CI/CD "build once, promote everywhere" practice),
+  a `PromotionPipeline`/`PromotionStage` schema reusing the recursive
+  dependency-chain pattern a third time, and a distinct `UatSignoff`
+  gate — confirmed that UAT requires human business judgment a smoke
+  test can't substitute for, by a new Business Stakeholder persona.
 - `docs/remaining_deep_dives.md` — consolidates every `## Open
   questions` bullet across all 30+ docs (~90 individual items) into 10
   coherent topics worth their own deep dive, ranked by leverage — the

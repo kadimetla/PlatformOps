@@ -27,6 +27,7 @@ named across this design set. Flow steps reference `spec/flow_steps/01`–`08`.
 | **Break-glass Operator** | `admin`, time-limited | Emergency override, always identity+reason-logged | Step 6, alternate path bypassing normal approval | Control UI break-glass panel |
 | **Auditor** (read-only) | none of the above — **not previously named** | Consumes Audit log/Config Health; never acts, only observes | Step 8, read-only across all steps | Control UI, read-only |
 | **Sandbox Experimenter** (new, Part C) | `requester`, under *automated* limits, not human approval | Free-form experimentation | Step 1 through Step 8, but Step 6 is automated, not human, for this persona | Chat/CLI against a sandbox `CloudAccountBinding` |
+| **Business Stakeholder / UAT Approver** (new, `docs/environment_promotion_pipeline.md` Part E) | Not a `TeamMember` role at all — evaluates application behavior, not infra changes, so `role`/`scope` don't apply | Interacts with the deployed UAT environment, signs off via `UatSignoff` | The UAT stage of a `PromotionPipeline` specifically, no other touchpoint | The deployed app itself, not the harness's chat/CLI/UI surfaces |
 
 ## Part B: Tool-specific blueprints — source of truth differs per tool
 Not new design — the existing per-tool mechanics from four separate
