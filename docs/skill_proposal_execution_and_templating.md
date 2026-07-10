@@ -91,10 +91,21 @@ references the file; the script is separate and independently
 versionable.
 
 ## Open questions / not yet decided
-- Whether templating (Part C) should be agent-performed (an LLM
-  identifies and replaces literals) or require a human to manually mark
-  which values are request-specific — agent-performed risks getting the
-  generalization wrong (too broad or too narrow); not decided.
+- **Corrected in `docs/foundation_blueprint_authoring_coding_agent.md`**:
+  Part C's templating mechanism isn't a bespoke extraction pass at all —
+  it's Terraform's own standard convention (*"avoid hardcoded values in
+  modules, pass them as input variables instead"*). A properly authored
+  module already declares request-specific values as `variables.tf`
+  inputs from the start, so `draft_iac_template` is what a correctly
+  authored module looks like natively, and `draft_iac_snippet` (the
+  literal, as-executed artifact) is *derived* from it — the module plus
+  this request's variable values — rather than the reverse as originally
+  framed here. This resolves the "agent-performed vs. human-marked"
+  question below for the Terraform toolchain specifically: neither is
+  needed if the agent follows Terraform's own convention when drafting.
+  Whether an equivalent native convention exists for the CDK/
+  CloudFormation path (where this open question still applies as
+  originally framed) isn't resolved.
 - **Answered in `docs/skill_promotion_thresholds.md`**: `confirmed_execution_plan_id`
   stays at a single success for *materialization* specifically (a human
   reviews after 1 success — the human is the gate, not a count), but a

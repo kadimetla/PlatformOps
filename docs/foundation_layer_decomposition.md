@@ -129,6 +129,21 @@ Three layers, three different discovery outcomes, in the same BU, at
 the same time. The prior monolithic model had no way to express this at
 all — it could only say "the foundation exists" or "it doesn't."
 
+## Part F: `depends_on_foundation_id` should correspond to real module wiring
+`docs/foundation_blueprint_authoring_coding_agent.md` connects this
+field to Terraform's own module composition mechanism — *"variables and
+outputs let you infer dependencies between modules"* (e.g. a compute
+module reading `module.network.vpc_id` as an input). Today
+`depends_on_foundation_id` is a harness-level bookkeeping claim,
+independent of the actual IaC. When the toolchain is Terraform, these
+should correspond 1:1, not exist as two parallel, potentially
+divergent dependency representations: a `FoundationRecord`'s
+`depends_on_foundation_id` should be verifiable by checking that the
+depending module's declared inputs actually reference the depended-on
+module's declared outputs, not just recorded as an independent claim
+this harness trusts on its own. No concrete verification mechanism
+designed yet — flagged as a principle, not implemented.
+
 ## Open questions / not yet decided
 - Whether `layer` should be a closed three-value enum or allow future
   values (e.g., a separate "storage" layer for a shared EFS/Filestore

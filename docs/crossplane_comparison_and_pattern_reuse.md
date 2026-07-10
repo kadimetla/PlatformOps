@@ -76,6 +76,19 @@ abstraction, app-consumed narrow interface, environment-tiered
 implementations); refuse the runtime (continuous reconciliation
 bypassing the dispatcher).
 
+## Part E: The same tension, confirmed for a second tool class
+`docs/foundation_blueprint_authoring_coding_agent.md` researched
+open-source coding agents (OpenHands, SWE-agent, Aider) for a
+different question — generating the foundation-layer blueprint's
+scripts — and found the identical shape: each tool's core value is
+autonomous execution (sandboxed shell/file access, or direct
+auto-commit to git), which conflicts with this project's deny-by-
+default dispatcher the same way Crossplane's continuous reconciliation
+does. "Borrow the pattern, refuse the runtime" (Part D above) turns out
+to generalize beyond Crossplane specifically — worth treating as a
+standing rule for *any* externally-sourced tool this project considers
+adopting, not a one-off Crossplane judgment call.
+
 ## Open questions / not yet decided
 - Whether a Crossplane-inspired "Composition" concept should be
   designed as a formal PlatformOps artifact (a schema + resolution

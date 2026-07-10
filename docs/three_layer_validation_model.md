@@ -136,5 +136,11 @@ Concretely: a failed `SmokeTestResult` should trigger a fresh
   `spec/flow_steps/08_execution_and_audit.md` (Layer 2's smoke test,
   already linked there) conceptually, though neither file is edited by
   this doc.
+- `docs/foundation_blueprint_authoring_coding_agent.md` relies on this
+  doc's Layer 1 retry loop directly: it's what makes the common
+  foundation-blueprint case (instantiating an existing module) already
+  sufficient without a dedicated open-source coding agent — a new tool
+  is only worth considering for the rare module-*authoring* case this
+  doc's single-artifact retry loop doesn't cover.
 - Doesn't change the one required next step
   (`plan_request(envelope)`, `docs/planned_implementation.md` Phase 3).

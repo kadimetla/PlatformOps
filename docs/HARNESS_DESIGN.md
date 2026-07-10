@@ -317,6 +317,20 @@ rather than repeating this one:
   Given/When/Then vocabulary for context-shaped rules (who's asking,
   what already exists) alongside the existing spec-content-shaped one,
   and adds `PlanRecord.spec_version_checked` for spec provenance.
+- `docs/foundation_blueprint_authoring_coding_agent.md` — resolves
+  `docs/remaining_deep_dives.md` item 11: whether this project's own
+  ADK-agent approach or a dedicated open-source coding agent
+  (OpenHands, SWE-agent, Aider) should generate the foundation-layer
+  blueprint. Finds all three tools are built for autonomous execution —
+  the same tension already confirmed for Crossplane — and that the real
+  split is module *instantiation* (the common case, already sufficient
+  with the existing Layer 1 retry loop) vs. module *authoring* (rare,
+  genuinely multi-file, where a coding-agent-style tool adds value only
+  if constrained to "borrow the reasoning, refuse the execution").
+  Surfaces two corrections along the way: `docs/skill_proposal_execution_and_templating.md`'s
+  templating mechanism is just Terraform's own variables convention, and
+  `docs/foundation_layer_decomposition.md`'s `depends_on_foundation_id`
+  should correspond to actual Terraform module input/output wiring.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
