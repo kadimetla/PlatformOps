@@ -113,6 +113,11 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/remaining_deep_dives.md` — consolidates every `## Open
+  questions` bullet across all 30+ docs (~90 individual items) into 10
+  coherent topics worth their own deep dive, ranked by leverage — the
+  map for "what's left to explore," the same role this document map
+  plays for "what's already been explored."
 - `docs/post_apply_smoke_testing.md` — closes a gap that ran through
   the whole provisioning design: every validation step so far is
   pre-apply and static (syntax, policy, plan diff) — nothing confirms a

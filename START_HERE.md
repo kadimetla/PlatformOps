@@ -57,6 +57,13 @@ multi-cloud, org registry, personas — is inert design until that
 boundary exists. `docs/planned_implementation.md` Phase 3 has the
 concrete mechanism.
 
+## Tier 5 — if you want to design, not build
+`docs/remaining_deep_dives.md` — every open question across 30+ docs,
+clustered into 10 topics ranked by leverage. Start with Tier 1 there
+(GCP/Azure hands-on verification, storage backend unification) — each
+touches multiple docs at once, the same way installing `google-adk`
+directly resolved six turns' worth of "unverified" flags in one pass.
+
 ## The process this repo's design work follows
 See `CLAUDE.md`'s "The repeatable process this project uses for design
 work" section — ground before designing, write the design as a doc
