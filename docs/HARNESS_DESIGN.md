@@ -113,6 +113,15 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/three_layer_validation_model.md` — connects three previously-
+  separate designs (existence-vs-function smoke testing, the sandbox
+  tier, the dev→QA→UAT→prod promotion pipeline) into one named model,
+  and adds the one piece none of them specified: a bounded Layer 1
+  self-correction retry loop for the coding agent (draft → static
+  validate → fix → re-validate), plus the rule connecting all three
+  layers — the artifact locks before Layer 2 begins, and a Layer 2
+  smoke-test failure produces a fresh plan rather than patching the
+  one already tested.
 - `docs/gcp_azure_verification_pass.md` — resolves `docs/remaining_deep_dives.md`'s
   largest Tier 1 cluster: six previously-unconfirmed GCP/Azure claims,
   five resolved (impersonation-role escalation risk confirmed real,

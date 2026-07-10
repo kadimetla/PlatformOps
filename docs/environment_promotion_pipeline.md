@@ -8,7 +8,12 @@ designed so far (`docs/foundation_discovery_and_creation_chat_walkthrough.md`,
 `spec/flow_steps/04_plan_drafting.md`) targets **one** environment per
 request. Nothing connected them into an ordered sequence. Grounded
 against real CI/CD promotion practice (build-once-promote-everywhere,
-the UAT/smoke-test distinction) — see Sources.
+the UAT/smoke-test distinction) — see Sources. This doc is "Layer 3" of
+`docs/three_layer_validation_model.md`, which connects it to the
+pre-apply retry loop (Layer 1) and sandbox/dev smoke testing (Layer 2)
+into one named model, including the rule that a failed Layer 2 smoke
+test produces a fresh plan rather than patching the one already
+promoted from.
 
 ## Part A: The artifact is drafted once, never per environment
 Confirmed, real, directly grounding this: *"Every deployment (Dev, QA,

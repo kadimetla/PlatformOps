@@ -44,7 +44,10 @@ created the infra:
 
 ## Part C: Sandbox/experimentation — the new gap this closes
 Every prior doc assumed a request either goes through full approval or
-is denied — nothing between. AWS's own multi-account whitepaper names
+is denied — nothing between. This is "Layer 2" of
+`docs/three_layer_validation_model.md` for the specific case of
+validating a genuinely novel pattern before it's proposed as a
+`SkillProposal`. AWS's own multi-account whitepaper names
 this gap explicitly: a dedicated **"Sandbox OU (Experimental)."**
 Confirmed mechanics: *"in exchange for more open AWS permissions,
 developers agree to work within guardrails defined by security and

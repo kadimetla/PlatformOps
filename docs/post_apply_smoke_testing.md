@@ -11,7 +11,10 @@ that a created resource actually *works* after it exists.
 `get_resource`/`list_resources`" step only confirms **existence**.
 Grounded against real infra-testing practice (Terratest, Terraform's
 native `check` blocks) and one concrete March 2026 finding (CDK's
-drift-aware deploy) — see Sources.
+drift-aware deploy) — see Sources. This doc is "Layer 2" of
+`docs/three_layer_validation_model.md`, which connects it to the
+pre-apply static-validation retry loop (Layer 1) and environment
+promotion (Layer 3) into one named model.
 
 ## Part A: Existence and function are different claims
 A Lambda function can deploy successfully and still fail on every real
