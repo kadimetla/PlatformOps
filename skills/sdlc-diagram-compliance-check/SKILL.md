@@ -5,8 +5,7 @@ description: >
   company's reference architecture rules. Trigger when the user uploads or
   describes an architecture/diagram and asks whether it's compliant.
 version: 0.1.0
-allowed-tools:
-  - check_compliance
+allowed-tools: check_compliance
 ---
 
 # SDLC Diagram Compliance Check

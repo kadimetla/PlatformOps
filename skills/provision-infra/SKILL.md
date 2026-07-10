@@ -6,18 +6,18 @@ description: >
   preference. Trigger when the user asks to deploy, host, or provision
   infrastructure on AWS and states or implies a tool preference.
 version: 0.2.0
-allowed-tools:
-  - mcp__aws_iac__read_iac_documentation_page
-  - mcp__aws_iac__validate_cloudformation_template
-  - mcp__aws_iac__check_cloudformation_template_compliance
-  - mcp__ccapi__create_resource
-  - mcp__ccapi__get_resource
-  - mcp__ccapi__update_resource
-  - mcp__ccapi__delete_resource
-  - mcp__ccapi__list_resources
-  - mcp__terraform__search_providers
-  - mcp__terraform__create_run
-  - mcp__terraform__action_run
+allowed-tools: >-
+  mcp__aws_iac__read_iac_documentation_page
+  mcp__aws_iac__validate_cloudformation_template
+  mcp__aws_iac__check_cloudformation_template_compliance
+  mcp__ccapi__create_resource
+  mcp__ccapi__get_resource
+  mcp__ccapi__update_resource
+  mcp__ccapi__delete_resource
+  mcp__ccapi__list_resources
+  mcp__terraform__search_providers
+  mcp__terraform__create_run
+  mcp__terraform__action_run
 ---
 
 # Provision Infrastructure (multi-tool)

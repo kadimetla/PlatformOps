@@ -168,9 +168,11 @@ existing `version:` field these files also carry won't cause a failure
 schema.
 
 ## Open questions / not yet decided
-- Whether to fix the three `SKILL.md` files now (a mechanical,
-  verified fix) or as a separate, explicitly-requested change — not
-  applied in this doc, flagged for a decision.
+- **Resolved**: the three `SKILL.md` files' `allowed-tools` fields were
+  fixed to the space-delimited string format and re-verified against
+  the real `load_skill_from_dir()` — all three now load successfully
+  (confirmed by re-running the same failing call from Part C after the
+  fix, this time against a fresh `google-adk` install).
 - Whether `SkillRegistry` itself should be subclassed/wrapped to encode
   the bundled→org→BU tier search directly, or whether `resolve_skill()`
   stays a thin wrapper calling `SkillRegistry` per tier as sketched in

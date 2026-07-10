@@ -6,7 +6,7 @@ description: >
   Trigger whenever a provisioning sub-agent proposes a plan that creates or
   modifies infrastructure.
 version: 0.2.0
-allowed-tools: []
+allowed-tools: ""
 ---
 
 # Security Review Checklist
