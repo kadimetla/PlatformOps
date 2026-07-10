@@ -93,14 +93,13 @@ versionable.
   identifies and replaces literals) or require a human to manually mark
   which values are request-specific — agent-performed risks getting the
   generalization wrong (too broad or too narrow); not decided.
-- Whether `confirmed_execution_plan_id` should require verification
-  beyond a single successful execution, given one success could still
-  be a fluke (e.g., worked once, but only because of a specific
-  transient account state) — `docs/skills_and_workspace_design.md`'s
-  promotion criteria already require "usage evidence... successfully
-  used N times" for BU→org promotion; whether the *initial* BU-level
-  materialization should also require more than one success is not
-  decided here.
+- **Answered in `docs/skill_promotion_thresholds.md`**: `confirmed_execution_plan_id`
+  stays at a single success for *materialization* specifically (a human
+  reviews after 1 success — the human is the gate, not a count), but a
+  new `"provisional"` lifecycle stage after materialization requires 3
+  consecutive successes before a BU skill is treated as fully trusted,
+  and BU→org promotion's "successfully used N times" is now a sourced,
+  concrete threshold rather than an open blank.
 - Exact diffing/extraction mechanism for Part C's templating pass — not
   designed, only the schema shape and where it sits in the flow.
 

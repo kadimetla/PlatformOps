@@ -191,6 +191,9 @@ class SkillProposal(BaseModel):
    specifically for over-fitting to BU-specific assumptions that would be
    wrong elsewhere, and explicit sign-off from an org/global owner. This
    is closer to a PR/code-review process than an approval click.
+   **N is now specified**: `docs/skill_promotion_thresholds.md` gives
+   this a concrete, sourced value (3 consecutive successes, not a raw
+   cumulative count) plus a demotion path this bullet never had.
 5. **Versioning**: if a promoted/shared skill is later found flawed,
    silently changing the pattern underneath BUs already using it is
    itself a risky, supply-chain-shaped operation. BUs should stay pinned

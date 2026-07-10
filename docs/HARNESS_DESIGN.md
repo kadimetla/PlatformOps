@@ -113,6 +113,14 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/skill_promotion_thresholds.md` — gives "successfully used N
+  times" (`docs/skills_and_workspace_design.md` Part C) an actual N,
+  grounded against Argo Rollouts/Flagger's real progressive-delivery
+  promotion mechanisms: a 3-consecutive-success threshold to graduate
+  from `"provisional"` to `"stable"`, a 5-consecutive-failure threshold
+  to auto-demote a promoted skill back to review — a gate this project
+  never had before, since nothing previously detected a promoted skill
+  degrading over time.
 - `docs/skill_proposal_execution_and_templating.md` — closes two gaps
   in `SkillProposal`: it could be created before execution ever
   confirmed the plan actually worked (a `"pending_execution_confirmation"`
