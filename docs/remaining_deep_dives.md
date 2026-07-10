@@ -138,6 +138,23 @@ Composition/Claim model) deserves its own named PlatformOps artifact,
 or stays implicit in the existing skill/`IacSourceRef` precedence
 mechanisms (`docs/crossplane_comparison_and_pattern_reuse.md`).
 
+### 11. Coding agent (this project's ADK approach vs. open-source coding agents) for the foundation-layer blueprint specifically
+Flagged by the user for a later session, not yet scoped in detail.
+The foundation-layer blueprint (`docs/foundation_layer_decomposition.md`'s
+network→compute→identity chain — what app deployments sit *on*, not an
+app's own IaC) is a different authoring problem from a single app
+resource: more layers, higher blast radius, longer-lived, closer to
+`docs/account_vending_machine_design.md`'s AFT-inspired pipeline than to
+a per-request `plan_request(envelope)` draft. Open question: should
+generating the blueprint's scripts use this project's own ADK-agent-
+plus-MCP-tools approach (as designed everywhere else, including the
+`docs/three_layer_validation_model.md` retry loop), or a dedicated
+open-source coding agent (OpenHands, SWE-agent, Aider, or similar) —
+and if the latter, how that tool would fit into the deny-by-default
+dispatcher model the rest of this design depends on, the same tension
+already worked through for Crossplane (item 10) and worth checking
+before assuming a different coding-agent tool avoids it.
+
 ## How this relates to the existing docs
 This doc doesn't resolve anything — it's the map for choosing what to
 deep-dive next, the same role `docs/HARNESS_DESIGN.md`'s document map
