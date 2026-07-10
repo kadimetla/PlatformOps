@@ -94,6 +94,22 @@ not a replacement recommendation, an added option. `LangGraph`'s
 plan→review→approve pause-for-human-approval boundary this project
 hasn't built yet than hand-rolling that wait state in a custom Gateway.
 
+## Part F: The wiring mechanics — `docs/langgraph_outer_adk_inner_wiring.md`
+This doc established *whether* LangGraph-outer is viable; it left *how*
+it would actually connect to ADK unanswered, which read as "two agents
+negotiating" rather than what it actually is. Answered in
+`docs/langgraph_outer_adk_inner_wiring.md`: LangGraph is not a
+competing agent brain here — its nodes are plain functions, and exactly
+two of them happen to internally call ADK's `Runner.run_async()`, the
+same way another node calls a database. That doc also finds splitting
+drafting and security review into two separate LangGraph nodes (instead
+of today's one combined ADK `sub_agents` graph) turns the review-before-
+dispatch ordering into a structural graph edge instead of a prompt
+instruction — a real hardening worth adopting regardless of how the
+rest of the outer-layer question resolves — and maps the resulting
+graph 1:1 onto `spec/flow_steps/01`–`08`.md, resolving
+`docs/remaining_deep_dives.md` item 7 for this topology.
+
 ## Open questions / not yet decided
 - Whether LangGraph's checkpointer should replace, or sit alongside,
   `harness/tool_dispatcher.py`'s existing SQLite `approvals`/`audit_logs`

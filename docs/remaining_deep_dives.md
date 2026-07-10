@@ -112,12 +112,19 @@ Expiry timeouts, audit-entry granularity for session start/expiry,
 bounded-history size for `last_plan_id` — real but narrow
 (`docs/harness_memory_design.md`, `docs/session_memory_design.md`).
 
-### 7. Does a flow-step spec actually drive code generation?
+### 7. Does a flow-step spec actually drive code generation? — **PARTIALLY RESOLVED**, conditional on a LangGraph-outer topology
 `docs/flow_step_spec_decomposition.md` left this open at the end —
 whether `spec/flow_steps/*.md` should ever programmatically drive
 agent code generation, or stay a verification/documentation artifact.
 Connects to `docs/spec_driven_development_scaling.md`'s
 `ComplianceContext`/rule-registry question too.
+**`docs/langgraph_outer_adk_inner_wiring.md`** answers this for the
+specific case of adopting LangGraph as the outer workflow layer: each
+`spec/flow_steps/0N_*.md` maps 1:1 onto one LangGraph graph node, making
+the specs the literal shape of the executable graph rather than
+documentation describing behavior that lives separately — not codegen
+in the traditional sense, but a stronger connection than codegen would
+have been. Still open if LangGraph-outer is never adopted.
 
 ### 8. Smoke-testing operational policy
 Timeout/retry for eventually-consistent checks (EKS node readiness),

@@ -374,6 +374,16 @@ rather than repeating this one:
   template variables are read from the toolchain's own native
   declaration syntax (Terraform `variables.tf` or CloudFormation
   `Parameters:`), never a bespoke format.
+- `docs/langgraph_outer_adk_inner_wiring.md` — makes the LangGraph-outer
+  topology concrete: LangGraph isn't a second agent brain, its nodes are
+  plain functions, and exactly two internally call ADK's
+  `Runner.run_async()` the way another node calls a database. Maps the
+  resulting graph 1:1 onto `spec/flow_steps/01`–`08`.md (resolving
+  `docs/remaining_deep_dives.md` item 7 for this topology), recommends
+  splitting drafting and security review into two separate nodes to
+  turn today's prompt-instruction ordering into a structural graph
+  edge, and documents the verified `interrupt()`/`Command(resume=...)`
+  mechanics behind the human-approval pause.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
