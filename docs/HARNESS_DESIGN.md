@@ -331,6 +331,15 @@ rather than repeating this one:
   templating mechanism is just Terraform's own variables convention, and
   `docs/foundation_layer_decomposition.md`'s `depends_on_foundation_id`
   should correspond to actual Terraform module input/output wiring.
+- `docs/deterministic_plan_drafting.md` — extends `plan_request(envelope)`
+  with a second, verified branch: `Agent` is confirmed to be a bare
+  alias for `LlmAgent`, and ADK's real `BaseAgent` is a generic hook
+  (its own default `_run_async_impl` just raises `NotImplementedError`,
+  not LLM-specific) — so a `SkillTemplateFillAgent` subclass can fill a
+  matched skill's `draft_iac_template` and run Layer 1 static validation
+  with **zero LLM calls**, reusing the exact same `Runner`/`Session`/
+  `Event` plumbing already verified. Reserves `LlmAgent`/coding-agent
+  generation strictly for genuinely novel drafts.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 

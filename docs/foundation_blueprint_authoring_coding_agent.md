@@ -46,7 +46,11 @@ Two different tasks hide under "create the blueprint":
   example) is a **single-artifact** task. The existing ADK-agent-with-
   retry-loop approach (`docs/three_layer_validation_model.md` Layer 1)
   is already sufficient — no genuine multi-file repository problem to
-  solve.
+  solve. **Refined further in `docs/deterministic_plan_drafting.md`**:
+  this case doesn't need an LLM agent at all, verified — a deterministic
+  `BaseAgent` subclass does the template fill and Layer 1 validation
+  with zero LLM calls, reserving `LlmAgent`/coding-agent generation
+  strictly for the authoring case below.
 - **Authoring a brand-new reusable module from scratch** (rare — only
   needed once per org, when no shared landing-zone module exists yet)
   *is* a genuine multi-file, repository-shaped task — the kind of work

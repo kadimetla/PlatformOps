@@ -115,6 +115,14 @@ versionable.
   concrete threshold rather than an open blank.
 - Exact diffing/extraction mechanism for Part C's templating pass — not
   designed, only the schema shape and where it sits in the flow.
+- **Answered in `docs/deterministic_plan_drafting.md`**: once
+  `draft_iac_template` exists, reusing it for a new matching request
+  doesn't need an LLM at all — a verified, zero-LLM-call `BaseAgent`
+  subclass (`SkillTemplateFillAgent`) can do the variable substitution
+  and static validation directly, reusing Layer 1
+  (`docs/three_layer_validation_model.md`) internally. That doc leaves
+  open exactly which matches are "structured enough" to take this path
+  versus falling back to `root_agent`.
 
 ## How this relates to the existing docs
 - Extends `docs/skills_and_workspace_design.md` Part C's `SkillProposal`

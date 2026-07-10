@@ -191,7 +191,24 @@ schema.
   usage pattern should still be spot-checked against this version
   before relying on it working unchanged.
 
+## Part D: Corrected — `plan_request(envelope)`'s `agent=` doesn't have to be `root_agent`
+`docs/deterministic_plan_drafting.md` extends Part A's implementation:
+`root_agent` is an `LlmAgent` (confirmed — `Agent is LlmAgent` evaluates
+`True` on this same installed version), but `Runner(agent=...)` accepts
+any `BaseAgent` subclass, and ADK's own default `_run_async_impl` raises
+`NotImplementedError` rather than assuming an LLM call — it's a generic
+hook, not an LLM-specific one. That doc designs a second, deterministic
+`BaseAgent` subclass (`SkillTemplateFillAgent`, zero LLM calls: template
+lookup + variable substitution + local static validation) for the
+skill-matched case, so `plan_request()` only pays for LLM generation on
+genuinely novel drafts. Same `Runner`/`Session`/`Event` plumbing in Part
+A above, unchanged — only which `agent=` is constructed varies.
+
 ## How this relates to the existing docs
+- **Extended by** `docs/deterministic_plan_drafting.md` — Part A's
+  `plan_request(envelope)` gains a branch for a non-LLM `BaseAgent`
+  subclass on the skill-matched path; the Runner/Session/Event
+  machinery verified here is reused unchanged.
 - **Resolves** `docs/planned_implementation.md` Phase 3's "verify
   before implementing" flag — the Runner/session API is now confirmed,
   not assumed.
