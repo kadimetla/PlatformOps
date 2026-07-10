@@ -89,6 +89,15 @@ to generalize beyond Crossplane specifically — worth treating as a
 standing rule for *any* externally-sourced tool this project considers
 adopting, not a one-off Crossplane judgment call.
 
+A third confirmation, closer to the original OpenClaw precedent than
+either of the above: `docs/model_agnosticism_and_hermes_agent_evaluation.md`
+evaluates hermes-agent (NousResearch), a general-purpose autonomous
+personal-agent framework, not a coding agent. Its self-improving skill
+loop modifies and promotes its own skills without a human review gate
+— the same runtime-level conflict, this time against `SkillProposal`'s
+approval/promotion-threshold gates specifically rather than the
+dispatcher's mutation gate.
+
 ## Open questions / not yet decided
 - Whether a Crossplane-inspired "Composition" concept should be
   designed as a formal PlatformOps artifact (a schema + resolution

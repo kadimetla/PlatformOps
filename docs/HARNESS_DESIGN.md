@@ -340,6 +340,18 @@ rather than repeating this one:
   with **zero LLM calls**, reusing the exact same `Runner`/`Session`/
   `Event` plumbing already verified. Reserves `LlmAgent`/coding-agent
   generation strictly for genuinely novel drafts.
+- `docs/model_agnosticism_and_hermes_agent_evaluation.md` — verifies
+  (not just designs) this section's model-agnosticism path:
+  `google.adk.models.lite_llm.LiteLlm` is real and wraps `litellm`,
+  confirmed to include genuine self-hosted-provider support (Ollama,
+  vLLM), not just other hosted vendors. Also evaluates and declines
+  hermes-agent (NousResearch) — a general-purpose autonomous
+  personal-agent framework, not a coding agent — on the same "borrow
+  the pattern (its procedural-memory taxonomy validates
+  `docs/session_memory_design.md`'s), refuse the runtime (autonomous
+  self-modification bypasses every `SkillProposal` approval gate this
+  design depends on)" grounds already used for Crossplane and, closer
+  still, the OpenClaw precedent this doc already declined to build on.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
@@ -393,15 +405,23 @@ model string. This is real, working code as of this design — see that file
 for the current mapping. Swapping a model for an org's preferred one is a
 one-line config edit, not a code change.
 
-### Path to true model-agnosticism (designed, not built)
-The current config still assumes Gemini-family model identifiers. ADK
-supports non-Gemini models via a LiteLLM-style adapter in newer releases —
-**verify this against the installed google-adk version's docs before
-relying on it**. The next step is making `model_config.py` return a model
-*handle* constructed through whatever adapter the configured identifier
-implies (a `gemini-*` string vs. an `openai:*` / `anthropic:*` prefix, for
-instance), so an adopting org isn't locked into Gemini just because we
-started there.
+### Path to true model-agnosticism (verified real, not yet wired in)
+**Corrected by `docs/model_agnosticism_and_hermes_agent_evaluation.md`**:
+the current config still assumes Gemini-family model identifiers, but
+non-Gemini support is no longer an open research question — verified
+directly against the installed `google-adk==2.4.0`:
+`google.adk.models.lite_llm.LiteLlm` is real (`pip install
+google-adk[extensions]`), wraps `litellm` (confirmed installed,
+1.91.1), and its own docstring gives a working non-Gemini example
+(`LiteLlm(model="vertex_ai/claude-3-7-sonnet@20250219")`). `litellm`'s
+installed package confirms genuine self-hosted-provider support too
+(`ollama`, `vllm_handler` attributes present) — so self-hosted models
+work, not just other hosted vendors. The next step is making
+`model_config.py` return a model *handle* constructed through whatever
+adapter the configured identifier implies (a `gemini-*` string vs. a
+`LiteLlm(model="provider/model")` wrapper), so an adopting org isn't
+locked into Gemini just because we started there — this is now a
+scoping/implementation task, not a feasibility question.
 
 ### Current model implementation deep dive
 The model layer is intentionally narrow today:
