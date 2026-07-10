@@ -113,6 +113,14 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/skill_proposal_execution_and_templating.md` — closes two gaps
+  in `SkillProposal`: it could be created before execution ever
+  confirmed the plan actually worked (a `"pending_execution_confirmation"`
+  status now gates human review behind real success, not just a passed
+  compliance/security check), and the stored script was a literal
+  transcript of one request's values, not a reusable template
+  (`draft_iac_template`, produced by a new templating pass before
+  review).
 - `docs/org_registry_design.md` — resolves the "org registry" gap this
   doc has referenced since its own first sketch: `OrgRegistryEntry`/
   `OrgMember` schemas (cloud hierarchy anchors, org-level defaults, the

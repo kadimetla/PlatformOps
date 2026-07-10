@@ -219,6 +219,9 @@ finish disabling first — the script prints a reminder to re-run for this).
 Finally, check the Billing console once more before walking away.
 
 ## Project layout
+- `START_HERE.md` — a tiered reading path through this repo's docs,
+  for humans; `AGENTS.md`/`CLAUDE.md` are the tight, always-loaded,
+  AI-agent-facing context files, not a tour.
 - `AGENTS.md` — shared, cross-tool foundation for any AI agent working
   in this repo (stack, conventions, hard rules, workflow, skills
   catalog); `CLAUDE.md` adds Claude-Code-specific detail on top. See
