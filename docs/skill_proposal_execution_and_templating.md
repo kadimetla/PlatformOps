@@ -39,8 +39,10 @@ class SkillProposal(BaseModel):
     # "pending_execution_confirmation" | "pending_review" | "approved" | "rejected"
     confirmed_execution_plan_id: Optional[str] = None
     # the PlanRecord whose execution (spec/flow_steps/08) actually
-    # succeeded — verified via a real get_resource/list_resources
-    # check, not just "the dispatcher allowed dispatch"
+    # succeeded — CORRECTED in docs/post_apply_smoke_testing.md: must be
+    # a passing SmokeTestResult (does it work), not just a
+    # get_resource/list_resources existence check (does it exist) —
+    # the weaker claim was never sufficient to trust a pattern
 ```
 The human review step (Part A step 4) should only ever see proposals
 already in `"pending_review"` — i.e., ones where real execution already

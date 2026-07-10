@@ -39,10 +39,15 @@ Given execution using a plan built from a matched skill (bundled/org/BU tier)
 When the audit row is written
 Then it should record which tier and skill version was used, not just the outcome — **currently does not**, per `docs/end_to_end_flow_example.md` step 11
 
+## Scenario: A passing smoke test, not just existence, confirms execution
+Given a real cloud resource just created/updated by an ALLOW-gated call
+When the resource-type's `smoke_test_policy` check runs (invocation, health endpoint, or resource-state poll — `docs/post_apply_smoke_testing.md` Part B)
+Then a `SmokeTestResult` is recorded — existence alone (`get_resource`/`list_resources` returning success) is **not** sufficient to call execution confirmed, only a passing functional check is
+
 ## Scenario: Confirmed successful execution unlocks a pending SkillProposal for review
 Given a `SkillProposal` in `status="pending_execution_confirmation"` tied to this plan
-When execution is confirmed successful (a real `get_resource`/`list_resources` check, not just an ALLOW dispatch)
-Then the `SkillProposal` transitions to `status="pending_review"` — human review (`docs/skills_and_workspace_design.md` Part C) only ever sees proposals already confirmed to work (`docs/skill_proposal_execution_and_templating.md` Part B)
+When a passing `SmokeTestResult` is recorded for this plan's execution (not just an ALLOW dispatch or a resource-exists check — `docs/post_apply_smoke_testing.md` Part C)
+Then the `SkillProposal` transitions to `status="pending_review"` — human review (`docs/skills_and_workspace_design.md` Part C) only ever sees proposals already confirmed to actually work (`docs/skill_proposal_execution_and_templating.md` Part B)
 
 ## Status
 Real MCP execution tools and a real, tested audit table exist as

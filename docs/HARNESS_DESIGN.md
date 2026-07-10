@@ -113,6 +113,15 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/post_apply_smoke_testing.md` — closes a gap that ran through
+  the whole provisioning design: every validation step so far is
+  pre-apply and static (syntax, policy, plan diff) — nothing confirms a
+  created resource actually *works*, only that it exists. Adds
+  `SmokeTestResult`, corrects `SkillProposal`'s "confirmed successful
+  execution" to mean smoke-test-passed rather than resource-exists, and
+  ties novel pattern validation to the sandbox tier (Terratest's
+  deploy-validate-destroy pattern) before a draft ever reaches
+  production.
 - `docs/plan_request_verified_implementation.md` — the single most
   repeated "verify before implementing" flag in this project, finally
   closed by direct package inspection (`pip install google-adk`, not
