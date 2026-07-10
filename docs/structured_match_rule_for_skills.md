@@ -144,6 +144,82 @@ agent = SkillTemplateFillAgent(match.skill, match.spec) if match.has_structured_
    mechanisms silently after a failure would make it harder to tell
    which one actually produced a given plan.
 
+## Part F0: `resolve_skill_candidates()`'s matching signal — verified, not `SkillToolset`
+The open question below (originally: "leaning toward yes, a new
+explicit field, not decided") is now settled, by direct package
+inspection of `google-adk==2.4.0` rather than a leaning:
+
+```python
+class SkillRegistry(ABC):
+  @abstractmethod
+  async def search_skills(self, *, query: str) -> list[Frontmatter]: ...
+```
+`search_skills` is an **abstract method** — ADK ships zero built-in
+matching logic. Whatever a concrete registry does (keyword, embedding,
+exact) is bring-your-own. More importantly, `SearchSkillsTool` (the
+concrete tool exposed to the agent) takes `args: {"query": str}` — the
+**LLM** decides when to call it and what free-text query to pass. And
+even for skills already resident in `SkillToolset(skills=[matched_skill])`
+(this project's own existing sketch, no `search_skills` call involved
+at all), *using* one still routes through the agent's system
+instruction: *"if a skill seems relevant to the current user query, you
+MUST use the `load_skill` tool"* — an LLM judgment call every time,
+with no deterministic branch anywhere in the mechanism.
+
+**Correction this forces**: `docs/plan_request_verified_implementation.md`
+Part B characterized `SkillRegistry.search_skills()`/`.get_skill()` as
+*"essentially `resolve_skill()` already implemented."* True only for
+the LLM-mediated path. For `check_structured_match()`'s candidate
+resolution specifically, `SkillToolset`/`SkillRegistry` can't be reused
+at all — going through it means an LLM tool-call decision, structurally
+incompatible with a zero-LLM-call branch. `resolve_skill_candidates()`
+has to be a wholly separate, harness-owned function bypassing ADK's
+skill machinery entirely, reusing only the bundled→org→BU **tier
+directory order** from `docs/skills_and_workspace_design.md`, not its
+skill-loading mechanism.
+
+**The matching key**: `infra/allowed-resource-types.json` (real,
+existing) already establishes this project's canonical resource-type
+convention — CFN-style (`AWS::S3::Bucket`, `AWS::CloudFront::Distribution`),
+also used by `ToolIntent.resource_type` (`harness/schemas.py:72`). But
+`spec/example_submission.yaml`/`check_compliance.py` (also real) use a
+different, lowercase convention (`s3_bucket`, `cloudfront_distribution`)
+for the same resources — a genuine existing inconsistency, not
+something to invent around. A new `SkillProposal.resource_types: list[str]`
+field, CFN-style, bridges to `spec` via a small deterministic alias
+table:
+```python
+SPEC_TYPE_TO_CFN_TYPE = {
+    "s3_bucket": "AWS::S3::Bucket",
+    "cloudfront_distribution": "AWS::CloudFront::Distribution",
+    # extended per infra/allowed-resource-types.json as new types are added
+}
+
+def resolve_skill_candidates(spec: dict, bu_id: str, org_id: str) -> list[SkillProposal]:
+    normalized = {SPEC_TYPE_TO_CFN_TYPE[r["type"]] for r in spec["resources"]}
+    for tier_dir in [f"workspaces/{bu_id}/skills", f"orgs/{org_id}/skills", "skills"]:
+        matches = [s for s in load_skills_in_tier(tier_dir)
+                   if set(s.resource_types) == normalized]  # exact SET match,
+                                                              # not superset,
+                                                              # not per-resource
+        if matches:
+            return matches   # stop at first tier with any match — precedence preserved
+    return []
+```
+Two deliberate constraints:
+- **Exact set match, not superset or per-resource composition.** A
+  skill declaring `resource_types=["AWS::S3::Bucket", "AWS::CloudFront::Distribution"]`
+  only matches a request needing exactly those two, nothing more or
+  fewer. Multi-skill composition (combining separately-matched
+  fragments, ordering dependencies between them) stays a `root_agent`
+  problem — the deterministic path stays narrow rather than
+  half-solving a harder problem.
+- **Ambiguity within the winning tier still fails closed** — two
+  BU-tier skills both matching doesn't fall through to org/bundled to
+  break the tie; falling through would conflate precedence (resolves
+  cross-tier conflicts) with disambiguation (which this rule never does
+  automatically, per Part E rule 1).
+
 ## Part F: Closes the loop on skill authoring/templating
 `docs/skill_proposal_execution_and_templating.md` Part C's templating
 pass has, until now, only ever specified "replace request-specific
@@ -169,16 +245,16 @@ format:
   that works the same way for both.
 
 ## Open questions / not yet decided
-- `resolve_skill_candidates()`'s exact matching signal — today's
-  `resolve_skill()` sketch (`docs/plan_request_verified_implementation.md`
-  Part B) matches on `SkillToolset`'s description-based search, which is
-  itself somewhat fuzzy (an LLM- or embedding-driven relevance match,
-  not exact string equality). Whether "exactly one candidate" needs a
-  stricter deterministic key (e.g. `spec["resources"][i]["type"]`
-  exact-matching a skill's declared `resource_type` metadata field,
-  which doesn't exist on `SkillProposal` yet) instead of relying on
-  `SkillToolset`'s fuzzier search for the *structured* path specifically
-  — leaning toward yes, a new explicit field, not decided.
+- **Resolved in Part F0**: `resolve_skill_candidates()`'s exact matching
+  signal — verified by direct package inspection that `SkillToolset`/
+  `SkillRegistry` is LLM-mediated at every layer (an abstract
+  `search_skills`, exposed as an agent-callable tool taking a free-text
+  query) and therefore cannot be reused for the deterministic path at
+  all. A new `SkillProposal.resource_types: list[str]` field (CFN-style,
+  matching `infra/allowed-resource-types.json`'s existing convention)
+  plus an exact-set match against the request's normalized resource
+  types is the actual signal, reusing only the bundled→org→BU tier
+  *order*, not `SkillToolset`'s matching mechanism.
 - `is_valid_spec_shape()`'s exact schema (required vs. optional
   top-level keys, whether `resources[].type` must match a closed enum)
   — sketched at the concept level, not fully specified.

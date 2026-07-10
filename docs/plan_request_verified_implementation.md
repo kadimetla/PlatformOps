@@ -110,6 +110,18 @@ precedence sketch). The three-tier directory search (`workspaces/<agent_id>/skil
 know about this project's tier precedence — but the underlying
 match-and-load primitive no longer needs to be hand-built.
 
+**Correction, `docs/structured_match_rule_for_skills.md` Part F0**: the
+above is true only for the LLM-mediated path — `search_skills` is an
+abstract method (zero built-in matching logic in ADK itself) exposed as
+an agent-callable tool taking a free-text query, and even a pre-loaded
+`SkillToolset(skills=[...])` still routes the decision to use a skill
+through the agent's own system-instruction judgment. None of it is
+callable deterministically by the harness. `resolve_skill()`/
+`SkillRegistry` stays the mechanism for the LLM-drafted path; the
+deterministic path (`docs/deterministic_plan_drafting.md`) needs its
+own harness-owned `resolve_skill_candidates()`, reusing only the tier
+*order* above, not this matching primitive.
+
 ```python
 from google.adk.tools.skill_toolset import SkillToolset
 from google.adk.skills import load_skill_from_dir, list_skills_in_dir

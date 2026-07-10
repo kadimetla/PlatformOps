@@ -174,6 +174,11 @@ class SkillProposal(BaseModel):
     version: int = 1
     promoted_to: Optional[str] = None  # None | "org" | "bundled"
 ```
+**Extended in `docs/skill_proposal_execution_and_templating.md`**
+(`draft_iac_template`, execution-confirmation `status` values) and
+**`docs/structured_match_rule_for_skills.md`** (`resource_types: list[str]`,
+CFN-style, the deterministic matching key for the zero-LLM template-fill
+path) — see those docs rather than a second copy of this schema here.
 
 ### Materialization and promotion
 1. A `SkillProposal` starts scoped to the originating BU only — never
