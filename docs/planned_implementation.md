@@ -98,11 +98,14 @@ able to execute one. Concretely:
    the LLM agent's tool-calling loop) — the agent graph is never in the
    execution path for a mutating call, not even indirectly.
 
-**Verify before implementing**: the exact ADK Runner/session invocation
-API for step 3 (how to run `platformops_orchestrator` programmatically and
-extract structured tool-call output) needs checking against the installed
-`google-adk` version — same caveat as elsewhere in this codebase, not yet
-tested from this environment.
+**Verified**: `docs/plan_request_verified_implementation.md` — installed
+`google-adk` (2.4.0) directly and confirmed the real `Runner`/`Session`
+API by introspection, not docs. `Runner.run_async(user_id=..., session_id=...,
+new_message=types.Content(...))` returns an `AsyncGenerator[Event, None]`;
+`Event.get_function_calls()`/`.is_final_response()` are real, built-in
+extraction helpers, no manual parsing needed. That doc has a complete,
+verified `plan_request(envelope)` implementation ready to adapt into
+this codebase — the "how" is now confirmed, not just designed.
 
 ---
 

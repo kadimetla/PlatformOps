@@ -16,9 +16,13 @@ have the Gateway — not the agent — call the real MCP tool only after
 
 1. **Wrap the existing ADK graph behind `plan_request(envelope) -> PlanRecord`**
    in `agents/orchestrator.py`, and move the actual mutating MCP calls out
-   of the agent's tool list into the Gateway/dispatcher layer. Needs the
-   ADK Runner invocation API verified against the installed `google-adk`
-   version first (untested from this environment).
+   of the agent's tool list into the Gateway/dispatcher layer. The ADK
+   Runner invocation API is now verified — `docs/plan_request_verified_implementation.md`
+   installed `google-adk` (2.4.0) and confirmed `Runner`/`Session`/`Event`
+   by direct introspection, with a complete implementation ready to
+   adapt. That same pass found `SkillToolset` is real (resolves the
+   skill-loading gap) and that this repo's own `SKILL.md` files have an
+   invalid `allowed-tools` format that needs a small fix first.
 
 **Small, separate, verifiable bug found while tracing a request through
 the system** (see `docs/current_architecture.md` Section 4's worked

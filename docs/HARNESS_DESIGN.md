@@ -113,6 +113,17 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/plan_request_verified_implementation.md` — the single most
+  repeated "verify before implementing" flag in this project, finally
+  closed by direct package inspection (`pip install google-adk`, not
+  docs): the real `Runner`/`Session`/`Event` API with a complete,
+  ready-to-adapt `plan_request(envelope)` implementation; confirms
+  ADK's `SkillToolset`/`SkillRegistry` are real and resolve
+  `docs/skill_loading_and_enforcement_gap.md`'s core finding; and
+  surfaces a concrete, verified bug — this project's own `SKILL.md`
+  files use an invalid `allowed-tools` format (YAML list; ADK requires
+  a space-delimited string), found by actually trying to load one and
+  watching it fail.
 - `docs/org_bootstrap_privilege_boundary.md` — answers
   `docs/org_registry_design.md`'s open item on cloud-hierarchy-anchor
   creation with a sharper conclusion than "not yet automated": creating

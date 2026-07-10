@@ -13,6 +13,18 @@ authoring on top of. This doc is the evidence that foundation doesn't
 exist yet, and needs to be built before any of the layers on top of it
 mean anything at runtime.
 
+**Largely resolved by `docs/plan_request_verified_implementation.md`**:
+ADK's real `SkillToolset`/`SkillRegistry`/`load_skill_from_dir` provide
+a genuine, verified native loading mechanism — this project doesn't
+need to hand-build `load_skill()`. That doc also found the concrete
+reason it wouldn't work yet anyway: this project's own `SKILL.md` files
+use an invalid `allowed-tools` format (a YAML list; ADK requires a
+space-delimited string) — confirmed by trying to actually load one and
+watching it fail. The bundled-tier loading gap goes from "nothing
+built" to "a real mechanism exists, blocked by one small, fixable
+frontmatter bug," which is a meaningfully different, much closer-to-done
+status than this doc originally found.
+
 ## What a skill physically is today
 Three bundled skills exist, each a `SKILL.md` — YAML frontmatter
 (`name`, `description` as the trigger phrase, `version`,

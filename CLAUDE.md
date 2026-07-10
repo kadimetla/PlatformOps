@@ -73,12 +73,14 @@ demand. The `description` field is the entire routing mechanism — it
 must state what the skill does *and* when to use it *and* when not to,
 front-loaded with trigger keywords.
 
-**Before extending `harness/` to hand-build a `load_skill()` mechanism**:
-verify whether ADK's `SkillToolset` class already provides this
-natively (per the same course material) — installing `google-adk` and
-checking its actual API surface, not re-deriving it from a course PDF's
-description. This project's own established habit (see Hard rules in
-`AGENTS.md`) is not to build something that already exists unverified.
+**Verified — `docs/plan_request_verified_implementation.md`**: ADK's
+`SkillToolset`/`SkillRegistry`/`load_skill_from_dir` are real and do
+this natively (`google-adk==2.4.0`, confirmed by direct install and
+introspection, not the course PDF's description). Don't hand-build
+`load_skill()` — use these. That same verification found this
+project's own `SKILL.md` files fail to load against the real schema
+(`allowed-tools` must be a space-delimited string, not a YAML list) —
+fix that before wiring `SkillToolset` in.
 
 ## This project's document-writing style, if you're adding to `docs/`
 Terse, grounded, file:line-referenced. No filler summaries. State the

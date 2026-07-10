@@ -44,4 +44,8 @@ Real ADK agents draft plans today, but not through a formal
 `plan_request(envelope)` boundary — there's no `Runner`/`Session`
 construction anywhere in `agents/orchestrator.py`
 (`NEXT_STEPS.md:26-27`), so this step exists as agent behavior, not as
-a callable function with the contract above yet.
+a callable function with the contract above yet. The Runner/Session API
+itself is now verified, not just designed —
+`docs/plan_request_verified_implementation.md` installed `google-adk`
+directly and has a complete implementation ready to adapt; what's
+missing is wiring it into this codebase, not knowing how.
