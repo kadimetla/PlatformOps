@@ -95,37 +95,42 @@ shapes, not independently re-verified this session** — flagged for the
 same "verify before relying on it" reason every other new integration
 claim in this project gets flagged:
 
-- **GCP**: Cloud Resource Manager's project-creation API, under a
-  folder (mapping to `org_id`). Two steps AWS's account creation
-  doesn't need: (1) explicit **billing account linkage** — a new GCP
-  project isn't usable until associated with a billing account, no AWS
-  equivalent since AWS accounts inherit billing from the Organizations
-  payer account automatically; (2) explicit **API enablement** — many
-  GCP services require per-project `serviceusage.services.enable`
-  calls before they're callable at all, unlike AWS services which are
-  available by default. Org Policy inheritance itself *is* automatic
-  through the resource hierarchy, same as AWS SCPs — that part doesn't
-  need extra work.
-- **Azure**: subscription creation via the Subscription Alias API,
-  scoped to a billing account (Enterprise Agreement or Microsoft
-  Customer Agreement). Two things to get right: (1) the new
-  subscription must be explicitly placed into the correct management
-  group for policy/RBAC inheritance — not automatic the way GCP's
-  folder-based inheritance is; (2) since same-org subscriptions share
-  one Entra tenant (the tenant constraint established in the prior
-  account/authentication-mechanics discussion, folded into
-  `docs/multi_account_per_bu_design.md` Part A), no new identity
-  federation is needed for a same-org vend, only for the harder
-  cross-tenant/managed-SaaS case already flagged as unsolved.
+- **GCP — confirmed exact sequence (`docs/gcp_azure_verification_pass.md`)**:
+  Cloud Resource Manager's `projects.create()`, under a folder (mapping
+  to `org_id`), **does not** link billing — a separate
+  `projects.updateBillingInfo()` call is required, needing
+  `billing.resourceAssociations.create` on the billing account *and*
+  `resourcemanager.projects.createBillingAssignment` on the project.
+  (2) explicit **API enablement** — many GCP services require
+  per-project `serviceusage.services.enable` calls before they're
+  callable at all, unlike AWS services which are available by default.
+  Org Policy inheritance itself *is* automatic through the resource
+  hierarchy, same as AWS SCPs — that part doesn't need extra work.
+- **Azure — confirmed exact API and a real gotcha (`docs/gcp_azure_verification_pass.md`)**:
+  subscription creation via `Microsoft.Subscription/aliases` (PUT),
+  `billingScope` set to the Enrollment Account ID. Confirmed: ARM-
+  template-created subscriptions land in the **root management group by
+  default** — the *"must be explicitly placed into the correct
+  management group"* step below isn't optional, it's the default
+  behavior being wrong for this project's purposes. A real, documented
+  Azure REST API issue reports an API-version/authorization mismatch
+  for exactly this operation — a known pain point, not hypothetical.
+  Since same-org subscriptions share one Entra tenant (the tenant
+  constraint established in the prior account/authentication-mechanics
+  discussion, folded into `docs/multi_account_per_bu_design.md` Part A),
+  no new identity federation is needed for a same-org vend, only for
+  the harder cross-tenant/managed-SaaS case already flagged as unsolved.
 
 ## Open questions / not yet decided
 - Whether the "vend account" `ToolIntent.operation` needs its own
   dispatcher check distinct from the existing resource-type/region
   checks, given it's creating the container those checks apply within
   — likely yes, not designed.
-- GCP/Azure vending mechanics above need hands-on verification before
-  being relied on — this doc sketches the shape, not a tested
-  integration.
+- **Resolved by web-research verification, `docs/gcp_azure_verification_pass.md`**
+  — not the same first-party rigor as a real sandbox run (no GCP/Azure
+  account access was available in this environment), but independently
+  checked rather than left as an unverified sketch. Still not a tested
+  integration end to end.
 - Whether billing-account linkage (GCP) and management-group placement
   (Azure) should be separate approval-gated steps from the account
   creation itself, or one atomic operation — leaning atomic (matching

@@ -23,31 +23,23 @@ kind of work this conversation has been doing throughout.
 
 ## Tier 1 — unlocks multiple docs at once
 
-### 1. GCP/Azure hands-on verification pass
-By far the largest cluster. Every GCP/Azure claim in this design set
-was researched second, after AWS, and several are explicitly flagged
-unconfirmed:
-- `roles/iam.serviceAccountUser`'s escalation risk — stated by analogy
-  to AWS's `iam:PassRole`, never independently verified
-  (`docs/multi_cloud_foundation_and_iam.md`).
-- Cloud Run/Cloud Functions write-capable MCP tooling — not confirmed
-  either way (`docs/compute_paradigm_layering.md`).
-- GCP/Azure account-vending mechanics (billing linkage, API enablement,
-  management-group placement) — sketched from API shapes, not run
-  (`docs/account_vending_machine_design.md`).
-- `helm_install`'s chart version-pinning support, IRSA/OIDC provider
-  association — not confirmed (`docs/eks_helm_mcp_integration.md`).
-- GCP's VPC-discovery gap workaround (wrap raw `gcloud` API vs. require
-  Terraform-managed) — undecided (`docs/foundation_discovery_and_capability_matching.md`).
-- GCP/Azure native continuous-validation equivalents to Terraform's
-  `check` blocks — not researched (`docs/post_apply_smoke_testing.md`).
-
-**Why one deep dive, not six**: same type of work (hands-on
-verification, not new design) applied to the same two providers across
-six docs. A single pass with real GCP/Azure sandbox access would close
-most of these at once, the same way installing `google-adk` directly
-closed the `plan_request`/`SkillToolset` uncertainty in one session
-instead of six separate research passes.
+### 1. GCP/Azure hands-on verification pass — **RESOLVED**, see `docs/gcp_azure_verification_pass.md`
+Was the largest cluster. Five of six items resolved by web-research
+verification (no real GCP/Azure account access available, so not the
+same first-party rigor as the `google-adk` install, but each claim was
+independently checked, not left as analogy): the impersonation-role
+escalation risk (confirmed real, mitigation validated), Cloud Run MCP
+write capability (confirmed), the exact GCP billing-linkage and Azure
+subscription-creation call sequences (confirmed, with a real documented
+Azure API-version gotcha found along the way), and Helm chart
+version-pinning (confirmed supported). One item was reframed rather
+than resolved as originally posed (Terraform `check` blocks are
+provider-agnostic; the real equivalent need was GCP's
+`terraform vet`/Policy Library, which exists). One — the GCP VPC-
+discovery MCP wrapper — was confirmed genuinely absent, not an
+unresearched gap on this project's side. Cloud Functions MCP tooling
+and IRSA/OIDC provider association remain unconfirmed; not everything
+closed in one pass.
 
 ### 2. Storage backend unification
 The exact same open question, asked five separate times, never

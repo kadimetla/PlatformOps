@@ -113,6 +113,15 @@ rather than repeating this one:
   mechanism (since corrected: GCP/Azure have no identity-attached
   boundary object at all — the ceiling comes from org/policy-scoped
   guardrails instead, see that doc's correction note).
+- `docs/gcp_azure_verification_pass.md` — resolves `docs/remaining_deep_dives.md`'s
+  largest Tier 1 cluster: six previously-unconfirmed GCP/Azure claims,
+  five resolved (impersonation-role escalation risk confirmed real,
+  Cloud Run MCP confirmed write-capable, exact GCP billing-linkage and
+  Azure subscription-creation call sequences confirmed, Helm chart
+  version-pinning confirmed supported), one reframed (Terraform `check`
+  blocks are provider-agnostic; the real equivalent need was GCP's
+  `terraform vet`/Policy Library), one confirmed genuinely absent (no
+  GCP VPC-discovery MCP wrapper exists, not an unresearched gap).
 - `docs/environment_promotion_pipeline.md` — closes a gap none of the
   environment-related docs addressed: `CloudAccountBinding.purpose`
   lets `dev`/`qa`/`uat`/`prod` exist as separate accounts, but nothing

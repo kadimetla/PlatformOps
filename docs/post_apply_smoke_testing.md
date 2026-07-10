@@ -104,9 +104,14 @@ hand-building drift detection for that toolchain.
   resource in place for human investigation — leaning toward the
   latter (don't compound a failure with an automated destructive
   action), not decided as a hard rule.
-- Whether GCP/Azure have their own native continuous-validation
-  mechanisms analogous to Terraform's `check` blocks — not researched
-  this pass.
+- **Reframed in `docs/gcp_azure_verification_pass.md`**: `check` blocks
+  are a Terraform-language feature, provider-agnostic by construction —
+  no separate GCP/Azure equivalent is needed for that specific
+  mechanism. The real equivalent need was pre-apply policy validation,
+  which does exist natively: GCP's `gcloud beta terraform vet` plus a
+  100+-policy Policy Library (directly reusable for this project's
+  GCP-side compliance rules), and Azure Policy (already known from
+  `docs/multi_cloud_foundation_and_iam.md`).
 
 ## How this relates to the existing docs
 - Corrects `docs/skill_proposal_execution_and_templating.md` Part B's

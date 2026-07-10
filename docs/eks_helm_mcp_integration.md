@@ -170,8 +170,10 @@ HELM_MCP_SERVER = StdioServerParameters(
 - Whether kubeconfig-context scoping needs a new validation rule in
   `harness/config_engine.py`, the same shape as the existing
   `agent_id` uniqueness check — likely yes, not designed.
-- Exact chart version-pinning support in `helm_install` — verify
-  hands-on, not confirmed from docs alone.
+- **Resolved in `docs/gcp_azure_verification_pass.md`**: `helm_install`
+  confirmed to support OCI registry references plus a `--version` flag
+  for pinning — matches the supply-chain requirement already in
+  `docs/foundation_app_layering_and_iam_tiers.md` Part C.
 - IRSA/OIDC provider association — not confirmed as covered by
   `manage_eks_stacks`'s CFN defaults or requiring separate handling.
 

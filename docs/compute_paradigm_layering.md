@@ -14,7 +14,7 @@ Kubernetes's shape, not a universal one.
 |---|---|---|---|
 | **Kubernetes** (heaviest) | EKS — `awslabs.eks-mcp-server`, write-capable | GKE — MCP read-only (`docs/eks_helm_mcp_integration.md`) | AKS — write path is the ARM MCP Server |
 | **VMs** | EC2 — generic via `ccapi-mcp-server` | Compute Engine — **GCE MCP server, confirmed write-capable**, *"provisioning and resizing as discoverable tools"* | Azure VMs — generic via ARM MCP Server |
-| **Managed containers** | ECS/Fargate — a **dedicated, purpose-built AWS MCP server**: *"automatically containerize applications and manage their deployments on Amazon ECS... Fargate and Application Load Balancers"* | Cloud Run — not confirmed, likely generic ARM-equivalent path only | Container Apps — generic via ARM MCP Server |
+| **Managed containers** | ECS/Fargate — a **dedicated, purpose-built AWS MCP server**: *"automatically containerize applications and manage their deployments on Amazon ECS... Fargate and Application Load Balancers"* | Cloud Run — **confirmed write-capable**: `GoogleCloudPlatform/cloud-run-mcp` (official), `deploy-file-contents`/`deploy-local-folder` tools, same tier as AWS's ECS server (`docs/gcp_azure_verification_pass.md`) | Container Apps — generic via ARM MCP Server |
 | **Serverless** (lightest) | Lambda — generic via `ccapi-mcp-server` (`AWS::Lambda::Function` is an ordinary CFN resource type) | Cloud Functions — not confirmed | Azure Functions — generic via ARM MCP Server |
 
 ## Part B: The tooling finding — allow-list gap, not tool gap
@@ -65,8 +65,10 @@ class FoundationRecord(BaseModel):
 ```
 
 ## Open questions / not yet decided
-- Whether Cloud Run/Cloud Functions have confirmed write-capable MCP
-  tooling — not verified this pass, flagged rather than assumed.
+- **Partially resolved in `docs/gcp_azure_verification_pass.md`**:
+  Cloud Run's MCP tooling is confirmed write-capable. Cloud Functions
+  still has no dedicated MCP server found, even on a fresh targeted
+  search — remains unconfirmed/likely absent, not just unverified.
 - Whether a serverless deploy that *does* need VPC attachment (reaching
   a private RDS/Cloud SQL instance) should then require the full
   network-layer `FoundationRecord` the way VM/managed-container

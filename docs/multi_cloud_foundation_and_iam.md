@@ -181,10 +181,13 @@ for the current, single-source-of-truth version rather than a second
 copy here.
 
 ## Open questions / not yet decided
-- `roles/iam.serviceAccountUser`'s escalation risk was stated by analogy
-  to `iam:PassRole`, not independently re-verified against current GCP
-  security docs this session — verify before relying on it, same habit
-  applied to every other new claim in this project.
+- **Resolved in `docs/gcp_azure_verification_pass.md`**: `roles/iam.serviceAccountUser`/
+  `serviceAccountTokenCreator`'s escalation risk is confirmed real and
+  chainable, and the mitigation (scope to a specific SA, never
+  project-level) matches what was designed here by analogy — plus a new
+  finding this doc didn't have: every impersonation is logged in Cloud
+  Audit Logs, and VPC Service Controls add an independent containment
+  layer worth folding into `CloudIAMAdapter`.
 - Whether `deploy-to-k8s` (the renamed skill) needs per-provider
   variations in its procedure beyond the kubeconfig context — e.g.,
   different namespace-allow-list conventions per cloud — not decided.
