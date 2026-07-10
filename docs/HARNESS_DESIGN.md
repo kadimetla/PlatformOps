@@ -362,6 +362,18 @@ rather than repeating this one:
   existing Temporal-outer + ADK-inner recommendation, differing mainly
   in operational cost. Finds no LangGraph-native equivalent to ADK's
   already-verified `SkillToolset` — the inner-layer choice stays ADK.
+- `docs/structured_match_rule_for_skills.md` — makes
+  `docs/deterministic_plan_drafting.md`'s `has_structured_match`
+  placeholder concrete, and along the way designs
+  `envelope_to_spec(envelope)` — referenced by name in two prior docs'
+  code sketches since `docs/plan_request_verified_implementation.md`
+  but never actually defined. Deterministic YAML parse against
+  `spec/example_submission.yaml`'s existing structured shape, falling
+  back to one cheap extraction-tier LLM call only for genuine free
+  text; skill-selection ambiguity always fails closed; required
+  template variables are read from the toolchain's own native
+  declaration syntax (Terraform `variables.tf` or CloudFormation
+  `Parameters:`), never a bespoke format.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 

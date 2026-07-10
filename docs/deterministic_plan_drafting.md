@@ -155,22 +155,15 @@ already-verified implementation, not a new pipeline.
   channel it arrived on.
 
 ## Open questions / not yet decided
-- What exactly makes a skill match "structured enough to skip the LLM"
-  (`has_structured_match` above is a placeholder, not a designed rule).
-  `resolve_skill()` as designed elsewhere
-  (`docs/skills_and_workspace_design.md`) is something the *agent*
-  calls via `SkillToolset` — an LLM decision by construction. This doc
-  proposes the harness call a deterministic variant of it directly,
-  before ever constructing a `Runner`, but the matching logic itself
-  (exact resource-type/parameter match vs. fuzzy natural-language
-  intent) isn't designed.
-- Whether free-text chat input needs a cheap routing-tier LLM call to
-  extract structured parameters *before* the deterministic branch can
-  even be attempted, versus requiring structured input (a Control UI
-  form, CLI flags, a webhook's typed payload) to reach the deterministic
-  path at all — leaning toward requiring structured input for the
-  fully-deterministic case and falling back to `root_agent` for
-  anything arriving as free text, not decided as a hard rule.
+- **Resolved in `docs/structured_match_rule_for_skills.md`**: what
+  exactly makes a skill match "structured enough to skip the LLM"
+  (`has_structured_match` above was a placeholder). That doc designs
+  `envelope_to_spec()` (deterministic YAML parse, falling back to one
+  cheap extraction-tier LLM call only for genuine free text) and
+  `check_structured_match()` (ambiguity-fails-closed skill selection
+  plus template-variable completeness, reading required variables from
+  Terraform's `variables.tf`/CloudFormation's `Parameters:` block —
+  whichever is native to the matched skill's toolchain).
 - Whether `SequentialAgent`/`ParallelAgent` could compose the
   deterministic template-fill step and `security_agent`'s review into
   one `Runner` graph instead of two separate invocations — not

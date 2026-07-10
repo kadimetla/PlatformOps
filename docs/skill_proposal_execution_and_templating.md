@@ -120,9 +120,20 @@ versionable.
   doesn't need an LLM at all — a verified, zero-LLM-call `BaseAgent`
   subclass (`SkillTemplateFillAgent`) can do the variable substitution
   and static validation directly, reusing Layer 1
-  (`docs/three_layer_validation_model.md`) internally. That doc leaves
-  open exactly which matches are "structured enough" to take this path
-  versus falling back to `root_agent`.
+  (`docs/three_layer_validation_model.md`) internally.
+- **Sharpened further in `docs/structured_match_rule_for_skills.md`**:
+  Part C's "named variables" requirement is now concrete — the
+  templating pass must emit them using the toolchain's own real
+  declaration syntax, not a bespoke placeholder format. For Terraform,
+  a genuine `variables.tf` block (`type`/`validation`/`default` —
+  already the conclusion `docs/foundation_blueprint_authoring_coding_agent.md`
+  Part D1 reached for a different reason). For CDK/CloudFormation, a
+  genuine template `Parameters:` block (`Type`/`AllowedValues`/
+  `AllowedPattern`/`Default`) — not previously covered anywhere, since
+  Part D1's finding was Terraform-specific. Both exist so that the
+  harness's own `check_structured_match()` can read "what does this
+  template still need filled in" deterministically, without parsing
+  free-form template text.
 
 ## How this relates to the existing docs
 - Extends `docs/skills_and_workspace_design.md` Part C's `SkillProposal`

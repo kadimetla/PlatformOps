@@ -1,0 +1,206 @@
+---
+last_updated: 2026-07-10
+owner: platformops-agent maintainers
+scope: what makes a skill match "structured enough" to skip the LLM — resolves docs/deterministic_plan_drafting.md's open question
+reviewed_by: unreviewed (first draft)
+---
+
+# The Structured-Match Rule — When a Skill Match Can Skip the LLM Entirely
+
+## Status
+Design only, grounded in this project's own real code and existing
+docs — no external research needed, this is internal synthesis, not a
+third-party-tool claim. Resolves `docs/deterministic_plan_drafting.md`'s
+open question (*"what exactly makes a skill match 'structured enough'
+to skip the LLM"*) and, along the way, surfaces and designs a real gap:
+`envelope_to_spec(envelope)` has been referenced by name in two docs'
+code sketches since `docs/plan_request_verified_implementation.md` but
+was never actually designed. Nothing here is built.
+
+## Part A: The gap this starts from
+Grepped the repo for `envelope_to_spec` — it appears exactly twice,
+both as an uncommented placeholder call inside doc code blocks
+(`docs/plan_request_verified_implementation.md`,
+`docs/deterministic_plan_drafting.md`), never defined. Meanwhile
+`spec/check_compliance.py#check_compliance(spec: dict)` is real,
+tested code requiring a structured `dict` — but `RequestEnvelope.raw_payload`
+(`harness/schemas.py:21`) is a bare `str`. Nothing in this project has
+ever defined how one becomes the other, despite `plan_request(envelope)`
+depending on it as its very first step. This gap turns out to be most
+of the structured-match question, not a separate one — "is this request
+structured enough to skip the LLM" and "how does a raw request become
+the structured spec compliance-checking needs" are the same question.
+
+## Part B: This project already has a structured-request format — reuse it
+`spec/example_submission.yaml` (real, used by `check_compliance.py`'s
+own `__main__` block) is already this project's structured-request
+shape:
+```yaml
+app_name: demo-blog
+region: us-east-1
+estimated_monthly_usd: 1.0
+resources:
+  - type: s3_bucket
+    name: platformops-demo-blog
+    public_write: false
+  - type: cloudfront_distribution
+    name: platformops-demo-blog-cdn
+    viewer_protocol_policy: redirect-to-https
+```
+The structured-match rule should target *this* shape, not invent a
+second one. A webhook payload, a CLI `--spec-file`, or a Control UI form
+that already serializes to this YAML is "structured" by construction;
+free-form Slack/CLI chat text is not, and needs a conversion step first.
+
+## Part C: Phase 1 — `envelope_to_spec`, deterministic-first
+```python
+def envelope_to_spec(envelope: RequestEnvelope) -> dict:
+    try:
+        candidate = yaml.safe_load(envelope.raw_payload)
+        if is_valid_spec_shape(candidate):   # deterministic schema check
+            return candidate                 # against Part B's shape
+    except yaml.YAMLError:
+        pass
+    # Reached only for genuine free text. One cheap, routing-tier,
+    # structured-output-only call — NOT root_agent's full drafting
+    # graph. A narrower extraction_agent, same model tier as this
+    # project's existing "routing" role (config/models.yaml).
+    return extract_spec_from_free_text(envelope.raw_payload)
+```
+`is_valid_spec_shape()` is itself deterministic — a schema check against
+Part B's shape (required top-level keys, `resources` is a list of dicts
+each with a `type`), not an LLM judgment call. This answers
+`docs/deterministic_plan_drafting.md`'s open question about whether
+free-text input needs an LLM before the deterministic branch can even
+be attempted: **yes, but only a single small extraction call, not a
+fallback to the full agent graph** — the extraction call's only job is
+producing the `spec` dict; everything after that point, including
+whether a skill matches, stays deterministic regardless of how `spec`
+was produced.
+
+## Part D: Phase 2 — `check_structured_match`, fully deterministic
+```python
+class SkillMatch(BaseModel):
+    skill: Optional[SkillProposal] = None
+    spec: dict
+    has_structured_match: bool
+    missing_vars: list[str] = Field(default_factory=list)
+    ambiguous_candidates: list[str] = Field(default_factory=list)
+
+def check_structured_match(
+    spec: dict, bu_id: str, org_id: str, bundle: WorkspaceBundle
+) -> SkillMatch:
+    candidates = resolve_skill_candidates(spec, bu_id, org_id)  # tier-precedence
+                                                                  # search, unchanged
+                                                                  # from docs/skills_and_workspace_design.md
+    if len(candidates) != 1:
+        return SkillMatch(
+            spec=spec, has_structured_match=False,
+            ambiguous_candidates=[c.name for c in candidates],
+        )
+    skill = candidates[0]
+    required = parse_declared_variables(skill.draft_iac_template)  # Terraform's
+                                                                     # variables.tf, or
+                                                                     # CFN's Parameters:
+                                                                     # block — see Part F
+    missing = [
+        v.name for v in required
+        if v.name not in spec and v.default is None and not hasattr(bundle, v.name)
+    ]
+    return SkillMatch(
+        skill=skill, spec=spec,
+        has_structured_match=not missing, missing_vars=missing,
+    )
+```
+`plan_request()` then reads as a straight-line extension of
+`docs/deterministic_plan_drafting.md`'s Part D, with the placeholder
+`has_structured_match` now concretely produced:
+```python
+spec = envelope_to_spec(envelope)
+failures = check_compliance(spec)
+if failures:
+    raise ComplianceError(failures)
+match = check_structured_match(spec, envelope.bu_id, envelope.org_id, workspace_bundle)
+agent = SkillTemplateFillAgent(match.skill, match.spec) if match.has_structured_match else root_agent
+```
+
+## Part E: The rule's actual content, stated precisely
+1. **Zero or multiple candidate skills is never "structured."** Ambiguity
+   is never guessed through — both cases fall back to `root_agent`,
+   which can ask a clarifying question or draft fresh, rather than the
+   deterministic path silently picking one. This is deny-by-default's
+   shape applied to skill selection, not just cloud mutation.
+2. **Every required template variable must resolve from exactly three
+   sources**: the structured `spec` dict, the variable's own declared
+   default, or `WorkspaceBundle` (region, cost ceiling — already-trusted
+   config, not user input). Anything else missing means not structured.
+3. **"Required" and type/constraint validity are read from the
+   toolchain's own declaration syntax, never reinvented** — see Part F.
+4. **A Layer 1 failure inside `SkillTemplateFillAgent` does not
+   silently fall back to `root_agent`.** It surfaces as a drafting
+   failure to the requester, the same way a failed `SmokeTestResult`
+   blocks and waits for a human rather than auto-escalating to a
+   different mechanism (`docs/post_apply_smoke_testing.md`). Chaining
+   mechanisms silently after a failure would make it harder to tell
+   which one actually produced a given plan.
+
+## Part F: Closes the loop on skill authoring/templating
+`docs/skill_proposal_execution_and_templating.md` Part C's templating
+pass has, until now, only ever specified "replace request-specific
+literals with named variables" in the abstract. `parse_declared_variables()`
+above needs something concrete to parse, which makes this precise for
+the first time: the templating pass must emit variables using the
+**toolchain's own real declaration syntax**, not a bespoke placeholder
+format:
+- Terraform path: a genuine `variables.tf` block (`type`, `validation`,
+  `default`) — already the conclusion
+  `docs/foundation_blueprint_authoring_coding_agent.md` Part D1 reached
+  for a different reason (Terraform's "avoid hardcoded values" own
+  convention). This doc adds the reason that conclusion matters
+  operationally: it's what `check_structured_match()` needs to be able
+  to read deterministically.
+- CDK/CloudFormation path — new here, not covered by Part D1's
+  Terraform-only finding: a genuine CloudFormation template
+  `Parameters:` block (`Type`, `AllowedValues`, `AllowedPattern`,
+  `Default`) plays the identical role. Both toolchains this project
+  already supports have a native, structured way to declare "what this
+  template needs filled in" — the templating pass should use whichever
+  one is native to the skill's toolchain, not invent a third schema
+  that works the same way for both.
+
+## Open questions / not yet decided
+- `resolve_skill_candidates()`'s exact matching signal — today's
+  `resolve_skill()` sketch (`docs/plan_request_verified_implementation.md`
+  Part B) matches on `SkillToolset`'s description-based search, which is
+  itself somewhat fuzzy (an LLM- or embedding-driven relevance match,
+  not exact string equality). Whether "exactly one candidate" needs a
+  stricter deterministic key (e.g. `spec["resources"][i]["type"]`
+  exact-matching a skill's declared `resource_type` metadata field,
+  which doesn't exist on `SkillProposal` yet) instead of relying on
+  `SkillToolset`'s fuzzier search for the *structured* path specifically
+  — leaning toward yes, a new explicit field, not decided.
+- `is_valid_spec_shape()`'s exact schema (required vs. optional
+  top-level keys, whether `resources[].type` must match a closed enum)
+  — sketched at the concept level, not fully specified.
+- Whether `extract_spec_from_free_text()`'s single extraction call
+  should itself be retried/self-corrected if its output fails
+  `is_valid_spec_shape()` (a bounded retry, same shape as Layer 1) or
+  should fail straight to `root_agent` on the first miss — not decided.
+
+## How this relates to the existing docs
+- Resolves `docs/deterministic_plan_drafting.md`'s open question on
+  what makes a match "structured enough" — `has_structured_match` is no
+  longer a placeholder.
+- Designs `envelope_to_spec(envelope)`, referenced but never defined in
+  `docs/plan_request_verified_implementation.md` and
+  `docs/deterministic_plan_drafting.md`'s own code sketches.
+- Extends `docs/skill_proposal_execution_and_templating.md` Part C's
+  templating pass with a concrete requirement (toolchain-native variable
+  declarations) and a CDK/CloudFormation `Parameters:` block equivalent
+  not covered by `docs/foundation_blueprint_authoring_coding_agent.md`
+  Part D1's Terraform-only finding.
+- Reuses `docs/skills_and_workspace_design.md`'s bundled→org→BU tier
+  search unchanged — this doc adds a completeness/ambiguity check on
+  top of skill selection, not a replacement for it.
+- Doesn't change the one required next step
+  (`plan_request(envelope)`, `docs/planned_implementation.md` Phase 3).

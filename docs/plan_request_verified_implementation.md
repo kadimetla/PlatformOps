@@ -191,6 +191,17 @@ schema.
   usage pattern should still be spot-checked against this version
   before relying on it working unchanged.
 
+## Part D0: `envelope_to_spec(envelope)`, referenced here but never defined until now
+Part A's code sketch above calls `envelope_to_spec(envelope)` as its
+very first line — that function was never actually designed, just named
+in passing. `docs/structured_match_rule_for_skills.md` designs it: a
+deterministic `yaml.safe_load` against `spec/example_submission.yaml`'s
+existing structured shape, falling back to a single cheap extraction-
+tier LLM call only when the raw payload is genuine free text. That doc
+also designs the `check_structured_match()` step this project needed to
+make `docs/deterministic_plan_drafting.md`'s `has_structured_match`
+placeholder concrete.
+
 ## Part D: Corrected — `plan_request(envelope)`'s `agent=` doesn't have to be `root_agent`
 `docs/deterministic_plan_drafting.md` extends Part A's implementation:
 `root_agent` is an `LlmAgent` (confirmed — `Agent is LlmAgent` evaluates
