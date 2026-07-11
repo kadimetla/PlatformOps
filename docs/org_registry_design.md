@@ -106,6 +106,13 @@ applied the decision to this specific data. Applied here:
   uses — every other per-org record (`WorkspaceBundle`,
   `FoundationRecord`, `CloudAccountBinding`) hangs off `org_id` as a
   foreign key into this table, not a separately-bootstrapped store.
+  **Corrected — `docs/config_storage_backend.md`'s `IacSourceRef`
+  storage section**: this was asserted but not actually true until now
+  — `DbConfigLoader`'s sketch had no `orgs` table at all, only
+  `workspace_bundles`/`agents`/`bindings`, so `agents.org_id` had
+  nothing to reference. An `orgs(org_id, data)` table (same
+  JSON-blob-column shape as `workspace_bundles`) has been added there,
+  and `agents.org_id` now carries a real `REFERENCES orgs(org_id)`.
 
 ## Open questions / not yet decided
 - Whether `OrgMember` needs its own audit trail distinct from

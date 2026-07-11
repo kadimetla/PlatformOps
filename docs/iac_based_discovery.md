@@ -104,9 +104,13 @@ what surfaced this, but the fix generalizes.
   not designed, `pulumi stack export` gives structured JSON that could
   follow the same pattern as Terraform state, but no integration point
   has been researched.
-- Org-level `IacSourceRef` storage is blocked on the same org-registry
-  gap `docs/HARNESS_DESIGN.md` already tracks as open — not a new
-  blocker introduced here.
+- **Resolved in `docs/config_storage_backend.md`**: org-level
+  `IacSourceRef` storage — it isn't a standalone record, it rides inside
+  `OrgRegistryEntry.default_iac_source`, now given a real table
+  (`orgs`, a JSON-blob column, same shape as `workspace_bundles`) that
+  hadn't actually been designed despite `docs/org_registry_design.md`
+  Part E assuming it existed. BU-level `foundation_iac_source` was
+  already covered by `workspace_bundles`.
 - Whether a mismatch between IaC-declared intent and live reality
   (e.g., a tag says "app-tier subnet" but nothing app-layer is actually
   there) should be surfaced differently from a plain existence-drift

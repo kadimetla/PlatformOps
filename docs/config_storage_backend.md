@@ -75,6 +75,16 @@ a repeated field across binding rows:
 def _init_db(self):
     with sqlite3.connect(self.db_path) as conn:
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS orgs (
+                org_id TEXT PRIMARY KEY,
+                data TEXT NOT NULL  -- JSON-serialized OrgRegistryEntry —
+                                     -- added per the "IacSourceRef storage"
+                                     -- section below; org_registry_design.md
+                                     -- Part E asserted this table already
+                                     -- existed here, it didn't until now
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS workspace_bundles (
                 bundle_id TEXT PRIMARY KEY,
                 data TEXT NOT NULL  -- JSON-serialized WorkspaceBundle
@@ -83,7 +93,7 @@ def _init_db(self):
         conn.execute("""
             CREATE TABLE IF NOT EXISTS agents (
                 agent_id TEXT PRIMARY KEY,
-                org_id TEXT NOT NULL,
+                org_id TEXT NOT NULL REFERENCES orgs(org_id),
                 bu_id TEXT NOT NULL,
                 workspace_bundle_ref TEXT NOT NULL
                     REFERENCES workspace_bundles(bundle_id),
@@ -370,7 +380,54 @@ complexity applies here.
 
 ### Left open
 Org-level `IacSourceRef` persistence (`docs/remaining_deep_dives.md`
-item 2's last remaining record type) is still unresolved by this doc.
+item 2's last remaining record type) is still unresolved by this doc —
+resolved next.
+
+## `IacSourceRef` storage — not its own table, and closes out item 2
+`IacSourceRef` isn't a standalone record — it's a nested field on two
+*other* records, `docs/iac_based_discovery.md` Part B's
+`WorkspaceBundle.foundation_iac_source` (BU-level) and
+`docs/org_registry_design.md` Part D's `OrgRegistryEntry.default_iac_source`
+(org-level), with BU overriding org per the same precedence pattern
+already used for skill tiers. Two parent records, not one `IacSourceRef`
+table to design.
+
+**BU-level was already covered** — `workspace_bundles` already stores
+`WorkspaceBundle` as one JSON blob; `foundation_iac_source` rides inside
+it for free.
+
+**Org-level surfaced something more specific than "needs storage."**
+`docs/org_registry_design.md` Part E asserts *"`OrgRegistryEntry` is the
+first row created in whatever database `DbConfigLoader` uses"* — but the
+`DbConfigLoader` sketch above never actually had an `orgs` table, only
+`workspace_bundles`/`agents`/`bindings`. The real gap wasn't
+`IacSourceRef`'s storage specifically; it was that the `orgs` table two
+docs assumed already existed had never been designed. Added to the
+sketch above: `orgs(org_id TEXT PRIMARY KEY, data TEXT NOT NULL --
+JSON-serialized OrgRegistryEntry)`, same JSON-blob-column shape
+`workspace_bundles` already uses — `default_iac_source` and everything
+else on `OrgRegistryEntry` (cloud hierarchy anchors, `business_units`,
+`members`) rides inside that one blob, deserialized through the same
+Pydantic model the YAML path already uses.
+
+**A second, unasked-for fix this forces**: `agents.org_id` had no
+`REFERENCES` constraint in the original sketch, because there was
+nothing to reference. With `orgs` added, it's now a real,
+structurally-enforced foreign key (see the updated sketch above) — a
+silent referential-integrity gap in the original design, closed as a
+side effect of giving `IacSourceRef` a home, not the thing being asked
+for.
+
+**Resolution order stays application-level, not a new DB feature**:
+read `WorkspaceBundle.foundation_iac_source`; if `None`, fall back to
+the `orgs` row's `default_iac_source` — the same precedence-in-Python
+pattern already used for skill tiers, no `JOIN` needed.
+
+This closes `docs/remaining_deep_dives.md` item 2 — all four record
+types (`SkillUsageRecord`, `SkillProposal`, `MemoryEntry`,
+`IacSourceRef`) now have a designed home in the same database, leaving
+only the SQLite-vs-Postgres/migration-path question open, which was
+always a separate axis from "where does each record type live."
 
 ## Open questions / not yet decided
 - SQLite is fine for a single self-hosted deployment; a managed SaaS
@@ -381,14 +438,16 @@ item 2's last remaining record type) is still unresolved by this doc.
 - Migration path: does `config/*.yaml` become a one-time import into the
   `agents`/`workspace_bundles` tables, or do both backends need to
   coexist for some transition period? Not decided.
-- **Resolved for `SkillUsageRecord`, `SkillProposal`, and `MemoryEntry`**,
-  see the three sections above — same database throughout,
-  `skill_usage_records`/`skill_proposals`/`memory_entries` tables, large
-  content as files referenced by path rather than blobs or a new
-  object-storage dependency. Versioning semantics for a
-  revised-and-resubmitted `SkillProposal` remain open. Org-level
-  `IacSourceRef` is the one record type in `docs/remaining_deep_dives.md`
-  item 2 still unaddressed.
+- **Resolved for `SkillUsageRecord`, `SkillProposal`, `MemoryEntry`, and
+  `IacSourceRef`** — see the four sections above. Same database
+  throughout: `orgs`/`skill_usage_records`/`skill_proposals`/
+  `memory_entries` tables plus `IacSourceRef` riding inside
+  `orgs`/`workspace_bundles`' existing JSON blobs, large content as
+  files referenced by path rather than blobs or a new object-storage
+  dependency. `docs/remaining_deep_dives.md` item 2 is now fully
+  resolved for "where does each record type live." Versioning semantics
+  for a revised-and-resubmitted `SkillProposal` remain the one open item
+  from those sections.
 
 ## How this relates to the existing docs
 - Resolves the "Where does workspace config... actually live" open
@@ -414,9 +473,14 @@ item 2's last remaining record type) is still unresolved by this doc.
   real schema for the managed-SaaS case it asserted but never designed
   — and confirms that doc's own prediction that `SkillProposal` and
   `MemoryEntry` would land in the same database.
-- Partially resolves `docs/remaining_deep_dives.md` item 2 — the
-  `SkillUsageRecord`, `SkillProposal`, and `MemoryEntry` slices of
-  "storage backend unification," leaving only `IacSourceRef`.
+- **Fully resolves** `docs/remaining_deep_dives.md` item 2 — all four
+  record types (`SkillUsageRecord`, `SkillProposal`, `MemoryEntry`,
+  `IacSourceRef`) now have a designed storage location, leaving only the
+  SQLite-vs-Postgres/migration-path question open below.
+- Corrects `docs/org_registry_design.md` Part E's assumption that an
+  `orgs` table already existed in `DbConfigLoader` — it didn't; adding
+  it also turns `agents.org_id` into a real foreign key, closing a gap
+  the original sketch left silently unenforced.
 - Doesn't change `docs/HARNESS_DESIGN.md`'s isolation-level table; maps
   the storage decision onto levels that table already defines.
 - Doesn't change the one required next step

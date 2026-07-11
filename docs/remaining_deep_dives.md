@@ -41,28 +41,30 @@ unresearched gap on this project's side. Cloud Functions MCP tooling
 and IRSA/OIDC provider association remain unconfirmed; not everything
 closed in one pass.
 
-### 2. Storage backend unification — **MOSTLY RESOLVED** (`SkillUsageRecord` + `SkillProposal` + `MemoryEntry` slices)
+### 2. Storage backend unification — **RESOLVED** (all four record types; SQLite-vs-Postgres remains a separate open question)
 `docs/config_storage_backend.md` now gives `SkillUsageRecord`
 (`skill_usage_records`, forced concrete by
 `docs/structured_match_rule_for_skills.md` Part F0c's live-read
 requirement), `SkillProposal` (`skill_proposals`, large content as
-files referenced by path rather than blobs), and `MemoryEntry`
+files referenced by path rather than blobs), `MemoryEntry`
 (`memory_entries` — the self-hosted markdown-file design was already
-complete; only the managed-SaaS DB schema was missing) concrete
-schemas — same SQLite file `harness/tool_dispatcher.py` already opens,
-three more tables, not three more storage systems. One record type in
-this cluster remains open:
+complete; only the managed-SaaS DB schema was missing), and org-level
+`IacSourceRef` (not its own table — it rides inside a newly-added
+`orgs` table that `docs/org_registry_design.md` Part E assumed already
+existed but never actually got designed) concrete schemas — same
+SQLite file `harness/tool_dispatcher.py` already opens, four more
+tables, not four more storage systems:
 - Where do `SkillProposal` records **themselves** persist? — **resolved**.
   (`docs/skills_and_workspace_design.md`, `docs/skill_loading_and_enforcement_gap.md`)
 - Where does `MemoryEntry` persist? — **resolved**. (`docs/harness_memory_design.md`)
-- Where does org-level `IacSourceRef` persist? — **still open**.
-  (`docs/iac_based_discovery.md` — nominally answered by
-  `docs/org_registry_design.md`, but the underlying SQLite-vs-Postgres
-  question that doc itself left open still isn't settled)
+- Where does org-level `IacSourceRef` persist? — **resolved**.
+  (`docs/iac_based_discovery.md`, `docs/org_registry_design.md`)
 - SQLite vs. Postgres for the managed-SaaS case, and the YAML→DB
   migration path (`docs/config_storage_backend.md`, still open within
-  its own resolution) — still open, now more pressing with four tables
-  depending on the answer instead of one.
+  its own resolution) — the one genuinely open item left in this
+  cluster, now more pressing with four tables depending on the answer
+  instead of one, but always a separate axis from "where does each
+  record type live."
 
 **Why one deep dive**: `docs/config_storage_backend.md` already decided
 the *shape* (YAML for self-hosted, DB for managed, reuse the
