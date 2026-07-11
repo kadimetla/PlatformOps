@@ -384,6 +384,18 @@ rather than repeating this one:
   turn today's prompt-instruction ordering into a structural graph
   edge, and documents the verified `interrupt()`/`Command(resume=...)`
   mechanics behind the human-approval pause.
+- `docs/saas_deployment_staging.md` — sequences the hosted/SaaS
+  deployment question this section's isolation-levels table left
+  abstract: "Host scope" isolation turns out to be emergent (whatever
+  single-tenancy gives you for free), not a feature to build, and the
+  real engineering — a tenant router, confused-deputy-safe secrets
+  scoping, shared-cluster blast-radius containment — is specific to
+  "Org scope" (adversarial co-tenants sharing infrastructure), not a
+  harder version of "BU scope" (cooperative co-tenants). Lays out four
+  concrete deployment stages, from today's self-hosted single-org MVP
+  through PlatformOps-hosted dedicated instances to genuine shared
+  multi-tenancy — built only when each stage's real cost, not a
+  hypothetical future one, justifies the next.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 
