@@ -220,6 +220,77 @@ Two deliberate constraints:
   cross-tier conflicts) with disambiguation (which this rule never does
   automatically, per Part E rule 1).
 
+## Part F0b: `load_skills_in_tier()`, verified — a real two-phase mechanism, not one placeholder
+Part F0's `load_skills_in_tier(tier_dir)` was itself a placeholder name.
+Verified directly against `google-adk==2.4.0`:
+```python
+list_skills_in_dir(skills_base_path: str | Path) -> dict[str, Frontmatter]
+load_skill_from_dir(skill_dir: str | Path) -> Skill
+```
+`list_skills_in_dir` is **cheap and frontmatter-only** — it reads just
+each skill's YAML frontmatter (`_read_skill_properties`), not the full
+`SKILL.md` body or bundled `scripts/`. It's **non-recursive, one
+directory level**: `for skill_dir in sorted(skills_base_path.iterdir())`,
+each immediate subdirectory is one skill, `skill_id` = directory name —
+matches this repo's actual layout (`skills/provision-infra/`,
+`skills/security-review-checklist/`) exactly, no restructuring implied.
+
+This means `resolve_skill_candidates()` is genuinely **two phases**, not
+the flat single-pass loop Part F0 sketched:
+```python
+def load_skills_in_tier(tier_dir: str) -> dict[str, Frontmatter]:
+    return list_skills_in_dir(tier_dir)   # real ADK function, cheap — frontmatter only
+
+def resolve_skill_candidates(spec: dict, bu_id: str, org_id: str) -> list[Skill]:
+    normalized = {SPEC_TYPE_TO_CFN_TYPE[r["type"]] for r in spec["resources"]}
+    for tier_dir in [f"workspaces/{bu_id}/skills", f"orgs/{org_id}/skills", "skills"]:
+        frontmatters = load_skills_in_tier(tier_dir)                    # phase 1: cheap
+        matching_ids = [sid for sid, fm in frontmatters.items()
+                         if set(fm.metadata.get("resource_types", [])) == normalized]
+        if len(matching_ids) == 1:
+            return [load_skill_from_dir(f"{tier_dir}/{matching_ids[0]}")]  # phase 2: one full load
+        if matching_ids:
+            return []   # ambiguous — fails closed per Part E rule 1, zero full loads spent
+    return []
+```
+`resource_types` lives in `Frontmatter.metadata["resource_types"]` —
+readable during the cheap phase 1, so the expensive full
+`load_skill_from_dir()` (pulling in `draft_iac_template`/instructions/
+bundled resources) only ever runs on the single winning candidate, never
+on every skill in a tier.
+
+**A silent reconnection to the `allowed-tools` bug fixed earlier this
+project** (`docs/plan_request_verified_implementation.md` Part C):
+`list_skills_in_dir` catches `FileNotFoundError, ValueError,
+ValidationError` *per skill* and just logs a warning, skipping the bad
+skill rather than raising. Before that fix, all three of this project's
+real `SKILL.md` files had invalid `allowed-tools` YAML — meaning
+`list_skills_in_dir("skills")` would have silently returned an **empty
+dict** for the entire bundled tier, always. `resolve_skill_candidates()`
+built on top of that would have returned zero candidates for every
+request, forever, silently falling back to `root_agent` every time, with
+nothing but a warning log to explain why. That fix wasn't only about one
+direct `load_skill_from_dir()` call — it was silently load-bearing for
+this entire deterministic-matching design before the design existed.
+
+**A new failure mode Part E didn't cover**: `load_skill_from_dir`
+(phase 2, the winner) *raises* — `FileNotFoundError`/`ValueError` — for
+a skill that passed the cheap frontmatter check but has a corrupted body
+or a missing referenced resource file. Different from "ambiguous" or
+"no match." Same fail-closed answer as everything else here: log loudly,
+fall back to `root_agent`, not a hard crash — but genuinely a third,
+distinct case (frontmatter-valid, body-invalid), not folded automatically
+into Part E's existing two rules.
+
+**Performance, not yet designed as a hard rule**: `resolve_skill_candidates()`
+sits on the hot path for every request, before any `Runner` is
+constructed — three real directory walks per request (one per tier)
+isn't free at scale. Rather than a new caching mechanism, this should
+reuse `docs/HARNESS_DESIGN.md`'s existing config-reload discipline
+(*"keep the last accepted config active if reload fails"*): an in-memory
+per-tier `dict[str, Frontmatter]` index, rebuilt via `list_skills_in_dir()`
+on a reload trigger, not walked fresh per request.
+
 ## Part F: Closes the loop on skill authoring/templating
 `docs/skill_proposal_execution_and_templating.md` Part C's templating
 pass has, until now, only ever specified "replace request-specific
@@ -262,6 +333,14 @@ format:
   should itself be retried/self-corrected if its output fails
   `is_valid_spec_shape()` (a bounded retry, same shape as Layer 1) or
   should fail straight to `root_agent` on the first miss — not decided.
+- **Resolved in Part F0b**: `load_skills_in_tier()`'s actual mechanism —
+  verified as ADK's real `list_skills_in_dir()` (cheap, frontmatter-only,
+  non-recursive) plus `load_skill_from_dir()` (one full load, winner
+  only). Surfaces a new failure mode (frontmatter-valid, body-invalid —
+  fails closed to `root_agent`, not previously covered by Part E) and a
+  performance concern (three directory walks per request) not yet
+  designed as a hard rule, just pointed at the existing config-reload
+  pattern as the reuse target.
 
 ## How this relates to the existing docs
 - Resolves `docs/deterministic_plan_drafting.md`'s open question on
