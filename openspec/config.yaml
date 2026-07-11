@@ -1,0 +1,34 @@
+schema: spec-driven
+
+context: |
+  PlatformOps: a Google-ADK-driven infra-provisioning harness with a
+  deny-by-default approval/dispatch model (Python 3.11+, google-adk, mcp,
+  pydantic, pyyaml; uv/uvx launches MCP servers as subprocesses).
+  Core hard rule: agents propose, never execute — mutating cloud calls
+  route exclusively through harness/tool_dispatcher.py's
+  BrokeredToolDispatcher, never directly from an agent's own tool calls.
+  Verify third-party integration points (ADK, MCP servers, cloud APIs)
+  against the installed version or current docs before relying on them —
+  do not assume from training-data recall.
+  Read AGENTS.md and CLAUDE.md before proposing changes: this repo's
+  process is ground (read real code) before designing, design before
+  building, and every non-trivial decision gets captured in docs/*.md —
+  OpenSpec proposals are for the "building" phase specifically, once the
+  design already exists there. Cross-check new proposals against
+  docs/HARNESS_DESIGN.md's document map for prior art before assuming a
+  gap is undesigned.
+  Existing real code lives in harness/ (schemas.py, config_engine.py,
+  tool_dispatcher.py — tested, harness/tests via tests/test_harness.py)
+  and agents/ (the ADK agent graph). spec/ holds deterministic
+  compliance rules (check_compliance.py) and per-flow-step specs
+  (spec/flow_steps/01-08.md) with real-vs-designed status markers.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
