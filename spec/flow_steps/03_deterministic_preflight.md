@@ -6,7 +6,18 @@
 `docs/spec_driven_development_scaling.md` — not yet built.
 
 ## Input contract
-Today: a structured YAML spec (`spec/example_submission.yaml`'s shape).
+**Corrected — `docs/structured_match_rule_for_skills.md`**: this step's
+`spec: dict` input doesn't arrive already structured; it's produced by
+`envelope_to_spec(envelope)`, a step that previously existed only as an
+undefined placeholder name in `plan_request(envelope)`'s sketches. That
+function is deterministic-first (`yaml.safe_load` against
+`spec/example_submission.yaml`'s shape) and falls back to **one cheap,
+routing-tier LLM call** only when `RequestEnvelope.raw_payload` is
+genuine free text with no valid structured form — the earliest possible
+LLM touchpoint in the whole pipeline, ahead of this step. This step
+itself, `check_compliance(spec)`, stays fully deterministic regardless
+of how `spec` was produced.
+
 Proposed: `(spec: dict, context: ComplianceContext)` where
 `ComplianceContext` carries the resolved `WorkspaceBundle`, the
 requesting `TeamMember`, and any relevant `FoundationRecord`s
