@@ -291,6 +291,69 @@ reuse `docs/HARNESS_DESIGN.md`'s existing config-reload discipline
 per-tier `dict[str, Frontmatter]` index, rebuilt via `list_skills_in_dir()`
 on a reload trigger, not walked fresh per request.
 
+## Part F0c: Caching tier loading — two layers, two different policies
+Designing the cache for Part F0b's directory walks surfaced a real gap
+in Part F0/F0b's own matching filter, not just a performance question:
+`resolve_skill_candidates()` as designed so far checks `resource_types`
+only — it never checks whether the matched skill is still *trusted*.
+That turns out to be the more important finding here.
+
+**Layer 1 — `Frontmatter`/`resource_types`, from `list_skills_in_dir()`.**
+Changes rarely, only on `SkillProposal` materialization
+(`docs/skills_and_workspace_design.md` Part A step 5). Cache as an
+in-memory `dict[tier_dir, dict[skill_id, Frontmatter]]`, loaded at
+process startup the same way `ConfigLoader.load_and_validate()`
+(`harness/config_engine.py`) loads bundles/bindings — worth being
+precise that the real `ConfigLoader` today just raises on validation
+failure, it does **not** yet implement the atomic-swap/keep-last-good
+behavior `docs/HARNESS_DESIGN.md`'s design section describes; this
+cache should follow that *intended* pattern, not claim to extend
+already-working code. Invalidation is targeted, not global — a BU-tier
+materialization only rebuilds that one BU's index. **The bundled tier
+(`skills/`) needs no reload path at all** — it ships with the codebase,
+changes only on deploy, load-once-forever. **Staleness here is always
+safe**: worst case a genuinely eligible request falls back to
+`root_agent` because the cache hasn't caught up — costs LLM spend,
+never picks the wrong skill.
+
+**Layer 2 — trust/lifecycle status, `SkillUsageRecord.lifecycle_state`
+(`docs/skill_promotion_thresholds.md`).** A freshly materialized skill
+starts `lifecycle_state="provisional"`, deliberately *"flagged for more
+security-review scrutiny than a stable skill"* until 3 consecutive
+successes, and auto-demotes back to review after 5 consecutive
+failures. Serving a `"provisional"` or just-demoted skill through the
+zero-review deterministic path defeats the entire reason that period
+exists. This **must not be coarsely cached** the way Layer 1 is —
+staleness here has a correctness cost, not just a performance one: a
+demoted skill needs to stop matching on the very next request, not
+after some reload lag. Read live at match time instead. Since it's a
+single indexed lookup by `skill_id`, not a directory walk, there's
+little performance reason to cache it anyway — where it actually
+persists is still `docs/remaining_deep_dives.md` item 2's open
+storage-backend question, unaffected by this doc either way.
+
+**Corrected filter**:
+```python
+def resolve_skill_candidates(spec: dict, bu_id: str, org_id: str) -> list[Skill]:
+    normalized = {SPEC_TYPE_TO_CFN_TYPE[r["type"]] for r in spec["resources"]}
+    for tier_dir in [f"workspaces/{bu_id}/skills", f"orgs/{org_id}/skills", "skills"]:
+        frontmatters = tier_index.get(tier_dir)   # Layer 1 — cached, coarse-invalidated
+        matching_ids = [
+            sid for sid, fm in frontmatters.items()
+            if set(fm.metadata.get("resource_types", [])) == normalized
+            and get_usage_record(sid).lifecycle_state == "stable"   # Layer 2 — read live
+        ]
+        if len(matching_ids) == 1:
+            return [load_skill_from_dir(f"{tier_dir}/{matching_ids[0]}")]
+        if matching_ids:
+            return []
+    return []
+```
+A `"provisional"` skill matching on `resource_types` alone is **not**
+eligible for the deterministic path — it falls through to `root_agent`,
+consistent with Part E rule 1's fail-closed philosophy, just applied to
+a dimension Part F0/F0b hadn't checked.
+
 ## Part F: Closes the loop on skill authoring/templating
 `docs/skill_proposal_execution_and_templating.md` Part C's templating
 pass has, until now, only ever specified "replace request-specific
@@ -337,10 +400,15 @@ format:
   verified as ADK's real `list_skills_in_dir()` (cheap, frontmatter-only,
   non-recursive) plus `load_skill_from_dir()` (one full load, winner
   only). Surfaces a new failure mode (frontmatter-valid, body-invalid —
-  fails closed to `root_agent`, not previously covered by Part E) and a
-  performance concern (three directory walks per request) not yet
-  designed as a hard rule, just pointed at the existing config-reload
-  pattern as the reuse target.
+  fails closed to `root_agent`, not previously covered by Part E).
+- **Resolved in Part F0c**: the tier-loading performance concern, plus a
+  correctness gap it surfaced along the way — `resolve_skill_candidates()`
+  never checked `SkillUsageRecord.lifecycle_state`, so a `"provisional"`
+  or just-demoted skill could match deterministically with zero review.
+  Two-layer caching policy: `Frontmatter`/`resource_types` cached coarsely
+  (reload-triggered by materialization, staleness costs only performance);
+  `lifecycle_state` read live, never coarsely cached (staleness there
+  costs correctness).
 
 ## How this relates to the existing docs
 - Resolves `docs/deterministic_plan_drafting.md`'s open question on

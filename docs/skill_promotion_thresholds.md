@@ -129,6 +129,14 @@ defaulting to the two cited numbers above.
 - Ties `spec/flow_steps/08_execution_and_audit.md`'s execution-
   confirmation scenario to `SkillUsageRecord` updates, the same way
   that doc already ties it to `SkillProposal` state transitions.
+- **Load-bearing for `docs/structured_match_rule_for_skills.md` Part
+  F0c**: `lifecycle_state` is what that doc's deterministic
+  zero-LLM path now checks before treating a skill match as trusted —
+  a `"provisional"` skill matching on `resource_types` alone is not
+  eligible for that path, and that doc's caching design deliberately
+  reads `lifecycle_state` live rather than caching it, since staleness
+  here (serving a just-demoted skill) has a correctness cost this
+  doc's demotion path exists specifically to prevent.
 - Doesn't change the one required next step
   (`plan_request(envelope)`, `docs/planned_implementation.md` Phase 3).
 
