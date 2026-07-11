@@ -328,9 +328,12 @@ staleness here has a correctness cost, not just a performance one: a
 demoted skill needs to stop matching on the very next request, not
 after some reload lag. Read live at match time instead. Since it's a
 single indexed lookup by `skill_id`, not a directory walk, there's
-little performance reason to cache it anyway — where it actually
-persists is still `docs/remaining_deep_dives.md` item 2's open
-storage-backend question, unaffected by this doc either way.
+little performance reason to cache it anyway. **Resolved in
+`docs/config_storage_backend.md`**: a `skill_usage_records` table in
+the same SQLite file `harness/tool_dispatcher.py` already opens,
+`skill_path` (reusing this doc's own identifier shape) as primary key,
+an atomic UPSERT applying `SkillPromotionPolicy`'s thresholds in the
+same statement that updates counters.
 
 **Corrected filter**:
 ```python

@@ -127,6 +127,108 @@ can live in the same database file `harness/tool_dispatcher.py` already
 opens for `audit_logs`/`approvals` — one storage system for org
 registry, approvals, and audit, rather than three.
 
+## `SkillUsageRecord` storage — resolves this doc's own "asked twice" open item
+`docs/structured_match_rule_for_skills.md` Part F0c made this concrete:
+`SkillUsageRecord.lifecycle_state` (`docs/skill_promotion_thresholds.md`)
+now gates the deterministic zero-LLM matching path, and needs a live,
+synchronous, hot-path read — not the coarse caching the rest of tier
+loading uses. Per this doc's own decision above ("reuse, don't
+duplicate, the existing SQLite file"), a new `skill_usage_records` table
+in the same database `harness/tool_dispatcher.py` already opens, not a
+fourth storage system:
+```sql
+CREATE TABLE IF NOT EXISTS skill_usage_records (
+    skill_path TEXT PRIMARY KEY,   -- "{tier_dir}/{skill_id}" — the exact string
+                                     -- resolve_skill_candidates() already builds
+                                     -- for load_skill_from_dir()
+    tier TEXT NOT NULL,             -- "bu" | "org" | "bundled"
+    org_id TEXT NOT NULL,
+    bu_id TEXT,                     -- NULL for org/bundled-tier records
+    total_uses INTEGER NOT NULL DEFAULT 0,
+    successful_uses INTEGER NOT NULL DEFAULT 0,
+    consecutive_successes INTEGER NOT NULL DEFAULT 0,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    distinct_parameter_signatures TEXT NOT NULL DEFAULT '[]',  -- JSON array,
+                                     -- same json.dumps pattern tool_dispatcher.py
+                                     -- already uses for ToolIntent.payload
+    lifecycle_state TEXT NOT NULL DEFAULT 'provisional',
+    last_used_at DATETIME,
+    last_failure_at DATETIME
+)
+```
+`skill_path` as the primary key, not a composite `(skill_id, tier,
+org_id, bu_id)` key — `bu_id` is `NULL` for org/bundled-tier records,
+and NULL breaks uniqueness guarantees in a composite key. Reusing the
+exact `f"{tier_dir}/{skill_id}"` string `resolve_skill_candidates()`
+already constructs for `load_skill_from_dir()` means one identifier
+flows through matching and usage tracking, not two.
+
+**The read** (Part F0c's live lookup):
+```python
+def get_lifecycle_state(self, skill_path: str) -> str:
+    with sqlite3.connect(self.db_path) as conn:
+        row = conn.execute(
+            "SELECT lifecycle_state FROM skill_usage_records WHERE skill_path = ?",
+            (skill_path,),
+        ).fetchone()
+        return row[0] if row else "provisional"   # no usage record yet = never
+                                                     # proven = fail closed, matches
+                                                     # SkillUsageRecord's own Pydantic default
+```
+A single indexed primary-key lookup — confirms Part F0c's claim that
+this doesn't need coarse caching to stay fast.
+
+**The write** — an atomic UPSERT, thresholds from `SkillPromotionPolicy`
+(`docs/skill_promotion_thresholds.md` Part E, `consecutive_success_limit=3`,
+`consecutive_failure_limit=5`) applied inside the same statement that
+updates counters, not a separate read-modify-write pass, to avoid a
+lost-update race between two BUs using the same org-tier skill
+concurrently:
+```python
+def record_skill_usage(self, skill_path, tier, org_id, bu_id, success, policy):
+    with sqlite3.connect(self.db_path) as conn:
+        conn.execute("""
+            INSERT INTO skill_usage_records (skill_path, tier, org_id, bu_id,
+                total_uses, successful_uses, consecutive_successes,
+                consecutive_failures, last_used_at, last_failure_at)
+            VALUES (?, ?, ?, ?, 1, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+            ON CONFLICT(skill_path) DO UPDATE SET
+                total_uses = total_uses + 1,
+                successful_uses = successful_uses + excluded.successful_uses,
+                consecutive_successes = CASE WHEN ? THEN consecutive_successes + 1 ELSE 0 END,
+                consecutive_failures = CASE WHEN ? THEN 0 ELSE consecutive_failures + 1 END,
+                last_used_at = CURRENT_TIMESTAMP,
+                last_failure_at = CASE WHEN ? THEN last_failure_at ELSE CURRENT_TIMESTAMP END,
+                lifecycle_state = CASE
+                    WHEN (CASE WHEN ? THEN consecutive_successes + 1 ELSE 0 END) >= ? THEN 'stable'
+                    WHEN (CASE WHEN ? THEN 0 ELSE consecutive_failures + 1 END) >= ? THEN 'provisional'
+                    ELSE lifecycle_state
+                END
+        """, (...))  # success flag + policy.consecutive_success_limit/
+                     # consecutive_failure_limit bound in per placeholder
+```
+Demotion target is `lifecycle_state="provisional"`, not a new state
+(`docs/skill_promotion_thresholds.md` Part D) — the `CASE` logic only
+ever toggles between the two states the schema already declares.
+
+**Placement**: a new `SkillUsageStore` class, same physical `db_path`
+`BrokeredToolDispatcher` opens, but a separate Python class — skill-trust
+bookkeeping is a different concern from tool-intent dispatch even though
+they share a file. Part F0c's requirement that reads be live and
+hot-path sharpens, but doesn't resolve, this doc's still-open
+SQLite-vs-Postgres question below — worth enabling `PRAGMA
+journal_mode=WAL` regardless of that larger decision, since it's cheap
+and directly helps concurrent-reader-during-writer contention on this
+specific table.
+
+This resolves this doc's own open item below ("`SkillProposal`...
+should probably be answered together with this one") for
+`SkillUsageRecord` specifically — `SkillProposal` itself (the
+draft/review record, distinct from usage tracking) still needs its own
+schema in the same database, not yet designed here. `MemoryEntry` and
+org-level `IacSourceRef` persistence (the other two record types in
+`docs/remaining_deep_dives.md` item 2) remain unresolved.
+
 ## Open questions / not yet decided
 - SQLite is fine for a single self-hosted deployment; a managed SaaS
   deployment serving many orgs concurrently likely wants Postgres
@@ -136,16 +238,23 @@ registry, approvals, and audit, rather than three.
 - Migration path: does `config/*.yaml` become a one-time import into the
   `agents`/`workspace_bundles` tables, or do both backends need to
   coexist for some transition period? Not decided.
-- Where `SkillProposal` records persist (`docs/skills_and_workspace_design.md`'s
-  own open question) should probably be answered together with this one,
-  since both are "does this go in the same database as the dispatcher's
-  audit/approval tables" — same underlying decision, asked twice in two
-  docs.
+- **Resolved for `SkillUsageRecord` specifically**, see the new section
+  above — same database, a new `skill_usage_records` table. Where
+  `SkillProposal` itself persists (`docs/skills_and_workspace_design.md`'s
+  own open question) is still open — same underlying decision, but a
+  different table with a different schema, not yet designed.
 
 ## How this relates to the existing docs
 - Resolves the "Where does workspace config... actually live" open
   question in `docs/HARNESS_DESIGN.md`'s "Open questions / risks"
   section — see that section for the resolution note pointing here.
+- Gives `docs/structured_match_rule_for_skills.md` Part F0c's
+  `get_usage_record(sid).lifecycle_state` a real schema and storage
+  location — that doc specified the *policy* (read live, never coarsely
+  cached); this doc specifies the *table*.
+- Partially resolves `docs/remaining_deep_dives.md` item 2 — the
+  `SkillUsageRecord` slice of "storage backend unification," not
+  `MemoryEntry` or `IacSourceRef`.
 - Doesn't change `docs/HARNESS_DESIGN.md`'s isolation-level table; maps
   the storage decision onto levels that table already defines.
 - Doesn't change the one required next step

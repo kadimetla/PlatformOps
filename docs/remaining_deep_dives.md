@@ -41,10 +41,17 @@ unresearched gap on this project's side. Cloud Functions MCP tooling
 and IRSA/OIDC provider association remain unconfirmed; not everything
 closed in one pass.
 
-### 2. Storage backend unification
-The exact same open question, asked five separate times, never
-actually resolved into one answer:
-- Where do `SkillProposal` records persist? (`docs/skills_and_workspace_design.md`,
+### 2. Storage backend unification — **PARTIALLY RESOLVED** (`SkillUsageRecord` slice)
+`docs/config_storage_backend.md` now gives `SkillUsageRecord` a
+concrete schema (`skill_usage_records` table, same SQLite file
+`harness/tool_dispatcher.py` already opens) — forced concrete by
+`docs/structured_match_rule_for_skills.md` Part F0c needing a live,
+uncached read for `lifecycle_state`. The rest of this cluster is still
+open, asked five separate times, never actually resolved into one
+answer:
+- Where do `SkillProposal` records **themselves** persist (the
+  draft/review record, distinct from usage tracking, still
+  undesigned)? (`docs/skills_and_workspace_design.md`,
   `docs/skill_loading_and_enforcement_gap.md`)
 - Where does `MemoryEntry` persist? (`docs/harness_memory_design.md`)
 - Where does org-level `IacSourceRef` persist? (`docs/iac_based_discovery.md`
