@@ -41,17 +41,18 @@ unresearched gap on this project's side. Cloud Functions MCP tooling
 and IRSA/OIDC provider association remain unconfirmed; not everything
 closed in one pass.
 
-### 2. Storage backend unification — **PARTIALLY RESOLVED** (`SkillUsageRecord` slice)
-`docs/config_storage_backend.md` now gives `SkillUsageRecord` a
-concrete schema (`skill_usage_records` table, same SQLite file
-`harness/tool_dispatcher.py` already opens) — forced concrete by
-`docs/structured_match_rule_for_skills.md` Part F0c needing a live,
-uncached read for `lifecycle_state`. The rest of this cluster is still
-open, asked five separate times, never actually resolved into one
-answer:
-- Where do `SkillProposal` records **themselves** persist (the
-  draft/review record, distinct from usage tracking, still
-  undesigned)? (`docs/skills_and_workspace_design.md`,
+### 2. Storage backend unification — **PARTIALLY RESOLVED** (`SkillUsageRecord` + `SkillProposal` slices)
+`docs/config_storage_backend.md` now gives both `SkillUsageRecord`
+(`skill_usage_records` table, forced concrete by
+`docs/structured_match_rule_for_skills.md` Part F0c's live-read
+requirement) and `SkillProposal` (`skill_proposals` table, large
+content as files referenced by path rather than blobs) concrete
+schemas — same SQLite file `harness/tool_dispatcher.py` already opens,
+a third and fourth table, not a third storage system. The rest of this
+cluster is still open, asked five separate times, never actually
+resolved into one answer:
+- Where do `SkillProposal` records **themselves** persist? — **resolved**,
+  see above. (`docs/skills_and_workspace_design.md`,
   `docs/skill_loading_and_enforcement_gap.md`)
 - Where does `MemoryEntry` persist? (`docs/harness_memory_design.md`)
 - Where does org-level `IacSourceRef` persist? (`docs/iac_based_discovery.md`

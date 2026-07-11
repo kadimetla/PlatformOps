@@ -179,6 +179,11 @@ class SkillProposal(BaseModel):
 **`docs/structured_match_rule_for_skills.md`** (`resource_types: list[str]`,
 CFN-style, the deterministic matching key for the zero-LLM template-fill
 path) — see those docs rather than a second copy of this schema here.
+**Persisted in `docs/config_storage_backend.md`**: a `skill_proposals`
+SQLite table (same database as the dispatcher's audit/approval tables),
+large content (`draft_skill_md`/`draft_iac_snippet`/`draft_iac_template`)
+as real files referenced by a `content_path` column, not inline blobs —
+this schema was design-only, with no storage location, until that doc.
 
 ### Materialization and promotion
 1. A `SkillProposal` starts scoped to the originating BU only — never

@@ -225,9 +225,88 @@ This resolves this doc's own open item below ("`SkillProposal`...
 should probably be answered together with this one") for
 `SkillUsageRecord` specifically — `SkillProposal` itself (the
 draft/review record, distinct from usage tracking) still needs its own
-schema in the same database, not yet designed here. `MemoryEntry` and
-org-level `IacSourceRef` persistence (the other two record types in
-`docs/remaining_deep_dives.md` item 2) remain unresolved.
+schema in the same database, designed next.
+
+## `SkillProposal` storage — files for content, SQLite for what needs to be queried
+This doc itself already flagged the shape of the problem, in passing,
+without resolving it: *"Object storage remains the right tool for the
+*other* things in this system that are large and unstructured —
+`PlanRecord.plan_text`, `SkillProposal.draft_iac_snippet`... just not
+the org/BU registry itself."* Correct that "doesn't belong in the
+relational registry" diagnosis, wrong prescription — this project
+already has a pattern for exactly this content shape, and it isn't
+object storage. `docs/skill_proposal_execution_and_templating.md` Part
+D: *"the generated IaC becomes the `scripts/`... subdirectory of a real
+skill folder... not inline text embedded in `SKILL.md` itself."* The
+same shape applies **before** approval, not just after: files on disk,
+referenced by path — the same reference-not-blob pattern
+`WorkspaceBundle.aws_profile` already uses — not a blob column and not
+a new object-storage dependency this project has never otherwise
+needed.
+
+```sql
+CREATE TABLE IF NOT EXISTS skill_proposals (
+    proposal_id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    bu_id TEXT NOT NULL,
+    source_plan_id TEXT NOT NULL,
+    trigger_description TEXT NOT NULL,
+    content_path TEXT NOT NULL,      -- directory holding draft_skill_md/
+                                       -- draft_iac_snippet/draft_iac_template
+                                       -- as real files — a reference, not a blob
+    resource_types TEXT NOT NULL,     -- JSON array, CFN-style — same convention
+                                       -- as skill_usage_records
+    status TEXT NOT NULL DEFAULT 'pending_execution_confirmation',
+    confirmed_execution_plan_id TEXT,
+    reviewer TEXT,
+    approved_at DATETIME,
+    version INTEGER NOT NULL DEFAULT 1,
+    promoted_to TEXT                  -- NULL | 'org' | 'bundled'
+)
+```
+Same physical database as `skill_usage_records` — a third table, not a
+third storage system. `content_path` points at a staging location (e.g.
+`pending_proposals/<proposal_id>/`) holding real files (`SKILL.md`,
+`scripts/main.tf`) in the same shape a materialized skill has, just not
+yet promoted into `workspaces/<agent_id>/skills/`.
+
+### Status transitions are gated writes, not free-form updates
+`docs/control_ui_approval_queue_design.md` Part B established a
+self-review-prevention rule for infra approvals —
+`ApprovalRecord.human_reviewer` must never equal the requester. That
+rule was never previously stated for `SkillProposal` review, but the
+same reasoning applies identically and should gate the write, not just
+be documented as a norm:
+- `pending_execution_confirmation → pending_review`: only on a passing
+  `SmokeTestResult` (`spec/flow_steps/08_execution_and_audit.md`'s
+  existing scenario — unchanged, now has a real row to update).
+- `pending_review → approved`: requires `reviewer IS NOT NULL` **and**
+  `reviewer != <source_plan_id's requester>` — the self-review check,
+  extended to skill review for the first time here.
+- `pending_review → rejected`: no reviewer restriction.
+
+### Materialization write — closes a loop Part F0 left implicit
+On `approved`, the content at `content_path` is read and written as the
+real `SKILL.md` at `workspaces/<agent_id>/skills/<name>/` (or the
+org/bundled tier, per `promoted_to`) — and critically,
+`resource_types` must be written into that real file's
+`frontmatter.metadata.resource_types`, not left behind in the
+`skill_proposals` row. This is the concrete mechanism connecting this
+table to `docs/structured_match_rule_for_skills.md` Part F0's
+`Frontmatter.metadata["resource_types"]`: without this explicit write
+at materialization time, a newly-approved skill would never become
+eligible for the deterministic matching path, no matter how correctly
+`skill_proposals.resource_types` was populated beforehand.
+
+### Left open
+Versioning semantics (`version: int`) — whether a rejected proposal
+being revised and resubmitted increments `version` on the same row or
+creates a new `proposal_id` isn't resolved here; no prior doc specified
+the trigger for a version bump either.
+
+`MemoryEntry` and org-level `IacSourceRef` persistence (the other two
+record types in `docs/remaining_deep_dives.md` item 2) remain
+unresolved by either this section or the `SkillUsageRecord` one above.
 
 ## Open questions / not yet decided
 - SQLite is fine for a single self-hosted deployment; a managed SaaS
@@ -238,11 +317,11 @@ org-level `IacSourceRef` persistence (the other two record types in
 - Migration path: does `config/*.yaml` become a one-time import into the
   `agents`/`workspace_bundles` tables, or do both backends need to
   coexist for some transition period? Not decided.
-- **Resolved for `SkillUsageRecord` specifically**, see the new section
-  above — same database, a new `skill_usage_records` table. Where
-  `SkillProposal` itself persists (`docs/skills_and_workspace_design.md`'s
-  own open question) is still open — same underlying decision, but a
-  different table with a different schema, not yet designed.
+- **Resolved for both `SkillUsageRecord` and `SkillProposal`**, see the
+  two sections above — same database, `skill_usage_records` and
+  `skill_proposals` tables, large content as files referenced by path
+  rather than blobs or a new object-storage dependency. Versioning
+  semantics for a revised-and-resubmitted `SkillProposal` remain open.
 
 ## How this relates to the existing docs
 - Resolves the "Where does workspace config... actually live" open
@@ -252,9 +331,21 @@ org-level `IacSourceRef` persistence (the other two record types in
   `get_usage_record(sid).lifecycle_state` a real schema and storage
   location — that doc specified the *policy* (read live, never coarsely
   cached); this doc specifies the *table*.
+- Gives `docs/skills_and_workspace_design.md` Part C's `SkillProposal`
+  sketch a real persistence layer for the first time — that doc defined
+  the schema and lifecycle, this doc defines where it lives and how
+  status transitions are gated.
+- Extends `docs/control_ui_approval_queue_design.md` Part B's
+  self-review-prevention rule (`ApprovalRecord.human_reviewer` !=
+  requester) to `SkillProposal.reviewer`, not previously stated for
+  skill review specifically.
+- Closes a loop `docs/structured_match_rule_for_skills.md` Part F0 left
+  implicit: `resource_types` must be written into the materialized
+  `SKILL.md`'s `frontmatter.metadata` at approval time, not just
+  populated on the pre-approval `SkillProposal` row.
 - Partially resolves `docs/remaining_deep_dives.md` item 2 — the
-  `SkillUsageRecord` slice of "storage backend unification," not
-  `MemoryEntry` or `IacSourceRef`.
+  `SkillUsageRecord` and `SkillProposal` slices of "storage backend
+  unification," not `MemoryEntry` or `IacSourceRef`.
 - Doesn't change `docs/HARNESS_DESIGN.md`'s isolation-level table; maps
   the storage decision onto levels that table already defines.
 - Doesn't change the one required next step
