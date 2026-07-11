@@ -308,6 +308,70 @@ the trigger for a version bump either.
 record types in `docs/remaining_deep_dives.md` item 2) remain
 unresolved by either this section or the `SkillUsageRecord` one above.
 
+## `MemoryEntry` storage — the self-hosted case was already designed; only the DB case was missing
+`docs/harness_memory_design.md` already fully designed the self-hosted
+path — literal `memory/YYYY-MM-DD.md` (append-only daily log) and
+`MEMORY.md` (curated index of currently-valid entries) files, real and
+complete, unaffected by anything here. Its own "Where it persists"
+section asserts *"the same database... for managed SaaS"* but never
+gave it a schema — the same gap this doc already closed twice for
+`SkillUsageRecord` and `SkillProposal`, and that doc predicted
+correctly: *"there's no reason `SkillProposal` and `MemoryEntry` would
+land in different places once either decision is made."* Confirmed —
+they land in the same database, a fourth table.
+
+### Does the two-file split need two tables? No.
+`memory/YYYY-MM-DD.md` vs. `MEMORY.md` exists specifically because
+**markdown files can't be filtered** — two physical locations are the
+only way to get "everything, ever" separated from "what's still true."
+A database doesn't have that constraint. `MemoryEntry.is_valid` is
+already a field; `WHERE is_valid = 1` gives `MEMORY.md`'s exact role for
+free, and since nothing is ever deleted (only appended or marked
+invalid, per that doc's own rule), the full table already *is* the
+daily-log archive — every row, always queryable. The two-file split
+collapses into one table plus a `WHERE` clause, not two tables mirroring
+the two files.
+
+```sql
+CREATE TABLE IF NOT EXISTS memory_entries (
+    entry_id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    bu_id TEXT NOT NULL,
+    category TEXT NOT NULL,       -- "operational" | "preference" | "incident" | "reference"
+    summary TEXT NOT NULL,
+    detail TEXT,
+    authored_by TEXT NOT NULL,    -- "agent" or a channel_user_id
+    source_plan_id TEXT,
+    confirmed_by TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_valid INTEGER NOT NULL DEFAULT 1,
+    superseded_by TEXT            -- entry_id of a correcting entry
+)
+```
+Same physical database as `skill_usage_records`/`skill_proposals`/the
+org registry tables — a fourth table, not a new storage system. A
+`MemoryStore` class, same shape as `SkillUsageStore` — a separate
+Python concern, a shared file. Write frequency is low (at most a couple
+entries per request) and mutations are single-row (`is_valid`/
+`confirmed_by` flips) — none of `SkillUsageRecord`'s concurrent-counter
+complexity applies here.
+
+### Two read paths this makes concretely queryable, where they weren't before
+- **Context injection** (what the files-only design calls loading
+  `MEMORY.md`'s index): `SELECT * FROM memory_entries WHERE bu_id = ?
+  AND is_valid = 1 ORDER BY created_at DESC`.
+- **The batch-review panel** — `docs/harness_memory_design.md`'s own
+  open question (*"what triggers the 'batch review of unconfirmed
+  memory'... a threshold of unconfirmed entries?"*) becomes directly
+  answerable: `SELECT COUNT(*) FROM memory_entries WHERE bu_id = ? AND
+  authored_by = 'agent' AND confirmed_by IS NULL AND is_valid = 1` is a
+  cheap query a threshold trigger can poll — in the files-only design
+  this would mean parsing every daily markdown file.
+
+### Left open
+Org-level `IacSourceRef` persistence (`docs/remaining_deep_dives.md`
+item 2's last remaining record type) is still unresolved by this doc.
+
 ## Open questions / not yet decided
 - SQLite is fine for a single self-hosted deployment; a managed SaaS
   deployment serving many orgs concurrently likely wants Postgres
@@ -317,11 +381,14 @@ unresolved by either this section or the `SkillUsageRecord` one above.
 - Migration path: does `config/*.yaml` become a one-time import into the
   `agents`/`workspace_bundles` tables, or do both backends need to
   coexist for some transition period? Not decided.
-- **Resolved for both `SkillUsageRecord` and `SkillProposal`**, see the
-  two sections above — same database, `skill_usage_records` and
-  `skill_proposals` tables, large content as files referenced by path
-  rather than blobs or a new object-storage dependency. Versioning
-  semantics for a revised-and-resubmitted `SkillProposal` remain open.
+- **Resolved for `SkillUsageRecord`, `SkillProposal`, and `MemoryEntry`**,
+  see the three sections above — same database throughout,
+  `skill_usage_records`/`skill_proposals`/`memory_entries` tables, large
+  content as files referenced by path rather than blobs or a new
+  object-storage dependency. Versioning semantics for a
+  revised-and-resubmitted `SkillProposal` remain open. Org-level
+  `IacSourceRef` is the one record type in `docs/remaining_deep_dives.md`
+  item 2 still unaddressed.
 
 ## How this relates to the existing docs
 - Resolves the "Where does workspace config... actually live" open
@@ -343,9 +410,13 @@ unresolved by either this section or the `SkillUsageRecord` one above.
   implicit: `resource_types` must be written into the materialized
   `SKILL.md`'s `frontmatter.metadata` at approval time, not just
   populated on the pre-approval `SkillProposal` row.
+- Gives `docs/harness_memory_design.md`'s "Where it persists" section a
+  real schema for the managed-SaaS case it asserted but never designed
+  — and confirms that doc's own prediction that `SkillProposal` and
+  `MemoryEntry` would land in the same database.
 - Partially resolves `docs/remaining_deep_dives.md` item 2 — the
-  `SkillUsageRecord` and `SkillProposal` slices of "storage backend
-  unification," not `MemoryEntry` or `IacSourceRef`.
+  `SkillUsageRecord`, `SkillProposal`, and `MemoryEntry` slices of
+  "storage backend unification," leaving only `IacSourceRef`.
 - Doesn't change `docs/HARNESS_DESIGN.md`'s isolation-level table; maps
   the storage decision onto levels that table already defines.
 - Doesn't change the one required next step

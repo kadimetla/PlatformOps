@@ -137,6 +137,17 @@ should be resolved together with this one; there's no reason
 `SkillProposal` and `MemoryEntry` would land in different places once
 either decision is made.
 
+**Given a concrete schema in `docs/config_storage_backend.md`**: a
+`memory_entries` table, same database as `skill_usage_records`/
+`skill_proposals`. Confirms the prediction above — same database, not
+different ones. Also resolves a design question this doc didn't pose:
+the two-file split (`memory/YYYY-MM-DD.md` archive vs. `MEMORY.md`
+curated index) is a filesystem affordance, not a data-model requirement
+— it collapses into one table plus `WHERE is_valid = 1` in the DB case,
+since a database (unlike markdown files) can already filter, so nothing
+needs two physical locations to separate "everything, ever" from
+"what's still true."
+
 ## What reads memory, and when
 Loaded alongside `AGENTS.md`/`SOUL.md`/`TOOLS.md` at the same point a
 request's workspace context is assembled — inside the not-yet-built
@@ -155,7 +166,11 @@ every other design doc in this set has to Phase 3.
   three, not three separate ones.
 - What triggers the "batch review of unconfirmed memory" — a scheduled
   cadence, a threshold of unconfirmed entries, or purely on-demand when
-  a BU admin opens the Control UI? Not decided.
+  a BU admin opens the Control UI? Not decided which one, but
+  `docs/config_storage_backend.md`'s `memory_entries` schema makes a
+  threshold trigger concretely cheap to implement (a single `COUNT(*)`
+  query) for the managed-SaaS case, where it would have meant parsing
+  every daily markdown file in the files-only design.
 - Should `category` be a closed enum enforced at write time, or free
   text? Leaning closed enum (matches `operation`'s closed set in
   `ToolIntent`), not yet decided.
