@@ -241,6 +241,9 @@ Finally, check the Billing console once more before walking away.
 - `docs/HARNESS_DESIGN.md` — the product-level design for a multi-channel,
   multi-tenant harness (OpenClaw-inspired) that this hackathon build is one
   slice of; not built yet, see that doc for the built-vs-designed line
+- `openspec/` — tracks going-forward implementation work (proposals,
+  design, specs, tasks) once a design is ready to build; see
+  `CONTRIBUTING.md` before starting a change
 
 ## Roadmap: multi-cloud and other IaC tools
 This MVP covers AWS via two tool paths. Extending it means adding a new
