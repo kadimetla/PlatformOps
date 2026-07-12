@@ -95,6 +95,21 @@ discovery case). Recreating a deleted resource or deleting an
 unexpected one automatically is a materially different, higher-risk
 decision this change doesn't make.
 
+**Discovery walks network → compute → identity, the same order creation
+already does — not one unordered pass.** `docs/foundation_layer_decomposition.md`
+put network at the root of the creation dependency chain
+(`depends_on_foundation_id = None`) precisely because everything else
+depends on it; discovery inherits the same reason. Classifying a
+discovered compute resource as part of a usable foundation requires
+already knowing which VPC/VNet it sits in — discovering compute before
+network produces a technically-complete-later but momentarily
+uninterpretable inventory, not just a differently-ordered one.
+Alternative considered: discover everything in one unordered pass,
+classify relationships afterward — rejected, since a live listing call
+returning resources in arbitrary order gives no way to tell a
+dependency edge from two unrelated resources without the network
+context already in hand.
+
 ## Risks / Trade-offs
 
 - [Risk] The nightly sweep runs per org, inside that org's own isolated
@@ -118,3 +133,15 @@ decision this change doesn't make.
   [Mitigation] not addressed in this design; worth a follow-up if it
   proves real, not designed defensively against a hypothetical scale
   problem now.
+- [Risk] **GCP has no live-API discovery path for the network layer at
+  all** — confirmed in `docs/gcp_azure_verification_pass.md`: no tool
+  wraps `compute.networks.list`/`subnetworks.list`, and the GKE MCP
+  server is read-only *and cluster-internal only* (tells you what's
+  inside a cluster, nothing about the VPC it sits in). A GCP BU with no
+  registered `IacSourceRef` cannot have its network layer discovered by
+  this change's bootstrap sweep at all → [Mitigation] bootstrap
+  discovery SHALL flag this explicitly for GCP BUs with no registered
+  IaC state — *"network layer could not be discovered, register IaC
+  state or provide it manually"* — rather than silently producing an
+  inventory that's missing its most foundational layer. Not a
+  workaround for the underlying tooling gap, which stays open.

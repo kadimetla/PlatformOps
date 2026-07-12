@@ -21,10 +21,23 @@
       for anything not covered
 - [ ] 2.2 Write each discovered resource as an `InfraInventoryRecord`
       with `provenance` set accordingly
-- [ ] 2.3 Write tests covering: a BU with registered IaC state only
+- [ ] 2.3 Sequence discovery network-layer first, then compute, then
+      identity, within one sweep — not one unordered pass. Mirrors
+      `docs/foundation_layer_decomposition.md`'s creation dependency
+      chain applied to discovery instead of creation.
+- [ ] 2.4 For GCP BUs specifically, when no `IacSourceRef` is
+      registered: record an explicit finding that the network layer
+      could not be discovered (no live-API tool covers
+      `compute.networks.list`/`subnetworks.list`, and the GKE MCP
+      server is read-only and cluster-internal only) — surface it,
+      don't silently produce an inventory missing its network layer
+- [ ] 2.5 Write tests covering: a BU with registered IaC state only
       falls back to live API for uncovered resources; a BU with no IaC
       state uses live API for everything; the sweep is idempotent if
-      run twice (no duplicate rows)
+      run twice (no duplicate rows); network-layer records exist before
+      compute-layer discovery begins; an unregistered GCP BU produces an
+      explicit network-discovery-gap finding, not a silently incomplete
+      inventory
 
 ## 3. Incremental inventory update
 
