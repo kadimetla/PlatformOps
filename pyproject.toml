@@ -9,6 +9,7 @@ dependencies = [
     "mcp",
     "pyyaml",
     "pydantic",
+    "python-hcl2>=8.1.2",
 ]
 # Note: boto3 is no longer a direct dependency — provisioning now routes
 # through external MCP servers (awslabs.aws-iac-mcp-server, awslabs.ccapi-mcp-server,

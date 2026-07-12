@@ -3,14 +3,14 @@
 ## Owning code
 `agents/provisioning_agent.py`, `agents/cdk_provisioning_agent.py`,
 `agents/terraform_provisioning_agent.py` — real ADK agents, the
-LLM-drafting path only. The `plan_request(envelope) -> PlanRecord`
-wrapper that would formalize this step's boundary is
-`docs/planned_implementation.md` Phase 3, the one required next step
-across this whole project — now with a complete, verified
-implementation ready to adapt (`docs/plan_request_verified_implementation.md`),
-including a **second, zero-LLM path** not reflected in the agent files
-above: `SkillTemplateFillAgent`, a deterministic `BaseAgent` subclass
-(`docs/deterministic_plan_drafting.md`), not yet built as code either.
+LLM-drafting path. **`harness/plan_request.py`** now wraps both
+branches behind a real, tested `plan_request(envelope, bundle,
+usage_store)` boundary (`openspec/changes/wire-plan-request-envelope/`)
+— the second, zero-LLM path is real code too, not a sketch:
+`harness/skill_template_agent.py` (`SkillTemplateFillAgent`,
+`check_structured_match`), `harness/skill_matching.py`
+(`resolve_skill_candidates`), `harness/skill_usage_store.py`
+(`SkillUsageStore`).
 
 ## Input contract
 **Corrected — `docs/structured_match_rule_for_skills.md`**: `RequestEnvelope`
@@ -26,11 +26,16 @@ is what actually decides this step's branch (see Scenarios below), not
 "was there any match at all."
 
 ## Output contract
-`PlanRecord` (`harness/schemas.py:39`) — `plan_id`, `request_id`,
-`toolchain`, `plan_text`, `plan_hash`, `vibe_diff`,
-`estimated_monthly_cost`. Identical shape regardless of which branch
-below produced it — the dispatcher, `ApprovalRecord`, and audit trail
-never know or care which one ran.
+**Corrected during implementation**: `(PlanRecord, list[ToolIntent])`,
+not `PlanRecord` alone — `PlanRecord` (`harness/schemas.py:39`) has no
+field to carry captured `propose_tool_intent` calls, and each
+`ToolIntent.plan_hash` must equal the final `PlanRecord.plan_hash`,
+known only once the full event stream is assembled. `PlanRecord`'s own
+shape is unchanged (`plan_id`, `request_id`, `toolchain`, `plan_text`,
+`plan_hash`, `vibe_diff`, `estimated_monthly_cost`) and identical
+regardless of which branch produced it — the dispatcher,
+`ApprovalRecord`, and audit trail still never know or care which one
+ran.
 
 ## Scenarios
 
@@ -60,19 +65,39 @@ When `provisioning_agent` follows the `provision-infra` skill's Step 0
 Then it defaults to `cdk` — one fewer external dependency than the Terraform path (`skills/provision-infra/SKILL.md:37`)
 
 ## Status
-Real ADK agents draft plans today, but not through a formal
-`plan_request(envelope)` boundary — there's no `Runner`/`Session`
-construction anywhere in `agents/orchestrator.py`
-(`NEXT_STEPS.md:26-27`), so this step exists as agent behavior, not as
-a callable function with the contract above yet. The Runner/Session API
-itself is now verified, not just designed —
-`docs/plan_request_verified_implementation.md` installed `google-adk`
-directly and has a complete implementation ready to adapt; what's
-missing is wiring it into this codebase, not knowing how.
+**Real code, both branches, tested — `openspec/changes/wire-plan-request-envelope/`**.
+`plan_request(envelope, bundle, usage_store)` in `harness/plan_request.py`
+constructs a real `Runner`/`Session` and routes to either branch based
+on `check_structured_match()`'s result. 41 tests passing across
+`tests/test_plan_request.py`, `test_plan_request_boundary.py`,
+`test_skill_matching.py`, `test_skill_usage_store.py`, and
+`test_skill_template_agent.py`, plus the pre-existing
+`tests/test_harness.py` suite with no regressions.
 
-The deterministic branch (`SkillTemplateFillAgent`,
-`check_structured_match()`, `resolve_skill_candidates()`) is design
-only, none of it implemented — `envelope_to_spec()` in Step 3's input
-contract and `SkillMatch` above are the same gap, not two. Until built,
-this step runs as `root_agent`-only in practice, i.e. the "ambiguous or
-incomplete match" scenario is the only one actually reachable today.
+Two real, honest gaps, not silently glossed over:
+- **`extract_spec_from_free_text()`'s LLM call and `root_agent`'s own
+  drafting are wired but not exercised against a real model** — no
+  credentials configured in the environment this was built in. Needs
+  verification in a credentialed environment before this step is fully
+  confirmed end to end.
+- **No real narrowly-scoped skill exists in `skills/` yet** —
+  `provision-infra` is deliberately general-purpose (arbitrary
+  resource types, no fixed `resource_types` metadata), so
+  `resolve_skill_candidates()` against the real `skills/` directory
+  correctly returns no candidates today. The deterministic branch is
+  real, tested code (verified against synthetic on-disk skills, and
+  end to end through a real ADK `Runner`) but won't actually activate
+  in production until a `SkillProposal` narrowly scoped to one
+  resource-type set gets materialized — `SkillProposal` persistence
+  itself isn't built (`docs/config_storage_backend.md`'s design, no
+  code yet). "An ambiguous or incomplete match falls back to the LLM"
+  is therefore still the only scenario reachable against real,
+  on-disk skills today, same as before this change — what changed is
+  that the fallback is now a real, deliberate code path with a passing
+  test, not an implicit default.
+- Separately, still open from earlier in this change (not a task-6
+  finding, restated for continuity): `cdk_provisioning_agent`/
+  `terraform_provisioning_agent` still have mutating MCP tools attached
+  directly — `specs/plan-request-boundary/spec.md`'s "known,
+  pre-existing gap" note has the full detail. Not regressed by this
+  change, not closed by it either.

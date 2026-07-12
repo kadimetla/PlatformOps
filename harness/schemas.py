@@ -75,3 +75,18 @@ class ToolIntent(BaseModel):
     region: str
     estimated_monthly_cost: float
     payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SkillPromotionPolicy(BaseModel):
+    """Thresholds gating a skill's lifecycle_state transitions
+    (docs/skill_promotion_thresholds.md Part E) -- policy, not constants,
+    configurable per org; these are the cited defaults."""
+
+    org_id: str
+    consecutive_success_limit: int = Field(
+        default=3, description="Consecutive successes to promote provisional -> stable"
+    )
+    consecutive_failure_limit: int = Field(
+        default=5, description="Consecutive failures to demote stable -> provisional"
+    )
+    min_parameter_diversity: int = Field(default=3)

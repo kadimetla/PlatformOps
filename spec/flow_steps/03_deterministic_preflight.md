@@ -52,8 +52,14 @@ When no FoundationRecord with status="active" exists for the requesting BU
 Then compliance check FAILS with reason "app-layer deploy has no active foundation to depend on"
 
 ## Status
-Existing resource-content rules: **real code**
-(`spec/check_compliance.py`), but not yet wired as a mandatory
-preflight before the ADK agent graph runs (`docs/HARNESS_DESIGN.md`'s
-runtime-boundary gap #4). New context-shaped rules: design only, not
-yet implemented as code or added to `reference_architecture.md`.
+**Wired as a mandatory preflight — real code**, closing
+`docs/HARNESS_DESIGN.md`'s runtime-boundary gap #4:
+`harness/plan_request.py#run_compliance_preflight()` calls
+`check_compliance()` and raises `ComplianceError` on any failure, before
+any `Runner` is constructed (`openspec/changes/wire-plan-request-envelope/`,
+`tests/test_plan_request.py`/`test_plan_request_boundary.py`).
+`envelope_to_spec()` — this step's real input producer, described above
+— is real code too, not a sketch. New context-shaped rules
+(foundation-tier approval, IAM permissions boundary, app-layer
+foundation dependency): still design only, not yet implemented as code
+or added to `reference_architecture.md`.
