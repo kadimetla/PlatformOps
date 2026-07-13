@@ -52,7 +52,7 @@ complete; only the managed-SaaS DB schema was missing), and org-level
 `IacSourceRef` (not its own table — it rides inside a newly-added
 `orgs` table that `docs/org_registry_design.md` Part E assumed already
 existed but never actually got designed) concrete schemas — same
-SQLite file `harness/tool_dispatcher.py` already opens, four more
+SQLite file `gateway/tool_dispatcher.py` already opens, four more
 tables, not four more storage systems:
 - Where do `SkillProposal` records **themselves** persist? — **resolved**.
   (`docs/skills_and_workspace_design.md`, `docs/skill_loading_and_enforcement_gap.md`)

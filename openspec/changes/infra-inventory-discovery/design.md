@@ -59,7 +59,7 @@ class InfraInventoryRecord(BaseModel):
 **`resource_type` is provider-native, not CFN-style — corrected
 (2026-07-13).** An earlier draft of this schema commented `resource_type`
 as *"CFN-style, same convention as `ToolIntent.resource_type`"* — grounded
-in `harness/skill_matching.py`'s real `SPEC_TYPE_TO_CFN_TYPE` table and
+in `gateway/skill_matching.py`'s real `SPEC_TYPE_TO_CFN_TYPE` table and
 `infra/allowed-resource-types.json`, but that convention is genuinely
 AWS-only (2 entries, both `AWS::*`) and nothing in this codebase maps a
 GCP Cloud Asset Inventory `assetType` (`compute.googleapis.com/Network`)

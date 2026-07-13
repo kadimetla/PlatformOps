@@ -4,7 +4,7 @@
 Design only. Confirmed by search: no code in this repo references
 ServiceNow or Jira anywhere — only unelaborated "future channel"
 mentions in `docs/HARNESS_DESIGN.md`. `ApprovalRecord`
-(`harness/schemas.py:50-59`) has no ticket-related fields. This is that
+(`gateway/schemas.py:50-59`) has no ticket-related fields. This is that
 design, grounded in real, current ServiceNow/Jira MCP tooling rather
 than assumed capability (see Sources).
 
@@ -53,7 +53,7 @@ For resource types whose policy requires a formal change record:
 5. Gateway verifies the embedded `plan_hash` matches the `PlanRecord`
    being gated **before** setting `ApprovalRecord.human_approved=True`
    — the same tamper-evidence principle
-   `harness/tool_dispatcher.py:89-91` already applies to plan-hash
+   `gateway/tool_dispatcher.py:89-91` already applies to plan-hash
    verification for internally-recorded approvals.
 
 ### Mode B — the requester references an already-approved ticket (pull)
@@ -108,7 +108,7 @@ class ApprovalRecord(BaseModel):
 ## Part E: Dispatcher check addition
 `BrokeredToolDispatcher.evaluate_intent()` gains one more deny-by-default
 check, same shape as its existing resource-type/region/plan-hash checks
-(`harness/tool_dispatcher.py:50-105`): if the resource type's
+(`gateway/tool_dispatcher.py:50-105`): if the resource type's
 `review_policy` requires an external ticket, deny unless
 `external_ticket_id` is set **and** `ticket_scope_verified=True`.
 
@@ -150,7 +150,7 @@ that.
   (approval-completion signal) rather than designing a new channel
   type.
 - Reuses the plan-hash tamper-evidence principle already in
-  `harness/tool_dispatcher.py`, applied to ticket-embedded scope
+  `gateway/tool_dispatcher.py`, applied to ticket-embedded scope
   verification instead of internal `ApprovalRecord` matching.
 - Doesn't change the one required next step
   (`plan_request(envelope)`, `docs/planned_implementation.md` Phase 3).

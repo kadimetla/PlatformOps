@@ -95,10 +95,10 @@ on skill provenance (bundled vs. org vs. BU vs. freshly-drafted).
   records.
 
 ## 8. Dispatcher gate
-`harness/tool_dispatcher.py`'s `BrokeredToolDispatcher.evaluate_intent()`
+`gateway/tool_dispatcher.py`'s `BrokeredToolDispatcher.evaluate_intent()`
 — deny-by-default: approval matches, resource type allow-listed, region
 matches, cost under ceiling. Unchanged from the core design; this part is
-real, tested code today (see `tests/test_harness.py`), just not yet wired
+real, tested code today (see `tests/test_gateway.py`), just not yet wired
 to a live request.
 
 ## 9. Execution
@@ -118,13 +118,13 @@ reason all get written to the audit log.
 | Step | Status |
 |---|---|
 | 1 (CopilotKit channel, identity via SSO) | Design only |
-| 2 (workspace bundle loading) | Real, tested — `harness/config_engine.py` |
+| 2 (workspace bundle loading) | Real, tested — `gateway/config_engine.py` |
 | 3 (skill registry, bundled→org→BU resolution) | Design only |
 | 4 (reuse vs. author branch, `SkillProposal`) | Design only |
 | 5 (deterministic preflight) | Real code (`spec/check_compliance.py`), not yet called automatically |
 | 6 (security review) | Real LLM reasoning step, prompt-level only — see `docs/current_architecture.md` Section 5 |
 | 7 (two-track approval) | Design only |
-| 8 (dispatcher gate) | Real, tested in isolation — `harness/tool_dispatcher.py` |
+| 8 (dispatcher gate) | Real, tested in isolation — `gateway/tool_dispatcher.py` |
 | 9 (execution) | Real MCP tools exist; not yet gated by step 8 in the live agent graph |
 | 10 (A2UI response rendering) | Design only |
 | 11 (audit, minus `channel_user_id`) | Partially real — the SQLite write is tested, the missing field is a tracked gap |

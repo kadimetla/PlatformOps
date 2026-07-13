@@ -112,20 +112,20 @@ and real gaps — see `docs/harness_deep_dive.md` and
 | # | What should happen | Reality today |
 |---|---|---|
 | 1 | Look up the inbound channel/workspace/channel-id against `config/bindings.yaml` to resolve `org_id`/`bu_id`/`agent_id` | **Gap** — `ConfigLoader` loads and validates the binding list (real, tested), but no `resolve(channel, workspace_id, channel_id)` lookup function exists yet |
-| 2 | Construct a `RequestEnvelope` from the message | **Gap** — the schema is real (`harness/schemas.py`), nothing constructs one from a real message yet |
-| 3 | Load the `WorkspaceBundle` for that BU (region, allowed resource types, cost ceiling) | **Real** — `harness/config_engine.py` + `config/workspace_bundles/acme-payments.yaml`, tested |
+| 2 | Construct a `RequestEnvelope` from the message | **Gap** — the schema is real (`gateway/schemas.py`), nothing constructs one from a real message yet |
+| 3 | Load the `WorkspaceBundle` for that BU (region, allowed resource types, cost ceiling) | **Real** — `gateway/config_engine.py` + `config/workspace_bundles/acme-payments.yaml`, tested |
 | 4 | Run `spec/check_compliance.py` against a structured version of the request | **Gap** — it expects a YAML dict shaped like `spec/example_submission.yaml`; nothing translates natural-language text into that shape automatically, and nothing calls it automatically before provisioning starts |
 | 5 | `plan_request(envelope)` starts an ADK Runner around `root_agent` | **Doesn't exist** — `agents/orchestrator.py` only defines `root_agent = Agent(...)`; there's no `Runner`/`Session` construction anywhere in this codebase, and no `if __name__ == "__main__":` block. Running `python -m agents.orchestrator` per `README.md`'s current instructions just constructs the Agent objects and exits — it processes no input at all. (ADK's actual convention is almost certainly `adk web agents/` or `adk run agents/`, which auto-discovers `root_agent`; the README instruction needs fixing, tracked in `NEXT_STEPS.md`.) |
 | 6 | `platformops_orchestrator` → `provisioning_agent` reads "Using CDK" → delegates to `cdk_provisioning_agent` | **Real, live ADK graph** — functional today if a Runner were actually invoking it |
 | 7 | `cdk_provisioning_agent` calls `aws-iac-mcp-server`'s validation tools to draft a template | **Real** — read-only MCP calls, functional once `uvx`/AWS creds are set up per `README.md` |
 | 8 | Produce a `ToolIntent` via a non-executing `propose_tool_intent(...)` tool instead of calling a real mutating tool | **Doesn't exist — and this is a live gap, not just a missing feature**: `agents/cdk_provisioning_agent.py` has `ccapi-mcp-server`'s *mutating* tools (`create_resource`/`update_resource`/`delete_resource`) attached **directly** to the agent today. As currently wired, if a Runner were invoking this graph against a real AWS account, the agent could call a real mutation itself — the "wait for approval" rule is a prompt instruction only, with no code stopping it. |
 | 9 | `security_agent` reviews the Vibe Diff and approves | **Real** LLM reasoning step, but its decision isn't connected to any table or gate — it's text the orchestrator relays, not a recorded, checkable fact |
-| 10 | Record the approval: `dispatcher.record_approval(plan_id, plan_hash, agent_approved=True)` | **Real, tested in isolation** — `tests/test_harness.py` proves this call works, but with fabricated test data, not a real plan from step 9 |
+| 10 | Record the approval: `dispatcher.record_approval(plan_id, plan_hash, agent_approved=True)` | **Real, tested in isolation** — `tests/test_gateway.py` proves this call works, but with fabricated test data, not a real plan from step 9 |
 | 11 | Gate execution: `dispatcher.evaluate_intent(intent)` — checks bundle exists, resource type allow-listed, region matches, approval hash matches and isn't tampered | **Real, tested, deny-by-default** — but nothing calls this before a mutating tool runs, per #8 |
 | 12 | Only on `True`, call the real `ccapi-mcp-server` `create_resource` | **Doesn't exist as a separate, gated step** — see #8 |
 | 13 | Write the result to `audit_logs`, relay it back to the originating Slack channel | **Partially real** — the SQLite write is tested in isolation; there is no channel adapter to relay anything back to Slack at all |
 
-**The one-sentence version**: the harness (`harness/`) is fully tested in
+**The one-sentence version**: the harness (`gateway/`) is fully tested in
 isolation but not invoked by anything real yet, and the live agent graph
 (`agents/`) currently has no runtime enforcement between "the agent
 decides to mutate AWS" and "it happens" — only a prompt telling it to
@@ -192,10 +192,10 @@ for the specific gaps. As of now:
   mechanism stopping `cdk_provisioning_agent` from calling a mutating
   tool without waiting for it.
 - **Layer 3 (Application Allow-List)** — `infra/allowed-resource-types.json`
-  is real data, and `harness/tool_dispatcher.py`'s `BrokeredToolDispatcher`
+  is real data, and `gateway/tool_dispatcher.py`'s `BrokeredToolDispatcher`
   really does check it — but that dispatcher isn't wired into the live
   agent graph yet (see `harness_deep_dive.md`), so this check currently
-  runs only in `tests/test_harness.py`, not on a real request.
+  runs only in `tests/test_gateway.py`, not on a real request.
 
 So today, layer 4 is the only one AWS itself would actually stop you at;
 layers 1-3 are real code or real reasoning, but none of them are

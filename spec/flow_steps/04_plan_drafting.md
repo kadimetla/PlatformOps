@@ -3,13 +3,13 @@
 ## Owning code
 `agents/provisioning_agent.py`, `agents/cdk_provisioning_agent.py`,
 `agents/terraform_provisioning_agent.py` — real ADK agents, the
-LLM-drafting path. **`harness/plan_request.py`** now wraps both
+LLM-drafting path. **`gateway/plan_request.py`** now wraps both
 branches behind a real, tested `plan_request(envelope, bundle,
 usage_store)` boundary (`openspec/changes/wire-plan-request-envelope/`)
 — the second, zero-LLM path is real code too, not a sketch:
-`harness/skill_template_agent.py` (`SkillTemplateFillAgent`,
-`check_structured_match`), `harness/skill_matching.py`
-(`resolve_skill_candidates`), `harness/skill_usage_store.py`
+`gateway/skill_template_agent.py` (`SkillTemplateFillAgent`,
+`check_structured_match`), `gateway/skill_matching.py`
+(`resolve_skill_candidates`), `gateway/skill_usage_store.py`
 (`SkillUsageStore`).
 
 ## Input contract
@@ -27,7 +27,7 @@ is what actually decides this step's branch (see Scenarios below), not
 
 ## Output contract
 **Corrected during implementation**: `(PlanRecord, list[ToolIntent])`,
-not `PlanRecord` alone — `PlanRecord` (`harness/schemas.py:39`) has no
+not `PlanRecord` alone — `PlanRecord` (`gateway/schemas.py:39`) has no
 field to carry captured `propose_tool_intent` calls, and each
 `ToolIntent.plan_hash` must equal the final `PlanRecord.plan_hash`,
 known only once the full event stream is assembled. `PlanRecord`'s own
@@ -57,7 +57,7 @@ Then a genuinely new template is drafted, and the draft may optionally become a 
 ## Scenario: plan_hash is tamper-evident
 Given a drafted `plan_text`
 When `plan_hash` is computed
-Then it is the SHA256 of `plan_text`, checked again at dispatch time against the value recorded at approval time — a mismatch means "tampering suspected" (`harness/tool_dispatcher.py:89-91`)
+Then it is the SHA256 of `plan_text`, checked again at dispatch time against the value recorded at approval time — a mismatch means "tampering suspected" (`gateway/tool_dispatcher.py:89-91`)
 
 ## Scenario: cdk vs. terraform toolchain selection
 Given a user request with no stated tool preference
@@ -66,13 +66,13 @@ Then it defaults to `cdk` — one fewer external dependency than the Terraform p
 
 ## Status
 **Real code, both branches, tested — `openspec/changes/wire-plan-request-envelope/`**.
-`plan_request(envelope, bundle, usage_store)` in `harness/plan_request.py`
+`plan_request(envelope, bundle, usage_store)` in `gateway/plan_request.py`
 constructs a real `Runner`/`Session` and routes to either branch based
 on `check_structured_match()`'s result. 41 tests passing across
 `tests/test_plan_request.py`, `test_plan_request_boundary.py`,
 `test_skill_matching.py`, `test_skill_usage_store.py`, and
 `test_skill_template_agent.py`, plus the pre-existing
-`tests/test_harness.py` suite with no regressions.
+`tests/test_gateway.py` suite with no regressions.
 
 Two real, honest gaps, not silently glossed over:
 - **`extract_spec_from_free_text()`'s LLM call and `root_agent`'s own

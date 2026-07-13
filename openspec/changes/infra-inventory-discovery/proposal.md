@@ -53,10 +53,10 @@ requirements)
 ## Impact
 
 - New module(s) for `InfraInventoryRecord` storage (same SQLite file
-  `harness/tool_dispatcher.py` already opens, per
+  `gateway/tool_dispatcher.py` already opens, per
   `docs/config_storage_backend.md`'s "one storage system" precedent) and
   the three sweep mechanisms.
-- `harness/tool_dispatcher.py`'s `audit_logs` table gains a
+- `gateway/tool_dispatcher.py`'s `audit_logs` table gains a
   `DRIFT_DETECTED` decision value — no schema change, a new value in an
   existing column.
 - Requires a per-org cron scheduling mechanism — not yet chosen (system

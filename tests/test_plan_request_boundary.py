@@ -14,9 +14,9 @@ import os
 
 import pytest
 
-from harness.plan_request import ComplianceError, plan_request
-from harness.schemas import RequestEnvelope, SkillPromotionPolicy, WorkspaceBundle
-from harness.skill_usage_store import SkillUsageStore
+from gateway.plan_request import ComplianceError, plan_request
+from gateway.schemas import RequestEnvelope, SkillPromotionPolicy, WorkspaceBundle
+from gateway.skill_usage_store import SkillUsageStore
 
 TF_MODULE = """
 variable "bucket_name" {

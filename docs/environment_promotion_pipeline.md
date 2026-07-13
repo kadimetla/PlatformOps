@@ -31,7 +31,7 @@ redrafted the script, dev's smoke test would validate something
 different from what actually reaches prod — the exact failure mode
 "build once, promote everywhere" exists to prevent. This project's
 existing `plan_hash` tamper-evidence check
-(`harness/tool_dispatcher.py:89-91`) is already the right mechanism —
+(`gateway/tool_dispatcher.py:89-91`) is already the right mechanism —
 it just needs reuse *across* stages as a promotion key, not only within
 one dispatch.
 

@@ -71,7 +71,7 @@ is now a scoping question, not a research question.
   subprocesses via `uvx` (README §5). HashiCorp's Terraform MCP Server
   is a separate install per its own current docs.
 - Today: a single Python process (`python -m agents.orchestrator`), no
-  daemon, no database — `harness/tool_dispatcher.py`'s SQLite tables
+  daemon, no database — `gateway/tool_dispatcher.py`'s SQLite tables
   (`approvals`, `audit_logs`) are the only persistence that exists in
   code.
 - Not yet built: the Gateway process (channel adapters, session/routing

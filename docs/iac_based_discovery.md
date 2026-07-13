@@ -29,7 +29,7 @@ below is corrected accordingly.
 ### 1. Terraform state — zero new integration
 This project already has `terraform-mcp-server` integrated
 (`mcp_server/external_servers.py`) and `WorkspaceBundle.tfe_workspace`
-(`harness/schemas.py:31`) already names a BU's HCP Terraform workspace.
+(`gateway/schemas.py:31`) already names a BU's HCP Terraform workspace.
 If a BU's foundation is Terraform-managed, discovery is a query against
 a workspace via a tool already in this codebase — not a new
 integration, a new *use* of one that exists.

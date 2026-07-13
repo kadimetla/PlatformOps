@@ -125,7 +125,7 @@ actual need, not built ahead of it.
 **Stage 0 — self-hosted, single org (mostly already built).** One
 process, SQLite with WAL mode, credentials as local env/profile
 references, no tenant router, no outer workflow engine — pending
-approvals just live in the `approvals` table `harness/tool_dispatcher.py`
+approvals just live in the `approvals` table `gateway/tool_dispatcher.py`
 already has, tested. The only real next step, unchanged by anything in
 this doc: wire `plan_request(envelope)`.
 

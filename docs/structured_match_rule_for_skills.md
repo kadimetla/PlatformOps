@@ -24,7 +24,7 @@ both as an uncommented placeholder call inside doc code blocks
 `docs/deterministic_plan_drafting.md`), never defined. Meanwhile
 `spec/check_compliance.py#check_compliance(spec: dict)` is real,
 tested code requiring a structured `dict` — but `RequestEnvelope.raw_payload`
-(`harness/schemas.py:21`) is a bare `str`. Nothing in this project has
+(`gateway/schemas.py:21`) is a bare `str`. Nothing in this project has
 ever defined how one becomes the other, despite `plan_request(envelope)`
 depending on it as its very first step. This gap turns out to be most
 of the structured-match question, not a separate one — "is this request
@@ -181,7 +181,7 @@ skill-loading mechanism.
 **The matching key**: `infra/allowed-resource-types.json` (real,
 existing) already establishes this project's canonical resource-type
 convention — CFN-style (`AWS::S3::Bucket`, `AWS::CloudFront::Distribution`),
-also used by `ToolIntent.resource_type` (`harness/schemas.py:72`). But
+also used by `ToolIntent.resource_type` (`gateway/schemas.py:72`). But
 `spec/example_submission.yaml`/`check_compliance.py` (also real) use a
 different, lowercase convention (`s3_bucket`, `cloudfront_distribution`)
 for the same resources — a genuine existing inconsistency, not
@@ -303,7 +303,7 @@ Changes rarely, only on `SkillProposal` materialization
 (`docs/skills_and_workspace_design.md` Part A step 5). Cache as an
 in-memory `dict[tier_dir, dict[skill_id, Frontmatter]]`, loaded at
 process startup the same way `ConfigLoader.load_and_validate()`
-(`harness/config_engine.py`) loads bundles/bindings — worth being
+(`gateway/config_engine.py`) loads bundles/bindings — worth being
 precise that the real `ConfigLoader` today just raises on validation
 failure, it does **not** yet implement the atomic-swap/keep-last-good
 behavior `docs/HARNESS_DESIGN.md`'s design section describes; this
@@ -330,7 +330,7 @@ after some reload lag. Read live at match time instead. Since it's a
 single indexed lookup by `skill_id`, not a directory walk, there's
 little performance reason to cache it anyway. **Resolved in
 `docs/config_storage_backend.md`**: a `skill_usage_records` table in
-the same SQLite file `harness/tool_dispatcher.py` already opens,
+the same SQLite file `gateway/tool_dispatcher.py` already opens,
 `skill_path` (reusing this doc's own identifier shape) as primary key,
 an atomic UPSERT applying `SkillPromotionPolicy`'s thresholds in the
 same statement that updates counters.

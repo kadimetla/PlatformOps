@@ -112,7 +112,7 @@ graph 1:1 onto `spec/flow_steps/01`–`08`.md, resolving
 
 ## Open questions / not yet decided
 - Whether LangGraph's checkpointer should replace, or sit alongside,
-  `harness/tool_dispatcher.py`'s existing SQLite `approvals`/`audit_logs`
+  `gateway/tool_dispatcher.py`'s existing SQLite `approvals`/`audit_logs`
   tables if a LangGraph-outer topology is ever adopted — not evaluated.
 - Whether running two frameworks (ADK inner + LangGraph outer) adds
   more integration complexity than it saves versus just building the

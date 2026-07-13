@@ -3,8 +3,8 @@
 Every ADK agent in `agents/*.py` is real, tested at the unit level, but
 nothing invokes them through a formal boundary — `agents/orchestrator.py`
 is called directly with no `Runner`/`Session` construction. Separately,
-`harness/schemas.py` (`RequestEnvelope`, `PlanRecord`, `ToolIntent`, ...)
-and `harness/tool_dispatcher.py` (`BrokeredToolDispatcher`, real SQLite
+`gateway/schemas.py` (`RequestEnvelope`, `PlanRecord`, `ToolIntent`, ...)
+and `gateway/tool_dispatcher.py` (`BrokeredToolDispatcher`, real SQLite
 `approvals`/`audit_logs` tables) are real and tested, but nothing
 produces the `PlanRecord` the dispatcher consumes. Three docs already
 verified the exact ADK API to close this gap by direct package
@@ -82,7 +82,7 @@ this change that must not use the coarse, reload-triggered caching the
 rest of tier loading can use.
 
 **`SkillUsageRecord` persists in the same SQLite file
-`harness/tool_dispatcher.py` already opens**, a new `skill_usage_records`
+`gateway/tool_dispatcher.py` already opens**, a new `skill_usage_records`
 table, `skill_path` (`"{tier_dir}/{skill_id}"`) as primary key — same
 identifier already flowing through `resolve_skill_candidates()`, not a
 new one. Alternative considered: a separate database file — rejected per
@@ -137,8 +137,8 @@ existing yet.
 
 ## Open Questions
 
-- Exact module layout for the new code (`harness/plan_request.py` vs.
-  extending `agents/orchestrator.py` vs. a new `harness/skill_matching.py`)
+- Exact module layout for the new code (`gateway/plan_request.py` vs.
+  extending `agents/orchestrator.py` vs. a new `gateway/skill_matching.py`)
   — not fixed here, resolved in `tasks.md`.
 - `is_valid_spec_shape()`'s exact schema (required vs. optional top-level
   keys) — sketched at the concept level in

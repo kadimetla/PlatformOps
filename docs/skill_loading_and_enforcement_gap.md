@@ -64,7 +64,7 @@ context — the "loading" is a naming convention the LLM is trusted to
 resolve on its own. This is categorically different from the gaps
 documented elsewhere in this project (which are *designed-but-not-wired*
 mechanisms with real code sitting next to them, e.g.
-`harness/tool_dispatcher.py`); here there's no code to wire up at all
+`gateway/tool_dispatcher.py`); here there's no code to wire up at all
 yet.
 
 ## Finding 2: `allowed-tools` is not enforced
@@ -149,7 +149,7 @@ So there are two separate builds hiding under "skills," not one:
   since precedence resolution is inherently per-request (depends on
   `bu_id`/`org_id`), but not decided.
 - Tool-filtering mechanism: does it live in the Gateway/dispatcher layer
-  (consistent with `harness/tool_dispatcher.py` already being the
+  (consistent with `gateway/tool_dispatcher.py` already being the
   brokered-enforcement point for mutating calls), or as a thinner
   per-agent wrapper around `MCPToolset`? Not decided.
 

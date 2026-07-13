@@ -38,7 +38,7 @@ can't approve their own request.
 
 **New check**: `ApprovalRecord.human_reviewer` must never equal the
 originating `RequestEnvelope.channel_user_id`. Same deny-by-default
-shape as every other check in `harness/tool_dispatcher.py` — this
+shape as every other check in `gateway/tool_dispatcher.py` — this
 belongs at the same layer, not just as a UI-level disabled button
 (a disabled button is guidance; the actual gate has to be code-level,
 matching this project's "deterministic checks stay deterministic" rule

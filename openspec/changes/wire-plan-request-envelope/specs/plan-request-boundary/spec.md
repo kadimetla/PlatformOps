@@ -21,7 +21,7 @@ response, `plan_hash` as its SHA256, `vibe_diff` mirroring `plan_text`.
 
 **Corrected during implementation**: `plan_request` returns
 `(PlanRecord, list[ToolIntent])`, not `PlanRecord` alone as originally
-specified here. `PlanRecord` (`harness/schemas.py`) has no field to
+specified here. `PlanRecord` (`gateway/schemas.py`) has no field to
 carry the captured intents, and `ToolIntent.plan_hash` must equal the
 final `PlanRecord.plan_hash` — a value that doesn't exist until the full
 event stream has been assembled, so intents are constructed in a second

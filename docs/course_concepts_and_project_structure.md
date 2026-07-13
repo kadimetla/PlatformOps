@@ -119,7 +119,7 @@ validating cross-check, not a coincidence to ignore:
   distinguishing `AGENTS.md`/`CLAUDE.md` from on-demand skill loading);
   **progressive disclosure** (Day 3 — the skill-loading mechanism
   itself); **Zero Ambient Authority** (Day 4 — precisely describes what
-  `harness/tool_dispatcher.py`'s deny-by-default design is already
+  `gateway/tool_dispatcher.py`'s deny-by-default design is already
   doing, without this project having named it that).
 
 ## Open questions / not yet decided

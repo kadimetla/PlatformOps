@@ -11,13 +11,13 @@ which hasn't happened yet in this codebase.
 """
 import os
 
-from harness.schemas import SkillPromotionPolicy
-from harness.skill_matching import (
+from gateway.schemas import SkillPromotionPolicy
+from gateway.skill_matching import (
     find_matching_skill_path,
     normalize_resource_types,
     resolve_skill_candidates,
 )
-from harness.skill_usage_store import SkillUsageStore
+from gateway.skill_usage_store import SkillUsageStore
 
 SPEC_S3_ONLY = {
     "app_name": "demo-blog",

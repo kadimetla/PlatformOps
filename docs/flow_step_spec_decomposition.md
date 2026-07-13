@@ -8,7 +8,7 @@ multi-stage pipeline into per-step specs" and got a precise negative
 answer on both — see Part A. Everything from Part B onward is original
 design, grounded in what this project already has (the 8-step flow
 already enumerated in `docs/HARNESS_DESIGN.md`, the schemas already in
-`harness/schemas.py`), not an application of taught methodology.
+`gateway/schemas.py`), not an application of taught methodology.
 
 ## Part A: What the research actually found
 Re-queried both source decks with a narrow, specific question. Neither
@@ -40,7 +40,7 @@ Two things, already real:
    `docs/HARNESS_DESIGN.md`'s "How the flow works" is a clean 8-step
    canonical list.
 2. **Most steps already have a defined input/output schema** —
-   `harness/schemas.py`'s five classes are exactly the contracts each
+   `gateway/schemas.py`'s five classes are exactly the contracts each
    step consumes and produces.
 
 The extension: reuse `spec/reference_architecture.md`'s Given/When/Then
@@ -69,12 +69,12 @@ file per step, numbered in pipeline order:
 | # | Step | Owning code | Status |
 |---|---|---|---|
 | 1 | Request intake & normalization | none yet — channel adapters not built | Design only |
-| 2 | Binding & context resolution | `harness/config_engine.py` | **Real, tested** |
+| 2 | Binding & context resolution | `gateway/config_engine.py` | **Real, tested** |
 | 3 | Deterministic preflight | `spec/check_compliance.py` | Real code, not wired as mandatory |
 | 4 | Plan drafting | `agents/*.py` | Real ADK agents; `plan_request(envelope)` wrapper not built |
 | 5 | Security review | `agents/security_agent.py` | Real agent, prompt-level only |
 | 6 | Human approval gate (conditional) | none — no Control UI | Design only |
-| 7 | `ToolIntent` dispatch | `harness/tool_dispatcher.py` | **Real, tested**; not wired to live agent calls |
+| 7 | `ToolIntent` dispatch | `gateway/tool_dispatcher.py` | **Real, tested**; not wired to live agent calls |
 | 8 | Execution + audit | MCP tool calls + `audit_logs` table | Real pieces exist; not gated by step 7 yet, `channel_user_id` audit gap open |
 
 This table is deliberately the same shape as every other built-vs-

@@ -21,9 +21,9 @@ from google.genai import types
 
 from agents.model_config import get_model
 from agents.orchestrator import root_agent
-from harness.schemas import PlanRecord, RequestEnvelope, ToolIntent, WorkspaceBundle
-from harness.skill_template_agent import SkillTemplateFillAgent, check_structured_match
-from harness.skill_usage_store import SkillUsageStore
+from gateway.schemas import PlanRecord, RequestEnvelope, ToolIntent, WorkspaceBundle
+from gateway.skill_template_agent import SkillTemplateFillAgent, check_structured_match
+from gateway.skill_usage_store import SkillUsageStore
 from spec.check_compliance import check_compliance
 
 REQUIRED_SPEC_KEYS = {"app_name", "region", "resources"}

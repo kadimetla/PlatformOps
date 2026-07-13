@@ -58,7 +58,7 @@ request, not by workspace.
 Per OpenClaw's own caveat, `TOOLS.md` "does not control tool availability;
 it is only guidance." Same rule here: a BU's `TOOLS.md` might say "we
 prefer CDK," but `infra/allowed-resource-types.json` and
-`harness/tool_dispatcher.py` remain the only things that actually gate
+`gateway/tool_dispatcher.py` remain the only things that actually gate
 what can execute. This is the same guidance-vs-enforcement distinction
 already made throughout `docs/current_architecture.md`.
 
@@ -72,7 +72,7 @@ OpenClaw's own pattern.
 
 ### Team member roles (new, small schema)
 Not a workspace file — a small addition to `WorkspaceBundle`
-(`harness/schemas.py`), sketched here, not yet implemented:
+(`gateway/schemas.py`), sketched here, not yet implemented:
 
 ```python
 class TeamMember(BaseModel):
@@ -158,7 +158,7 @@ that matches its trigger phrase, at a BU that may run this pattern
 unattended for months. This deserves the same discipline as `ToolIntent`,
 not less.
 
-### `SkillProposal` (sketch, not yet implemented — matches the style of `harness/schemas.py`)
+### `SkillProposal` (sketch, not yet implemented — matches the style of `gateway/schemas.py`)
 ```python
 class SkillProposal(BaseModel):
     proposal_id: str
@@ -214,7 +214,7 @@ this schema was design-only, with no storage location, until that doc.
 
 ## Open questions / not yet decided
 - Where do `SkillProposal` records actually persist — same SQLite file as
-  `harness/tool_dispatcher.py`'s audit/approval tables, or separate
+  `gateway/tool_dispatcher.py`'s audit/approval tables, or separate
   storage? Leaning toward same store, not yet decided.
 - What triggers promotion review — a manual request, or an automatic
   flag once a BU-level skill crosses a usage threshold? Not yet decided.
@@ -226,7 +226,7 @@ this schema was design-only, with no storage location, until that doc.
   Org → BU → team-member mapping.
 - The `TeamMember`/`members` addition to `WorkspaceBundle` is the same
   audit-gap concern raised there (`channel_user_id` missing from
-  `harness/tool_dispatcher.py`'s audit log) — fixing that gap and adding
+  `gateway/tool_dispatcher.py`'s audit log) — fixing that gap and adding
   `members` are naturally the same piece of work.
 - Doesn't change the one required next step
   (`plan_request(envelope)` in `docs/planned_implementation.md` Phase 3)

@@ -172,7 +172,7 @@ defines and persists five core schemas — `RequestEnvelope`,
 Pydantic models.
 
 **These are real, tested code now, not just a draft** — see
-`harness/schemas.py`. An earlier version of this section had the drafted
+`gateway/schemas.py`. An earlier version of this section had the drafted
 code inline; it's been extracted so there's one copy to keep correct
 instead of two that can drift.
 
@@ -184,10 +184,10 @@ JSON example.
 
 ## 5. First Implementation Spike — status
 
-This spike is no longer just a draft: `harness/config_engine.py`
-(`ConfigLoader`) and `harness/tool_dispatcher.py`
+This spike is no longer just a draft: `gateway/config_engine.py`
+(`ConfigLoader`) and `gateway/tool_dispatcher.py`
 (`BrokeredToolDispatcher`) are real, working code, proven by
-`tests/test_harness.py` (8 passing tests covering config validation,
+`tests/test_gateway.py` (8 passing tests covering config validation,
 allow/deny paths, tampered-hash detection, and audit logging).
 
 Two corrections made while turning the draft into working code, worth
@@ -196,7 +196,7 @@ knowing if you're reading old notes or a cached copy of this doc:
 - The original uniqueness rule ("no agent_id bound more than once") was
   too strict — it would reject one BU legitimately reachable via two
   channels (Slack *and* a webhook). The real rule, now enforced in
-  `harness/config_engine.py`, is "no *two different* BUs share one
+  `gateway/config_engine.py`, is "no *two different* BUs share one
   `agent_id`."
 
 Also added: `BrokeredToolDispatcher.record_approval()` — the original

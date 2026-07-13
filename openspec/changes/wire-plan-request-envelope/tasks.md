@@ -2,7 +2,7 @@
 
 - [x] 1.1 Add `envelope_to_spec(envelope: RequestEnvelope) -> dict` —
       `yaml.safe_load` against `envelope.raw_payload`, validated against
-      `spec/example_submission.yaml`'s shape (`harness/plan_request.py`)
+      `spec/example_submission.yaml`'s shape (`gateway/plan_request.py`)
 - [x] 1.2 Add `is_valid_spec_shape(candidate) -> bool` — required
       top-level keys, `resources` is a list of dicts each with `type`
 - [x] 1.3 Add the single-call LLM fallback (`extract_spec_from_free_text`)
@@ -18,7 +18,7 @@
 
 - [x] 2.1 Implement `plan_request(envelope, bundle, usage_store) ->
       (PlanRecord, list[ToolIntent])` using `google.adk.runners.Runner` +
-      `InMemorySessionService` (`harness/plan_request.py`). Signature
+      `InMemorySessionService` (`gateway/plan_request.py`). Signature
       deviates from the original `-> PlanRecord` spec in two ways,
       corrected in `specs/plan-request-boundary/spec.md`: (a) takes an
       already-resolved `bundle`/`usage_store` rather than resolving them
@@ -57,7 +57,7 @@
       point from earlier in this change).
 - [x] 3.2 Add `SPEC_TYPE_TO_CFN_TYPE` alias table bridging
       `spec/example_submission.yaml`'s lowercase types to CFN-style
-      (`harness/skill_matching.py`)
+      (`gateway/skill_matching.py`)
 - [x] 3.3 Implement `load_skills_in_tier(tier_dir) -> dict[str, Frontmatter]`
       via ADK's real `list_skills_in_dir()`
 - [x] 3.4 Implement `resolve_skill_candidates(spec, bu_id, org_id)` —
@@ -75,10 +75,10 @@
 
 ## 4. `SkillUsageRecord` storage and live trust check
 
-- [x] 4.1 Add `skill_usage_records` table (`harness/skill_usage_store.py`,
+- [x] 4.1 Add `skill_usage_records` table (`gateway/skill_usage_store.py`,
       a separate `SkillUsageStore` class taking `db_path` in its
       constructor -- same physical SQLite file as
-      `harness/tool_dispatcher.py` when the caller passes the same
+      `gateway/tool_dispatcher.py` when the caller passes the same
       `db_path` to both, per `docs/config_storage_backend.md`'s "one
       storage system, not many"; not hardcoded to a shared path inside
       the class itself)
@@ -87,7 +87,7 @@
 - [x] 4.3 Implement `SkillUsageStore.record_skill_usage(...)` — atomic
       UPSERT applying `SkillPromotionPolicy` thresholds in the same
       statement that updates counters. Added `SkillPromotionPolicy` to
-      `harness/schemas.py` (org_id, consecutive_success_limit=3,
+      `gateway/schemas.py` (org_id, consecutive_success_limit=3,
       consecutive_failure_limit=5, min_parameter_diversity=3) -- wasn't
       real code before this task. Manually verified end to end against a
       real SQLite file before writing pytest tests: 3 consecutive
@@ -103,7 +103,7 @@
 ## 5. `check_structured_match` and `SkillTemplateFillAgent`
 
 - [x] 5.1 Implement `check_structured_match(spec, bu_id, org_id, bundle,
-      usage_store) -> SkillMatch` (`harness/skill_template_agent.py`),
+      usage_store) -> SkillMatch` (`gateway/skill_template_agent.py`),
       combining the candidate search (§3-4) with template-variable
       completeness checking. Parses real Terraform `variable {}` blocks
       via `python-hcl2` (added as a real dependency -- not hand-rolled
@@ -118,7 +118,7 @@
       through a real ADK `Runner`, not just unit-level.
 - [x] 5.3 Wire `plan_request` to construct `SkillTemplateFillAgent` when
       `has_structured_match=True`, `root_agent` otherwise
-      (`harness/plan_request.py`)
+      (`gateway/plan_request.py`)
 - [x] 5.4 Write tests covering: missing required variable blocks the
       match; a Layer 1 failure surfaces as a drafting error and does not
       silently retry via `root_agent`; a fully structured match makes
@@ -132,7 +132,7 @@
 
 ## 6. Verification
 
-- [x] 6.1 Run the full existing test suite (`tests/test_harness.py`) to
+- [x] 6.1 Run the full existing test suite (`tests/test_gateway.py`) to
       confirm no regression to `BrokeredToolDispatcher`/`ConfigLoader` —
       41 tests passing total (7 pre-existing + 34 new), zero regressions
 - [x] 6.2 Manually exercise both branches against
@@ -154,12 +154,12 @@
   modify, surfaced by running tests that import it transitively:
   `MCPToolset` → `McpToolset` in `agents/cdk_provisioning_agent.py`/
   `terraform_provisioning_agent.py`, and `PlanRecord.created_at`'s
-  `datetime.datetime.utcnow()` default in `harness/schemas.py`. Not
+  `datetime.datetime.utcnow()` default in `gateway/schemas.py`. Not
   fixed here — out of scope, not regressions, worth their own small
   follow-up change.
 - Added `python-hcl2` as a real dependency (`pyproject.toml`, via `uv
   add`) for parsing Terraform `variable {}` blocks — a real, tested
   parser, not hand-rolled regex, consistent with this project's
   established preference for real libraries over bespoke parsing.
-- `harness/schemas.py` gained `SkillPromotionPolicy` (real code now,
+- `gateway/schemas.py` gained `SkillPromotionPolicy` (real code now,
   was design-only in `docs/skill_promotion_thresholds.md`).

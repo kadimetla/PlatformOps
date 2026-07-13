@@ -151,7 +151,7 @@ change, all already researched elsewhere:
 | `provision-foundation` skill, always-human-approval tier rule | Design only |
 | Module-instantiation or CFN-template plan drafting | Design only — no `plan_request(envelope)` wrapper exists yet (`docs/planned_implementation.md` Phase 3) |
 | `security_agent` foundation-tier override | Design only |
-| `BrokeredToolDispatcher.evaluate_intent()` | **Real, tested** (`harness/tool_dispatcher.py`) — the checks it runs in this walkthrough are its existing logic, just not yet wired to a live foundation-tier `ToolIntent` |
+| `BrokeredToolDispatcher.evaluate_intent()` | **Real, tested** (`gateway/tool_dispatcher.py`) — the checks it runs in this walkthrough are its existing logic, just not yet wired to a live foundation-tier `ToolIntent` |
 | `FoundationRecord` write with `discovered_capabilities` | Design only |
 | GCP `CloudIAMAdapter` ceiling check | Design only |
 

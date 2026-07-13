@@ -258,7 +258,7 @@ plans instead of a single plan's own fields.
 - Reuses `docs/skills_and_workspace_design.md`'s version-pinning
   principle (for skills), applied to Helm chart versions instead.
 - Reuses the dependency-checking *shape* already established by
-  `harness/tool_dispatcher.py`'s deny-by-default checks, extended with
+  `gateway/tool_dispatcher.py`'s deny-by-default checks, extended with
   one new check rather than a new enforcement mechanism.
 - Doesn't change the one required next step
   (`plan_request(envelope)`, `docs/planned_implementation.md` Phase 3) —

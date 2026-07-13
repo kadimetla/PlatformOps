@@ -16,11 +16,11 @@ PlatformOps: a Google ADK agent graph that provisions AWS infra (S3/
 CloudFront today) via CDK or Terraform, gated by a security-review
 agent. Python 3.11+, MCP servers for cloud reach
 (`mcp_server/external_servers.py`), Pydantic schemas
-(`harness/schemas.py`), pytest.
+(`gateway/schemas.py`), pytest.
 
 ## Architecture principles (hard rules)
 - Deterministic checks (`spec/check_compliance.py`,
-  `harness/tool_dispatcher.py`) stay deterministic — do not replace a
+  `gateway/tool_dispatcher.py`) stay deterministic — do not replace a
   code-level check with an LLM judgment call.
 - Deny by default. A mutating action is allowed only if it matches an
   explicit allow-list entry and a recorded approval — never "probably
@@ -39,8 +39,14 @@ agent. Python 3.11+, MCP servers for cloud reach
 ## Conventions
 - `agents/` — ADK agent definitions, one file per agent, `tools=` lists
   real MCP toolsets.
-- `harness/` — the Gateway-layer spike: schemas, config loading, the
-  brokered dispatcher. Real, tested code — see `tests/test_harness.py`.
+- `gateway/` — the Gateway-layer spike: schemas, config loading, the
+  brokered dispatcher, `plan_request()`. Real, tested code — see
+  `tests/test_gateway.py`. Renamed from `harness/` (2026-07-13) to match
+  what this layer was already called internally, and to stop colliding
+  with `docs/HARNESS_DESIGN.md`'s unrelated, larger-scope "harness"
+  concept (the future runtime that wraps agents with channels/sessions/
+  human review — a bigger, mostly-undesigned thing this folder is one
+  spike toward, not the same thing).
 - `skills/` — Agent Skills (`SKILL.md` per folder). Bundled/global tier
   only today; see the catalog below.
 - `spec/` — the durable, version-controlled reference architecture
@@ -93,7 +99,7 @@ Flag it separately instead.
 
 ## Testing strategy
 - Deterministic harness code (`config_engine.py`, `tool_dispatcher.py`)
-  gets real `pytest` tests — see `tests/test_harness.py` for the
+  gets real `pytest` tests — see `tests/test_gateway.py` for the
   pattern to follow.
 - `spec/check_compliance.py` is independently runnable as a CLI check
   (`python spec/check_compliance.py <path>`), not yet wrapped in a

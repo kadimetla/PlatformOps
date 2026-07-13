@@ -38,16 +38,16 @@ version, then fixing in `README.md`.
 
 ### Already done (for reference, not action items)
 1. ~~Define `RequestEnvelope`, `WorkspaceBundle`, `PlanRecord`,
-   `ApprovalRecord`, `ToolIntent` schemas.~~ **Done** — `harness/schemas.py`.
+   `ApprovalRecord`, `ToolIntent` schemas.~~ **Done** — `gateway/schemas.py`.
 2. ~~Add config validation for bindings and workspace bundles.~~ **Done** —
-   `harness/config_engine.py`, fail-closed on bad config, tested.
+   `gateway/config_engine.py`, fail-closed on bad config, tested.
 3. ~~Move mutating MCP calls behind a local dispatcher function.~~ **Done**
-   standalone — `harness/tool_dispatcher.py`'s `BrokeredToolDispatcher`,
+   standalone — `gateway/tool_dispatcher.py`'s `BrokeredToolDispatcher`,
    deny-by-default, tested. Not yet wired to intercept the real
    CCAPI/Terraform MCP tool calls — that wiring is the Required item above.
 4. ~~Add a file-backed or SQLite audit log.~~ **Done** —
-   `harness/tool_dispatcher.py`'s `audit_logs`/`approvals` tables, proven
-   by the 8 passing tests in `tests/test_harness.py`.
+   `gateway/tool_dispatcher.py`'s `audit_logs`/`approvals` tables, proven
+   by the 8 passing tests in `tests/test_gateway.py`.
 
 ### Optional / longer-horizon (not required to close out this spike)
 - Org registry + onboarding automation (mint a fresh `agent_id`/BU scope,
@@ -59,7 +59,7 @@ version, then fixing in `README.md`.
   pre-approved-component-catalog UI format) for both the input channel
   and the approval-card rendering.
 - **Small, cheap fix worth doing regardless of the UI decision**: add
-  `channel_user_id` to `harness/tool_dispatcher.py`'s `audit_logs` table —
+  `channel_user_id` to `gateway/tool_dispatcher.py`'s `audit_logs` table —
   currently only `org_id`/`bu_id` are recorded, so "which person approved
   this" isn't in the audit trail, only "which BU." Identified while
   analyzing the team-member layer underneath Org/BU. Naturally the same

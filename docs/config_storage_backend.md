@@ -5,10 +5,10 @@ Analysis and design only — resolves an open question from
 `docs/HARNESS_DESIGN.md` ("Where does workspace config, and the org
 registry, actually live?"), but nothing here is built. The
 `DbConfigLoader` sketch below is a design shape, not working code — it
-does not exist in `harness/` yet.
+does not exist in `gateway/` yet.
 
 ## The question
-`harness/config_engine.py`'s `ConfigLoader` reads `config/bindings.yaml`
+`gateway/config_engine.py`'s `ConfigLoader` reads `config/bindings.yaml`
 and `config/workspace_bundles/*.yaml` off disk today. As the org
 registry (`docs/HARNESS_DESIGN.md`'s "Multi-tenancy" section) moves from
 "one flat file" toward something that supports many orgs onboarding
@@ -18,7 +18,7 @@ to object storage (e.g. an S3 bucket)?
 ## What this config actually needs to do
 Three requirements drive the answer, not storage-format preference:
 1. **Referential integrity** — every binding must point at a real
-   workspace bundle (`harness/config_engine.py`'s
+   workspace bundle (`gateway/config_engine.py`'s
    `_validate_referential_integrity`).
 2. **Uniqueness** — one `agent_id` must never map to two different
    `(org_id, bu_id)` pairs (`_validate_uniqueness`) — the load-bearing
@@ -34,7 +34,7 @@ Three requirements drive the answer, not storage-format preference:
 | Runtime onboarding | Commit + redeploy/reload | Native — `INSERT`, validated on write | `PUT` + reload — no real advantage over files |
 | Multi-instance Gateway | Needs shared filesystem or redistribution | Natural — one source of truth | Natural, but adds read-consistency/caching concerns for no real gain over a DB |
 | Human-reviewable diffs | Yes — YAML's actual strength | No, unless a separate audit trail is bolted on | No |
-| Fits what already exists in this repo | It's what exists | Same shape as `harness/tool_dispatcher.py`'s existing SQLite `audit_logs`/`approvals` tables — could be one database, not three storage systems | Nothing currently uses object storage |
+| Fits what already exists in this repo | It's what exists | Same shape as `gateway/tool_dispatcher.py`'s existing SQLite `audit_logs`/`approvals` tables — could be one database, not three storage systems | Nothing currently uses object storage |
 
 **Object storage loses on the merits for this specific data.** A bucket
 buys durability and versioning, but this data is small, structured, and
@@ -61,7 +61,7 @@ This maps directly onto the isolation levels already documented in
 
 `ConfigLoader`'s public shape (`load_and_validate()`, `.bundles`,
 `.bindings`) should stay the same regardless of which backend is active,
-so callers (`harness/tool_dispatcher.py`, tests) don't need to know or
+so callers (`gateway/tool_dispatcher.py`, tests) don't need to know or
 care which one is active.
 
 ## `DbConfigLoader` sketch (not yet implemented)
@@ -133,7 +133,7 @@ Gateway API, not a commit — with the same pydantic validation on the
 `docs/HARNESS_DESIGN.md`'s "Adoption story."
 
 **Reuse, don't duplicate, the existing SQLite file.** This registry data
-can live in the same database file `harness/tool_dispatcher.py` already
+can live in the same database file `gateway/tool_dispatcher.py` already
 opens for `audit_logs`/`approvals` — one storage system for org
 registry, approvals, and audit, rather than three.
 
@@ -144,7 +144,7 @@ now gates the deterministic zero-LLM matching path, and needs a live,
 synchronous, hot-path read — not the coarse caching the rest of tier
 loading uses. Per this doc's own decision above ("reuse, don't
 duplicate, the existing SQLite file"), a new `skill_usage_records` table
-in the same database `harness/tool_dispatcher.py` already opens, not a
+in the same database `gateway/tool_dispatcher.py` already opens, not a
 fourth storage system:
 ```sql
 CREATE TABLE IF NOT EXISTS skill_usage_records (

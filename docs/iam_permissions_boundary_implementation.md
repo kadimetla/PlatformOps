@@ -138,7 +138,7 @@ less-regulated one, rather than one boundary fitting every tenant.
 The application-level layer — catches a malformed agent-drafted request
 *before* it ever reaches AWS, rather than relying solely on the IAM
 condition to reject it. Same deny-by-default style as the dispatcher's
-existing resource-type/region checks (`harness/tool_dispatcher.py:63-75`):
+existing resource-type/region checks (`gateway/tool_dispatcher.py:63-75`):
 ```python
 if resource_type == "AWS::IAM::Role":
     boundary_arn = bundle.permissions_boundary_arn

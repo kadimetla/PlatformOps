@@ -18,7 +18,7 @@ three of the four concepts already have real, unlabeled analogs:
 | **Procedural memory** | "How to do X" — a learned, reusable procedure | **Skills** — `SKILL.md`, `resolve_skill()`, `SkillProposal` authoring/promotion | `skills/*/SKILL.md`, `docs/skills_and_workspace_design.md` | Clean 1:1. A skill *is* procedural memory: learned once through the authoring gate, reused without re-deriving it each time. |
 | **Episodic memory** | A dated record of a specific past event | **`memory/YYYY-MM-DD.md`** — the append-only daily log, `MemoryEntry.created_at` + `source_plan_id` | `docs/harness_memory_design.md` | Clean fit by construction — it's an episode log, just not labeled "episodic" when designed. |
 | **Semantic / long-term memory** | Consolidated, stable facts, decoupled from any one event | **`MEMORY.md`** — the curated index of currently-valid entries | `docs/harness_memory_design.md` | Reasonable fit, **with one caveat worth stating precisely**: it overlaps with `WorkspaceBundle`/`AGENTS.md` (static, human-authored config), which is *also* long-lived but is declared configuration, not memory that was learned/inferred from interactions. Keep these conceptually separate even though both are "long-term" — conflating them would blur the "memory is context, never authority" rule, since config genuinely *is* authoritative and memory genuinely isn't. |
-| **Session / working memory** | Continuity within (or across) one conversation — "what did we just discuss" | **Nothing.** `RequestEnvelope` has no `session_id`/`conversation_id` field (`harness/schemas.py:14-22`); `NEXT_STEPS.md:26-27` confirms no `Runner`/`Session` construction exists anywhere in the actual ADK code either. Every occurrence of "session" in the docs (30+ hits) means the *isolation/routing scope* — one session store per `agent_id` — never conversational continuity. | — | **Real gap, not a naming gap.** Nothing today carries state within a multi-turn interaction. Designed below. |
+| **Session / working memory** | Continuity within (or across) one conversation — "what did we just discuss" | **Nothing.** `RequestEnvelope` has no `session_id`/`conversation_id` field (`gateway/schemas.py:14-22`); `NEXT_STEPS.md:26-27` confirms no `Runner`/`Session` construction exists anywhere in the actual ADK code either. Every occurrence of "session" in the docs (30+ hits) means the *isolation/routing scope* — one session store per `agent_id` — never conversational continuity. | — | **Real gap, not a naming gap.** Nothing today carries state within a multi-turn interaction. Designed below. |
 
 ## Part B: Session memory design
 
@@ -61,7 +61,7 @@ something in this session, so wave the next thing through" — the same
 category of risk this project has already refused twice, for skills and
 for memory.
 
-### `SessionState` schema sketch (not yet implemented — matches `harness/schemas.py`'s style)
+### `SessionState` schema sketch (not yet implemented — matches `gateway/schemas.py`'s style)
 ```python
 class SessionState(BaseModel):
     session_id: str

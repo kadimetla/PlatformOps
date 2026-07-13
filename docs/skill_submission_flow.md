@@ -18,8 +18,8 @@ short version for orientation.
 | Layer | Isolation unit? | Where it lives today | Status |
 |---|---|---|---|
 | **Org** | No — config-layer grouping only | Would be `orgs.yaml` | Designed only, not built |
-| **Business Unit** | **Yes** — 1:1 with `agent_id`; owns workspace, credentials, cost ceiling, allowed resource types | `config/bindings.yaml` + `config/workspace_bundles/*.yaml` | Partially built — bundle schema/loader real (`harness/schemas.py`, `harness/config_engine.py`); no org-level registry grouping BUs yet |
-| **Team member** | No — shares the BU's one workspace; distinguished only per-request | `RequestEnvelope.channel_user_id` (`harness/schemas.py:19`) | Field exists; not yet in the audit log (`harness/tool_dispatcher.py`'s `audit_logs` table has no `channel_user_id` column) |
+| **Business Unit** | **Yes** — 1:1 with `agent_id`; owns workspace, credentials, cost ceiling, allowed resource types | `config/bindings.yaml` + `config/workspace_bundles/*.yaml` | Partially built — bundle schema/loader real (`gateway/schemas.py`, `gateway/config_engine.py`); no org-level registry grouping BUs yet |
+| **Team member** | No — shares the BU's one workspace; distinguished only per-request | `RequestEnvelope.channel_user_id` (`gateway/schemas.py:19`) | Field exists; not yet in the audit log (`gateway/tool_dispatcher.py`'s `audit_logs` table has no `channel_user_id` column) |
 
 The one rule worth over-stating: a "team" never gets its own workspace,
 credentials, or skill tier. It's people sharing one BU's stuff, told apart

@@ -9,13 +9,13 @@ before this task group is considered fully verified.
 """
 import pytest
 
-from harness.plan_request import (
+from gateway.plan_request import (
     ComplianceError,
     envelope_to_spec,
     is_valid_spec_shape,
     run_compliance_preflight,
 )
-from harness.schemas import RequestEnvelope
+from gateway.schemas import RequestEnvelope
 
 VALID_SPEC_YAML = """
 app_name: demo-blog

@@ -54,7 +54,7 @@ Then compliance check FAILS with reason "app-layer deploy has no active foundati
 ## Status
 **Wired as a mandatory preflight — real code**, closing
 `docs/HARNESS_DESIGN.md`'s runtime-boundary gap #4:
-`harness/plan_request.py#run_compliance_preflight()` calls
+`gateway/plan_request.py#run_compliance_preflight()` calls
 `check_compliance()` and raises `ComplianceError` on any failure, before
 any `Runner` is constructed (`openspec/changes/wire-plan-request-envelope/`,
 `tests/test_plan_request.py`/`test_plan_request_boundary.py`).

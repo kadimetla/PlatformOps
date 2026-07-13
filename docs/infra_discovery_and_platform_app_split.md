@@ -32,7 +32,7 @@ split:
   ]
 }
 ```
-`security-review-checklist` and `harness/tool_dispatcher.py` both
+`security-review-checklist` and `gateway/tool_dispatcher.py` both
 already treat "resource type on the list" as the gating question for
 *mutating* calls — this doesn't change that. It just stops that same
 check from also blocking `get_resource`/`list_resources` calls that
@@ -154,7 +154,7 @@ own app-layer namespace/deploys — with **zero** access to
 foundation-layer changes, regardless of role. This is not expressible
 today: the existing single-dimension `role` field conflates "how much
 authority" with "over what," and foundation-vs-app needs both answered
-independently. `harness/tool_dispatcher.py`'s eventual `scope` check
+independently. `gateway/tool_dispatcher.py`'s eventual `scope` check
 would be structurally identical to today's `resource_type` allow-list
 check — deny by default unless the requester's `TeamMember.scope`
 covers the tier of what they're requesting.

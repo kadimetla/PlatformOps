@@ -61,7 +61,7 @@ Two deployment modes exist:
 - **Fully managed, AWS-hosted (preview)** — a SigV4-signed proxy to a
   hosted endpoint, with **CloudTrail audit logging built in**. Worth
   weighing against this project's own audit-log emphasis
-  (`harness/tool_dispatcher.py`'s `audit_logs` table) — this mode gets
+  (`gateway/tool_dispatcher.py`'s `audit_logs` table) — this mode gets
   you cloud-side audit trail "for free," at the cost of the same kind
   of vendor-coupling `docs/HARNESS_DESIGN.md` already declined once,
   for a different reason, when it rejected registering PlatformOps as
@@ -85,7 +85,7 @@ Two findings that matter directly for this project's design:
    target namespace is allow-listed for this BU" from a
    security-review-checklist prompt instruction into something that can
    actually be validated against the call parameters before dispatch —
-   the same shape as `harness/tool_dispatcher.py` checking a
+   the same shape as `gateway/tool_dispatcher.py` checking a
    `ToolIntent`'s `resource_type` against `allowed_resource_types`,
    applied to a namespace string instead.
 2. **New cross-BU isolation risk this research surfaces, not previously
@@ -168,7 +168,7 @@ HELM_MCP_SERVER = StdioServerParameters(
   tradeoff already weighed once for a different integration. Not
   decided.
 - Whether kubeconfig-context scoping needs a new validation rule in
-  `harness/config_engine.py`, the same shape as the existing
+  `gateway/config_engine.py`, the same shape as the existing
   `agent_id` uniqueness check — likely yes, not designed.
 - **Resolved in `docs/gcp_azure_verification_pass.md`**: `helm_install`
   confirmed to support OCI registry references plus a `--version` flag

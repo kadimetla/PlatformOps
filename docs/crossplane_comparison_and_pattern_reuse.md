@@ -61,7 +61,7 @@ Crossplane's core value — automatic, continuous, unattended self-
 healing — is in **direct conflict** with this project's core value:
 nothing mutates without passing through `BrokeredToolDispatcher.evaluate_intent()`'s
 deny-by-default gate with a recorded `ApprovalRecord`
-(`harness/tool_dispatcher.py`). If Crossplane silently recreates a
+(`gateway/tool_dispatcher.py`). If Crossplane silently recreates a
 manually-deleted resource, that mutation happens **entirely outside**
 the dispatcher — no `PlanRecord`, no `ApprovalRecord`, no audit row.
 
@@ -120,7 +120,7 @@ dispatcher's mutation gate.
   Composition/Claim model is independent confirmation of the same
   shape.
 - Explicitly does not change
-  `harness/tool_dispatcher.py`'s deny-by-default design — Part D is the
+  `gateway/tool_dispatcher.py`'s deny-by-default design — Part D is the
   reasoning for why not.
 - Doesn't change the one required next step
   (`plan_request(envelope)`, `docs/planned_implementation.md` Phase 3).

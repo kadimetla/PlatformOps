@@ -3,7 +3,7 @@
 ## Owning code
 Real MCP tool calls exist (`ccapi-mcp-server`, Terraform MCP server,
 and — per `docs/eks_helm_mcp_integration.md` — `kubernetes-mcp-server`
-for the Helm app-layer path). `harness/tool_dispatcher.py`'s
+for the Helm app-layer path). `gateway/tool_dispatcher.py`'s
 `audit_logs` table is real and tested. Not yet connected: execution
 isn't gated by Step 7 in the live agent graph, and the audit table is
 missing `channel_user_id`.
@@ -15,7 +15,7 @@ An `ALLOW` result from Step 7, plus the `ToolIntent` that produced it.
 A real cloud resource created/updated/deleted, plus one `audit_logs`
 row recording `plan_id`, `org_id`, `bu_id`, `resource_type`,
 `operation`, `decision`, `reason`, `payload`
-(`harness/tool_dispatcher.py:24-35`).
+(`gateway/tool_dispatcher.py:24-35`).
 
 ## Scenarios
 
@@ -27,7 +27,7 @@ Then the real CCAPI/Terraform/Helm call happens if and only if that result was `
 ## Scenario: Every decision is audited, not just allowed ones
 Given any dispatch decision, ALLOW or DENY
 When `evaluate_intent()` completes
-Then `_log_audit()` writes a row regardless of outcome (`harness/tool_dispatcher.py:104-105` — `ALLOW` and every `DENY` branch both call `_log_audit`)
+Then `_log_audit()` writes a row regardless of outcome (`gateway/tool_dispatcher.py:104-105` — `ALLOW` and every `DENY` branch both call `_log_audit`)
 
 ## Scenario: The audit trail should record who, not just which BU
 Given a dispatch decision made in response to a specific person's request

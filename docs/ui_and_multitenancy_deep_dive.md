@@ -7,7 +7,7 @@ implementation, per this project's habit of analyzing before building (see
 later: none of the CopilotKit/A2UI pieces below exist in code yet, and
 `RequestEnvelope`/`WorkspaceBundle`/`PlanRecord`/`ApprovalRecord`/
 `ToolIntent` (which this design reuses) are the only parts already real —
-see `harness/schemas.py`.
+see `gateway/schemas.py`.
 
 ## Terminology, disambiguated
 These four get conflated constantly; they're layers, not alternatives:
@@ -24,7 +24,7 @@ A2UI's core security philosophy — *"agents can only use pre-approved
 components from your catalog, no UI injection attacks"* — is the same
 deny-by-default, allow-list-everything principle already used throughout
 this project (`infra/allowed-resource-types.json`, the dispatcher's
-approval gate in `harness/tool_dispatcher.py`). It's also a concrete
+approval gate in `gateway/tool_dispatcher.py`). It's also a concrete
 implementation candidate for the "Control UI" that
 `docs/HARNESS_DESIGN.md` only sketched conceptually — a Vibe Diff or
 approval request becomes an interactive Card with Approve/Reject buttons,
@@ -46,12 +46,12 @@ So, concretely:
 - **Business Unit** — one `agent_id`, one workspace: shared instructions,
   persona, credentials, allow-list, cost ceiling. **Not** per-person.
 - **Team member** — distinguished at the **session/request level**, not
-  the workspace level. `harness/schemas.py`'s `RequestEnvelope` already
+  the workspace level. `gateway/schemas.py`'s `RequestEnvelope` already
   has a `channel_user_id` field for exactly this — built in before we
   understood precisely why it was the right shape.
 
 ### The audit gap this surfaces
-`harness/tool_dispatcher.py`'s `audit_logs` table currently records
+`gateway/tool_dispatcher.py`'s `audit_logs` table currently records
 `plan_id`, `org_id`, `bu_id`, `resource_type`, `operation`, `decision`,
 `reason`, `payload` — **no `channel_user_id`**. That was fine when "which
 BU did this" was the only granularity that mattered. Once individual
@@ -111,7 +111,7 @@ review step:
   trust before `org_id`/`bu_id`/`channel_user_id` can be resolved at all.
   Not yet designed.
 - **The `channel_user_id` audit gap** noted above should be fixed in
-  `harness/tool_dispatcher.py` independent of whether CopilotKit ships.
+  `gateway/tool_dispatcher.py` independent of whether CopilotKit ships.
 
 ## How this relates to the existing docs
 - Extends `docs/HARNESS_DESIGN.md`'s multi-tenancy section with the

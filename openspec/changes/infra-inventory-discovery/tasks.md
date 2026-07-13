@@ -1,6 +1,6 @@
 ## 1. `InfraInventoryRecord` schema and storage
 
-- [ ] 1.1 Add `InfraInventoryRecord` to `harness/schemas.py` (org_id,
+- [ ] 1.1 Add `InfraInventoryRecord` to `gateway/schemas.py` (org_id,
       bu_id, resource_type, resource_category, resource_identifier,
       layer, discovered_at, provenance). `resource_type` is
       provider-native (stored exactly as the discovery source returns
@@ -13,7 +13,7 @@
       classified at write time per provider, for the cross-provider
       comparisons that actually need one (task 2.3's discovery
       ordering) without requiring full type equivalence
-- [ ] 1.2 Add an `InfraInventoryStore` class (`harness/infra_inventory_store.py`)
+- [ ] 1.2 Add an `InfraInventoryStore` class (`gateway/infra_inventory_store.py`)
       opening the same `db_path` `BrokeredToolDispatcher` uses, with an
       `infra_inventory` table keyed on `(org_id, bu_id, resource_type,
       resource_identifier)`

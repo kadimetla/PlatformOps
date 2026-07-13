@@ -9,14 +9,14 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from harness.schemas import SkillPromotionPolicy, WorkspaceBundle
-from harness.skill_template_agent import (
+from gateway.schemas import SkillPromotionPolicy, WorkspaceBundle
+from gateway.skill_template_agent import (
     SkillTemplateFillAgent,
     SkillTemplateFillAgentError,
     check_structured_match,
     parse_declared_variables,
 )
-from harness.skill_usage_store import SkillUsageStore
+from gateway.skill_usage_store import SkillUsageStore
 
 TF_MODULE = """
 variable "bucket_name" {

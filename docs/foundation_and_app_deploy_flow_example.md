@@ -120,7 +120,7 @@ hers can succeed against real compute infra, not a different BU.
 ## What's real vs. design today
 | Step | Status |
 |---|---|
-| 1–2 (request, `TeamMember.scope` check) | Design only — `TeamMember`/`scope` don't exist in `harness/schemas.py` |
+| 1–2 (request, `TeamMember.scope` check) | Design only — `TeamMember`/`scope` don't exist in `gateway/schemas.py` |
 | 3, 11 (skill resolution) | Design only — no `resolve_skill()`, no bundled-tier loading either (`docs/skill_loading_and_enforcement_gap.md`) |
 | 4 (discovery-before-creation, drift check) | Design only |
 | 5 (`manage_eks_stacks`) | Real, maintained MCP server exists; not integrated into this project's `mcp_server/external_servers.py` yet |
@@ -128,7 +128,7 @@ hers can succeed against real compute infra, not a different BU.
 | 12 (dependency check) | Design only |
 | 13 (`helm_install` via `kubernetes-mcp-server`) | Real, maintained MCP server exists; not integrated yet |
 | 14 (IRSA + permissions boundary) | Design only |
-| 15–16 (review, dispatcher gate incl. foundation re-check) | Dispatcher's core shape is real and tested (`harness/tool_dispatcher.py`); the foundation-dependency check is new design, not built |
+| 15–16 (review, dispatcher gate incl. foundation re-check) | Dispatcher's core shape is real and tested (`gateway/tool_dispatcher.py`); the foundation-dependency check is new design, not built |
 | 17–18 (execution, audit) | Audit table exists and is tested; `scope`/`foundation_id` fields are new, not built |
 
 Nothing in this phase-1/phase-2 flow is built. Every piece it exercises

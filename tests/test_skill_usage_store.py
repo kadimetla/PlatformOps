@@ -1,8 +1,8 @@
 """Tests for SkillUsageRecord storage (docs/config_storage_backend.md;
 openspec/changes/wire-plan-request-envelope/ task group 4).
 """
-from harness.schemas import SkillPromotionPolicy
-from harness.skill_usage_store import SkillUsageStore
+from gateway.schemas import SkillPromotionPolicy
+from gateway.skill_usage_store import SkillUsageStore
 
 SKILL_PATH = "workspaces/payments/skills/s3-skill"
 

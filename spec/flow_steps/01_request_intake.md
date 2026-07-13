@@ -1,7 +1,7 @@
 # Flow Step 1: Request Intake & Normalization
 
 ## Owning code
-Not built yet — would be a new `harness/channel_adapters/` module, one
+Not built yet — would be a new `gateway/channel_adapters/` module, one
 adapter per channel (`slack`, `webhook`, `cli`, `copilotkit`). See
 `docs/HARNESS_DESIGN.md`'s "Input layer (channels)" and
 `docs/ui_and_multitenancy_deep_dive.md` for the CopilotKit-specific case.
@@ -12,7 +12,7 @@ args, a webhook body, an AG-UI event stream). No shared schema; this
 step's whole job is producing one.
 
 ## Output contract
-`RequestEnvelope` (`harness/schemas.py:14`) — `request_id`, `org_id`,
+`RequestEnvelope` (`gateway/schemas.py:14`) — `request_id`, `org_id`,
 `bu_id`, `channel`, `channel_user_id`, `workspace_id`, `raw_payload`,
 `metadata`. `org_id`/`bu_id` are not yet resolved from the raw payload
 alone for channel-binding cases — see Step 2.

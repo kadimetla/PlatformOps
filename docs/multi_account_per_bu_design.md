@@ -4,7 +4,7 @@
 Design only. Corrects the prior turn's recommendation ("one BU = one
 AWS account / GCP project / Azure subscription") — grounded against
 AWS's own multi-account guidance, that was too narrow. Nothing here is
-built; `WorkspaceBundle` (`harness/schemas.py:25-36`) still has the flat
+built; `WorkspaceBundle` (`gateway/schemas.py:25-36`) still has the flat
 single-account shape this doc proposes replacing.
 
 ## Part A: The correction — multiplicity is on the BU side, not the sharing side
@@ -48,7 +48,7 @@ class CloudAccountBinding(BaseModel):
 ```
 `WorkspaceBundle` gains `cloud_accounts: list[CloudAccountBinding]`,
 replacing the current flat `aws_region`/`aws_profile`/`tfe_workspace`
-fields (`harness/schemas.py:27-31`) that implied exactly one account.
+fields (`gateway/schemas.py:27-31`) that implied exactly one account.
 This is a structural change to a *real, currently-built* schema, not an
 additive sketch on top of a design-only one — worth flagging explicitly
 since most prior schema proposals in this doc set were additive.

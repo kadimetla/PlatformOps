@@ -45,7 +45,7 @@ objects (`WorkspaceBundle`, relevant `FoundationRecord`s, the requesting
 ### 2. Global env-var config duplicates, and drifts from, `WorkspaceBundle`
 `APPROVED_REGION`/`MAX_COST` are single global values. `WorkspaceBundle`
 already has per-BU `aws_region`/`cost_ceiling_usd`
-(`harness/schemas.py:27,29`). Two BUs with different regions or
+(`gateway/schemas.py:27,29`). Two BUs with different regions or
 ceilings running concurrently — already assumed by the harness design —
 can't be expressed by a global env var. Not a future scaling problem;
 a present correctness gap the moment a second BU exists.
@@ -145,7 +145,7 @@ elsewhere:
 
 ## Part F: Versioning — the spec itself needs to be a traceable artifact
 `reference_architecture.md` has no version identifier. `PlanRecord`
-(`harness/schemas.py:39-47`) has no field recording which spec version
+(`gateway/schemas.py:39-47`) has no field recording which spec version
 governed a decision. Add:
 ```python
 class PlanRecord(BaseModel):
@@ -157,7 +157,7 @@ class PlanRecord(BaseModel):
     )
 ```
 Same tamper-evidence idea `plan_hash` already gives the plan itself
-(`harness/schemas.py:44`), missing for the spec that judged it. Without
+(`gateway/schemas.py:44`), missing for the spec that judged it. Without
 this, a later change to `reference_architecture.md` can't be
 distinguished from "this plan was always compliant" vs. "this plan was
 compliant under an older, since-tightened rule set" — the same

@@ -29,7 +29,7 @@ named for `SkillProposal` in `docs/skills_and_workspace_design.md`
 ("one bad or hallucinated authoring run could poison the skill library
 for every future request"), but memory's blast radius is smaller: it can
 bias drafting and review, but it cannot itself execute anything — the
-dispatcher gate (`harness/tool_dispatcher.py`) still stands between any
+dispatcher gate (`gateway/tool_dispatcher.py`) still stands between any
 plan and a real cloud mutation regardless of what memory says. That
 smaller blast radius is what justifies a lighter approval bar than
 `SkillProposal`'s full human-review-before-trust gate — see "Write
@@ -53,7 +53,7 @@ to get wrong by analogy to skills:
   memory that bypasses BU-level review would undermine the governance
   model. All memory is BU-shared, same as the rest of the workspace.
 
-## `MemoryEntry` schema (sketch, not yet implemented — matches the style of `harness/schemas.py`)
+## `MemoryEntry` schema (sketch, not yet implemented — matches the style of `gateway/schemas.py`)
 ```python
 class MemoryEntry(BaseModel):
     entry_id: str
@@ -129,7 +129,7 @@ is the working set.
 Same decision as `docs/config_storage_backend.md`, asked a third time
 now for a third kind of data (config, `SkillProposal`, and now
 `MemoryEntry` all converge on the same answer): literal markdown files
-for self-hosted/single-org, the same database `harness/tool_dispatcher.py`
+for self-hosted/single-org, the same database `gateway/tool_dispatcher.py`
 already writes audit/approval rows to for managed SaaS — one storage
 system, not four. `docs/skills_and_workspace_design.md`'s open question
 ("same SQLite file... or separate storage? Leaning toward same store")

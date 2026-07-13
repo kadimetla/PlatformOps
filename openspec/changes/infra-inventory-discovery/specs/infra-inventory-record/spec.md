@@ -13,7 +13,7 @@ discovered via IaC state or a live API call.
 
 ### Requirement: The inventory shares storage with the existing dispatcher database
 The system SHALL persist `InfraInventoryRecord` in the same physical
-SQLite database `harness/tool_dispatcher.py` already opens, not a
+SQLite database `gateway/tool_dispatcher.py` already opens, not a
 separate storage system.
 
 #### Scenario: Inventory and audit data coexist in one file

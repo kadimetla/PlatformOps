@@ -46,7 +46,7 @@ Then it is rejected — `scope` is a second, independent axis from `role`; an ap
 ## Scenario: Low-risk plans skip this step entirely
 Given a plan whose resource type is fully autonomous-eligible per policy
 When review completes
-Then this step is skipped — agent approval alone is sufficient, matching the sandbox-demo behavior already in `harness/tool_dispatcher.py:97-99`'s comment (a production `review_policy` would tighten this per resource-type risk tier)
+Then this step is skipped — agent approval alone is sufficient, matching the sandbox-demo behavior already in `gateway/tool_dispatcher.py:97-99`'s comment (a production `review_policy` would tighten this per resource-type risk tier)
 
 ## Status
 Design only. No Control UI, no code path for a human to actually click

@@ -8,9 +8,9 @@ import uuid
 
 import pytest
 
-from harness.config_engine import ConfigLoader
-from harness.schemas import ToolIntent
-from harness.tool_dispatcher import BrokeredToolDispatcher
+from gateway.config_engine import ConfigLoader
+from gateway.schemas import ToolIntent
+from gateway.tool_dispatcher import BrokeredToolDispatcher
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 CONFIG_DIR = os.path.join(REPO_ROOT, "config")

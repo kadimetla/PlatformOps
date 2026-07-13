@@ -1,13 +1,13 @@
 # Flow Step 7: ToolIntent Dispatch
 
 ## Owning code
-`harness/tool_dispatcher.py` — `BrokeredToolDispatcher.evaluate_intent()`.
-Real, tested standalone (`tests/test_harness.py`); not yet wired to
+`gateway/tool_dispatcher.py` — `BrokeredToolDispatcher.evaluate_intent()`.
+Real, tested standalone (`tests/test_gateway.py`); not yet wired to
 intercept the real `cdk_provisioning_agent`/`terraform_provisioning_agent`
 MCP tool calls.
 
 ## Input contract
-`ToolIntent` (`harness/schemas.py:62`) — `plan_id`, `plan_hash`,
+`ToolIntent` (`gateway/schemas.py:62`) — `plan_id`, `plan_hash`,
 `org_id`, `bu_id`, `resource_type`, `resource_identifier`, `operation`,
 `region`, `estimated_monthly_cost`, `payload`.
 
@@ -15,7 +15,7 @@ MCP tool calls.
 `bool` (allow/deny) + one row written to the `audit_logs` table.
 
 ## Scenarios
-Existing, real (`harness/tool_dispatcher.py:50-105`):
+Existing, real (`gateway/tool_dispatcher.py:50-105`):
 
 ## Scenario: No workspace bundle for this BU
 Given a `ToolIntent` whose `(org_id, bu_id)` has no loaded `WorkspaceBundle`
@@ -59,5 +59,5 @@ Then it denies — re-checked at dispatch time, not just at plan time, since a f
 ## Status
 Core deny-by-default logic: **real, tested.** The two new IAM-boundary
 and foundation-dependency checks: design only, not in
-`harness/tool_dispatcher.py` yet. This step, alongside Step 2, is the
+`gateway/tool_dispatcher.py` yet. This step, alongside Step 2, is the
 most-built part of the whole flow.

@@ -240,7 +240,7 @@ A above, unchanged — only which `agent=` is constructed varies.
   gap was "nothing loads a `SKILL.md`," not "nothing *can*."
 - **Resolves** `CLAUDE.md`'s explicit action item ("verify whether
   ADK's `SkillToolset` class already provides this natively... before
-  extending `harness/` to hand-build a `load_skill()` mechanism") —
+  extending `gateway/` to hand-build a `load_skill()` mechanism") —
   verified, and it does.
 - **Surfaces a new, concrete, fixable bug** in
   `skills/provision-infra/SKILL.md`,

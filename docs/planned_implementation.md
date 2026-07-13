@@ -4,8 +4,8 @@ This document walks through the step-by-step implementation plan for the **Platf
 
 The implementation is structured into **5 sequential phases**:
 
-**Status**: Phases 1, 2, 4, and 5 are done — real code in `harness/`,
-proven by the 8 passing tests in `tests/test_harness.py`. Phase 3 (wrap
+**Status**: Phases 1, 2, 4, and 5 are done — real code in `gateway/`,
+proven by the 8 passing tests in `tests/test_gateway.py`. Phase 3 (wrap
 the ADK graph behind `plan_request(envelope)`) is the one phase not
 started; it's the actual next step, not this document's phases 1-2-4-5,
 which are already built.
@@ -22,7 +22,7 @@ flowchart TD
 
 ---
 
-## Phase 1: Define Core Schemas & Envelopes — DONE (`harness/schemas.py`)
+## Phase 1: Define Core Schemas & Envelopes — DONE (`gateway/schemas.py`)
 
 The first step is creating the data structures that hold state as requests transition from arrival to cloud deployment. These will be implemented using Pydantic models.
 
@@ -34,7 +34,7 @@ The first step is creating the data structures that hold state as requests trans
 
 ---
 
-## Phase 2: Configuration & Binding Validation Engine — DONE (`harness/config_engine.py`)
+## Phase 2: Configuration & Binding Validation Engine — DONE (`gateway/config_engine.py`)
 
 We need a deterministic config engine to load and validate bindings and workspace profiles before any execution starts. This implements the **fail-closed** security behavior described in [HARNESS_DESIGN.md](file:///opt/wecan/aiml_learning_gang_ws/vibecoding_ws/capstone_project/docs/HARNESS_DESIGN.md#L351-L352).
 
@@ -109,7 +109,7 @@ this codebase — the "how" is now confirmed, not just designed.
 
 ---
 
-## Phase 4: Build the Brokered Tool Dispatcher — DONE (`harness/tool_dispatcher.py`)
+## Phase 4: Build the Brokered Tool Dispatcher — DONE (`gateway/tool_dispatcher.py`)
 
 This is the key security enforcement step. We will intercept mutating tools (e.g., CCAPI `create_resource` or Terraform `apply_run`) and route them through the Gateway's dispatcher.
 
@@ -137,7 +137,7 @@ The agent is never given direct credentials to execute mutations. The dispatcher
 
 ---
 
-## Phase 5: SQLite Audit Logger & Local Testing — DONE (`tests/test_harness.py`)
+## Phase 5: SQLite Audit Logger & Local Testing — DONE (`tests/test_gateway.py`)
 
 The final piece of the spike is establishing an immutable audit history and verifying the safety mechanisms:
 

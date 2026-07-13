@@ -35,7 +35,7 @@ done, the code isn't written.
   layer), and `SkillTemplateFillAgent` (a `BaseAgent` subclass with zero
   LLM calls, reusing the Layer 1 static-validate/retry loop).
 - Add `SkillUsageStore`/`skill_usage_records` (SQLite, same file
-  `harness/tool_dispatcher.py` already opens) for the live
+  `gateway/tool_dispatcher.py` already opens) for the live
   `lifecycle_state` read `check_structured_match()` depends on.
 
 ## Capabilities
@@ -68,7 +68,7 @@ proposed since adopting OpenSpec)
   decided in `design.md`.
 - `spec/check_compliance.py` — no code change, but its call site becomes
   mandatory rather than optional.
-- `harness/tool_dispatcher.py`'s SQLite file gains a `skill_usage_records`
+- `gateway/tool_dispatcher.py`'s SQLite file gains a `skill_usage_records`
   table (schema already specified in `docs/config_storage_backend.md`).
 - No new external dependencies — `google-adk`, `mcp`, `pyyaml`,
   `pydantic` are already in `pyproject.toml`.

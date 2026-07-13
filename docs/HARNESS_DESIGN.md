@@ -11,6 +11,14 @@ Only the model-layer config described below has real code behind it today.
 The Gateway/harness described below is design only — see "What's built vs.
 designed" at the bottom for the exact line.
 
+**Naming note (2026-07-13)**: the code directory that used to be called
+`harness/` is now `gateway/` — it was always the narrower "Gateway-layer
+spike" described here, not the bigger-scope **harness** concept this doc
+defines (the future runtime wrapping agents with channels/sessions/human
+review). The two were easy to conflate while they shared a name; they
+remain conceptually distinct — this doc's "harness" still means the
+larger, mostly-undesigned thing, not the `gateway/` code folder.
+
 ### Document map
 This is the entry point; the following docs go deeper on specific slices
 rather than repeating this one:
@@ -292,7 +300,7 @@ rather than repeating this one:
   development to pipeline-stage granularity: one spec file per harness
   flow step (`spec/flow_steps/01`–`08`), each with an input/output
   contract and Given/When/Then scenarios, reusing the flow already
-  enumerated above and the schemas in `harness/schemas.py`. States
+  enumerated above and the schemas in `gateway/schemas.py`. States
   plainly that neither course source deck covers this decomposition —
   it's this project's own extension, not taught material.
 - `docs/repo_layout_references.md` — the single consolidated index of
@@ -409,8 +417,8 @@ rather than repeating this one:
   discovery assumption the moment `docs/multi_account_per_bu_design.md`'s
   already-established multi-account-per-BU premise meets any of these
   three patterns — each in a different way.
-- `harness/` — real, tested code for the schemas and dispatcher (see
-  `tests/test_harness.py`), the first slice of the design below.
+- `gateway/` — real, tested code for the schemas and dispatcher (see
+  `tests/test_gateway.py`), the first slice of the design below.
 
 ## Why a harness, and why OpenClaw's pattern
 
@@ -514,14 +522,14 @@ yet a runtime guard.
 ### PlatformOps runtime boundary to build next
 The next implementation step is not a UI; it is a small runtime boundary
 that turns prompt-level procedure into enforceable workflow. Status as of
-the harness spike in `harness/` (see `tests/test_harness.py` for proof it
+the harness spike in `gateway/` (see `tests/test_gateway.py` for proof it
 works):
 
 1. **Built**: typed schemas for the envelope, workspace bundle, plan,
-   approval, and tool intent — `harness/schemas.py`.
+   approval, and tool intent — `gateway/schemas.py`.
 2. **Partially built**: config loading + referential-integrity/uniqueness
    validation for bindings and workspace bundles —
-   `harness/config_engine.py`. Not yet built: resolving org/BU into a full
+   `gateway/config_engine.py`. Not yet built: resolving org/BU into a full
    *org registry* (today it's one flat `config/bindings.yaml`, no
    org-level grouping on top).
 3. **Not yet built**: loading per-BU workspace config (credentials, cost
@@ -531,7 +539,7 @@ works):
 4. **Not yet built**: running `spec/check_compliance.py` as a mandatory
    preflight step before the ADK agent graph runs, with results attached
    to what `security_agent` reviews.
-5. **Built**: mutating-call brokering — `harness/tool_dispatcher.py`'s
+5. **Built**: mutating-call brokering — `gateway/tool_dispatcher.py`'s
    `BrokeredToolDispatcher.evaluate_intent()` denies by default and only
    allows a `ToolIntent` that matches a recorded, valid, non-tampered
    approval, has an allow-listed resource type, and matches the workspace
@@ -657,7 +665,7 @@ below for why this shape, not some other one):
   workspace (persona, memory, instructions) is one-per-`agent_id`, shared
   by everyone in that BU, not one-per-person. See
   `docs/ui_and_multitenancy_deep_dive.md` for the full reasoning and a
-  real gap this surfaces: `harness/tool_dispatcher.py`'s audit log
+  real gap this surfaces: `gateway/tool_dispatcher.py`'s audit log
   currently doesn't record `channel_user_id`, only `org_id`/`bu_id`.
 
 ## PlatformOps harness deep dive: features to borrow from OpenClaw
@@ -1042,27 +1050,27 @@ See `docs/planned_implementation.md` for the detailed 5-phase walkthrough.
 Status against that plan:
 
 1. ~~Define `RequestEnvelope`, `WorkspaceBundle`, `PlanRecord`,
-   `ApprovalRecord`, and `ToolIntent` schemas.~~ **Built** — `harness/schemas.py`.
+   `ApprovalRecord`, and `ToolIntent` schemas.~~ **Built** — `gateway/schemas.py`.
 2. ~~Add config validation for bindings and workspace bundles.~~ **Built** —
-   `harness/config_engine.py` (referential integrity + agent_id/BU uniqueness).
+   `gateway/config_engine.py` (referential integrity + agent_id/BU uniqueness).
 3. Wrap the existing ADK graph behind a `plan_request(envelope)` call. **Not
    built** — this is the actual next step.
 4. ~~Move mutating MCP calls behind a local dispatcher function.~~ **Built**
-   standalone — `harness/tool_dispatcher.py`'s `BrokeredToolDispatcher`, but
+   standalone — `gateway/tool_dispatcher.py`'s `BrokeredToolDispatcher`, but
    not yet wired to intercept the real CCAPI/Terraform MCP tool calls the
    agents make.
 5. ~~Add a file-backed or SQLite audit log before building the Control UI.~~
    **Built** — the dispatcher's `audit_logs`/`approvals` SQLite tables,
-   proven in `tests/test_harness.py`.
+   proven in `tests/test_gateway.py`.
 
 ## What's built vs. designed
 | Piece | Status |
 |---|---|
 | Agent layer (orchestrator, routing, CDK/Terraform sub-agents, security agent) | Built |
 | Model config file + loader | Built |
-| `RequestEnvelope`/`WorkspaceBundle`/`PlanRecord`/`ApprovalRecord`/`ToolIntent` schemas | **Built** — `harness/schemas.py` |
-| Config loader + binding/bundle validation | **Built** — `harness/config_engine.py`, tested |
-| Brokered tool dispatcher (deny-by-default `ToolIntent` gate) | **Built** standalone — `harness/tool_dispatcher.py`, tested; not yet wired into the live agent graph |
+| `RequestEnvelope`/`WorkspaceBundle`/`PlanRecord`/`ApprovalRecord`/`ToolIntent` schemas | **Built** — `gateway/schemas.py` |
+| Config loader + binding/bundle validation | **Built** — `gateway/config_engine.py`, tested |
+| Brokered tool dispatcher (deny-by-default `ToolIntent` gate) | **Built** standalone — `gateway/tool_dispatcher.py`, tested; not yet wired into the live agent graph |
 | SQLite audit log | **Built** — part of the dispatcher, tested |
 | Wrapping the ADK graph behind `plan_request(envelope)` | Designed, not built — the actual next step |
 | True model-agnosticism (non-Gemini models) | Designed, not built |
@@ -1167,7 +1175,7 @@ Three ways to relate to OpenClaw were considered once that was corrected:
 ## Open questions / risks
 - **Resolved**: where workspace config and the org registry live — split
   by deployment mode, YAML + git for self-hosted/single-org, a database
-  (reusing the same store as `harness/tool_dispatcher.py`'s audit/approval
+  (reusing the same store as `gateway/tool_dispatcher.py`'s audit/approval
   tables) for managed SaaS with many orgs; object storage was considered
   and declined for this specific data. See `docs/config_storage_backend.md`
   for the comparison and a `DbConfigLoader` sketch. Still open within that:
