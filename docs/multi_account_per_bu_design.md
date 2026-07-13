@@ -111,6 +111,15 @@ this step, plus the honest finding that no equivalent tool exists for
 GCP/Azure — those need to be built from scratch, sketched but not
 verified.
 
+**A networking consequence this doc never worked through, closed in
+`docs/cross_project_network_sharing.md`**: "a BU can hold multiple
+accounts" is exactly the premise that triggers cross-project/account/
+subscription network sharing — GCP Shared VPC, AWS's subnet-level RAM
+sharing, Azure's non-transitive VNet peering — and each provider's
+sharing model breaks `docs/foundation_layer_decomposition.md`'s
+one-boundary-per-layer assumption differently. Not resolved here; see
+that doc for the per-provider mechanics and what it means for discovery.
+
 ## Open questions / not yet decided
 - Whether `cost_ceiling_usd`/`allowed_resource_types` should also become
   per-binding (a prod account plausibly needs a different ceiling and a

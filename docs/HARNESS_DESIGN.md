@@ -396,6 +396,19 @@ rather than repeating this one:
   through PlatformOps-hosted dedicated instances to genuine shared
   multi-tenancy — built only when each stage's real cost, not a
   hypothetical future one, justifies the next.
+- `docs/cross_project_network_sharing.md` — verifies (current provider
+  docs, not recall) that cross-project/account/subscription network
+  sharing is structurally different per provider, not just differently
+  named: GCP's Shared VPC (host/service project split, a strict
+  two-tier IAM model — org/folder-level `xpnAdmin` plus per-subnet
+  `networkUser`), AWS's subnet-level sharing via RAM (owner/participant,
+  same Organization, ownership always explicit on the resource), and
+  Azure's non-transitive VNet peering (no owner at all, a graph to
+  traverse, hub-spoke needed for indirect reachability). Breaks
+  `docs/foundation_layer_decomposition.md`'s one-boundary-per-layer
+  discovery assumption the moment `docs/multi_account_per_bu_design.md`'s
+  already-established multi-account-per-BU premise meets any of these
+  three patterns — each in a different way.
 - `harness/` — real, tested code for the schemas and dispatcher (see
   `tests/test_harness.py`), the first slice of the design below.
 

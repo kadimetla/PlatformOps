@@ -144,6 +144,19 @@ module's declared outputs, not just recorded as an independent claim
 this harness trusts on its own. No concrete verification mechanism
 designed yet — flagged as a principle, not implemented.
 
+## Part G: The chain's "one boundary per layer" assumption breaks under network sharing
+This whole decomposition implicitly assumed a network resource and the
+compute resource using it live in the same discoverable boundary —
+true for a single-account BU, false the moment a BU holds multiple
+accounts/projects (already established as normal,
+`docs/multi_account_per_bu_design.md`) sharing one network across them.
+**Corrected — `docs/cross_project_network_sharing.md`**: GCP's Shared
+VPC, AWS's subnet-level RAM sharing, and Azure's non-transitive VNet
+peering each break this assumption differently, none of them trivially.
+Discovering the network layer for a service project/participant
+account/spoke VNet requires an extra lookup this doc's chain never
+accounted for — see that doc for the per-provider mechanics.
+
 ## Open questions / not yet decided
 - Whether `layer` should be a closed three-value enum or allow future
   values (e.g., a separate "storage" layer for a shared EFS/Filestore

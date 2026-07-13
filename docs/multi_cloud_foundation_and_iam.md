@@ -19,6 +19,17 @@ only today (`README.md:255-257`).
 | Workload identity (IRSA-equivalent) | IRSA — IAM role assumed via OIDC federation by a K8s ServiceAccount | **Workload Identity Federation** — newer "direct resource access" mode binds an IAM role straight to the K8s ServiceAccount principal, no separate Google Service Account in the middle | **Azure AD Workload Identity** — a federated credential bound to a K8s ServiceAccount, same shape as IRSA |
 | Operator's escalation-adjacent grant | `iam:PassRole` (must be ARN-scoped — `docs/infra_discovery_and_platform_app_split.md` Part B) | `roles/iam.serviceAccountUser` — binding a service account to a resource requires this; same escalation class as `PassRole` (not independently re-verified this session — verify before relying on it) | Managed Identity Operator role — same escalation class again |
 
+**One row this table can't express**: "Network" mapping 1:1 (VPC/VPC
+Network/VNet) is true for the *concept*, but how a network gets *shared*
+across project/account/subscription boundaries is genuinely
+provider-divergent, not a naming difference — GCP's Shared VPC
+(host/service project split, two-tier IAM), AWS's subnet-level sharing
+via RAM (owner/participant, same Organization), and Azure's non-transitive
+VNet peering (no owner at all, a graph to traverse) are three different
+shapes. See `docs/cross_project_network_sharing.md` for the full
+comparison and what it breaks in `docs/foundation_layer_decomposition.md`'s
+discovery model.
+
 ## Part B: The finding that actually changes the approach — write-capability isn't symmetric
 This is the one result that should drive the design, not just fill in a
 table:

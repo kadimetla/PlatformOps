@@ -145,3 +145,17 @@ context already in hand.
   state or provide it manually"* — rather than silently producing an
   inventory that's missing its most foundational layer. Not a
   workaround for the underlying tooling gap, which stays open.
+- [Risk] **This gap is deeper than "no listing tool" once cross-project
+  network sharing is in play** — `docs/cross_project_network_sharing.md`:
+  even with a working `compute.networks.list` equivalent, a GCP service
+  project's network genuinely lives in a *different* project (the
+  Shared VPC host), discoverable only via a separate host-project lookup
+  plus a `roles/compute.networkUser` binding check — not a single-project
+  scan no matter how complete the tooling gets. AWS's subnet-sharing and
+  Azure's non-transitive peering break the same single-boundary
+  assumption differently (see that doc's Part C) → [Mitigation] out of
+  scope for this change's first version — bootstrap discovery here
+  assumes a single-project/account boundary per BU; multi-project/
+  cross-account network discovery is real, sizable follow-on work, not
+  silently folded into this one. Flagged explicitly rather than
+  implied-covered by the GCP tooling-gap mitigation above.
