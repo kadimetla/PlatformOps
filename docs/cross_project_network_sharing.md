@@ -69,12 +69,16 @@ pattern in GCP specifically, common in AWS, and structurally how Azure's
 hub-spoke model works at all.
 
 ## Part C: Concrete discovery implications per provider — each breaks differently
-- **GCP**: discovering a service project's compute resources requires
-  first identifying its host project (a separate lookup), then
-  discovering network resources *there*, then separately checking
-  `networkUser` bindings to know what's actually usable. Three lookups,
-  not one — see Part D below for the exact, verified API calls, not just
-  the concept.
+- **GCP**: *existence*-level discovery of network resources anywhere in
+  scope is now covered in one call by Cloud Asset Inventory's
+  `list_assets` (Part H below) — no host-project lookup required just to
+  answer "does this network/subnet exist." But *resolving which host
+  project a given service project is attached to*, the relationship this
+  section is actually about, still needs the host-project lookup and
+  `networkUser` binding check — Cloud Asset Inventory doesn't confirm
+  covering that relationship type. So: one lookup for "what networks
+  exist," still a separate two-step sequence (Part D) for "which host
+  project is this service project's network actually in."
 - **AWS**: a shared subnet's true owner account is always explicit in
   the resource itself (`OwnerId`) — the cross-boundary case is more
   mechanically discoverable than GCP's, still cross-account, but no
@@ -218,6 +222,63 @@ existing state at all), but it directly concretizes
 `infra-inventory-discovery`'s nightly-drift-sweep design — see that
 change's `design.md` and spec.
 
+## Part H: Cloud Asset Inventory closes the GCP existence-level discovery gap — verified, and it's narrower than it first looks
+`docs/gcp_azure_verification_pass.md` Section 6 originally stated a GCP
+live-discovery gap as "confirmed still open" — that was incomplete
+research, not a genuine absence. The original search only checked for
+an MCP wrapper around `gcloud compute networks`/`subnets` commands and
+the raw Compute Engine networking APIs directly; it never checked
+Google's own **managed** Cloud Asset Inventory MCP server
+(`cloudasset.googleapis.com`).
+
+**Verified, directly, by inspecting the tool's documented parameters:**
+Cloud Asset Inventory has a real `list_assets` tool with:
+- `parent` (required) — scoped to an org, folder, or project, i.e.
+  exactly the boundary this project's discovery already needs to
+  respect per-BU.
+- `assetTypes[]` — exact type strings or regex, confirmed to directly
+  support `compute.googleapis.com/Network` and
+  `compute.googleapis.com/Subnetwork` — the two asset types this
+  project's `InfraInventoryRecord` network-layer rows need.
+- `readTime` — point-in-time query, up to 35 days back.
+- `pageSize`/`pageToken` — standard pagination.
+- `contentType` — controls how much detail comes back per asset
+  (resource metadata vs. IAM policy vs. relationship, see below).
+- `relationshipTypes[]` — the parameter that matters for the Shared VPC
+  question specifically.
+
+**What this closes**: for the bootstrap-discovery-sweep's actual job —
+"does a network/subnet resource exist in this project/org, list
+everything of this type" — `list_assets` is a real, one-call, managed
+answer. A GCP BU with no registered `IacSourceRef` is **not** left with
+zero live-discovery path, contrary to what four docs in this project
+previously stated.
+
+**What this does NOT close, confirmed by the same inspection, not
+assumed**: `relationshipTypes[]` queries require Security Command Center
+Premium or Enterprise tier, and the specific relationship type that
+would matter here — Shared VPC host/service attachment, GCP's internal
+name for it is `XpnResource` per Part D's terminology note — was not
+found documented as one of the supported relationship types even at
+that tier. So Cloud Asset Inventory tells you a network *exists* and
+roughly what project it's associated with, but doesn't reliably tell
+you "this service project is attached to that host project via Shared
+VPC" as a queryable relationship. Part D's `getXpnHost`/`listUsable`
+sequence remains the verified, necessary mechanism for that specific
+question — this doesn't replace Part D, it narrows what was missing
+before Part D's calls even entered the picture.
+
+**Net correction**: the original claim was "no live discovery path for
+the GCP network layer at all." The corrected claim is "existence-level
+discovery is covered by a real managed tool; host/service relationship
+resolution specifically still requires the dedicated Shared VPC API
+calls in Part D." A narrower, real gap — not the blanket absence
+previously written into `docs/gcp_azure_verification_pass.md`,
+`docs/iac_based_discovery.md`,
+`docs/foundation_discovery_and_capability_matching.md`, and
+`openspec/changes/infra-inventory-discovery/design.md`'s risk note, all
+corrected alongside this doc.
+
 ## Open questions / not yet decided
 - The exact Azure Lighthouse delegation setup required for cross-tenant
   Resource Graph queries specifically — named as the mechanism, not
@@ -245,13 +306,20 @@ change's `design.md` and spec.
   doesn't map 1:1 across providers — how sharing works, not what the
   thing being shared is called.
 - Feeds directly into `openspec/changes/infra-inventory-discovery/`'s
-  bootstrap-discovery-sweep design — its existing GCP network-discovery-gap
-  risk note should be extended with this, not treated as a separate
-  finding (see that change's `design.md`).
+  bootstrap-discovery-sweep design — its GCP network-discovery-gap risk
+  note is corrected by Part H's finding, narrowed from "no discovery
+  path" to "existence-level discovery covered, relationship resolution
+  still gapped" (see that change's `design.md`).
 - Part G's `refresh_state` finding concretizes that same change's
   nightly-drift-sweep native-drift-detection mechanism — a different
   problem (already-tracked resources) from the rest of this doc
   (resources with no tracking at all), captured there, not here.
+- Part H corrects `docs/gcp_azure_verification_pass.md` Section 6,
+  `docs/iac_based_discovery.md`'s GCP row, and
+  `docs/foundation_discovery_and_capability_matching.md`'s original
+  finding — all previously stated the gap as a blanket absence; this
+  doc is the detailed verification backing the narrower correction made
+  in each.
 - Doesn't change the one required next step
   (`plan_request(envelope)`, already implemented — this is a discovery/
   inventory-side concern, unrelated to the drafting boundary).
@@ -279,3 +347,7 @@ change's `design.md` and spec.
 - [Terraform MCP server overview — Terraform, HashiCorp Developer](https://developer.hashicorp.com/terraform/mcp-server)
 - [Terraform MCP server reference — Terraform, HashiCorp Developer](https://developer.hashicorp.com/terraform/mcp-server/reference)
 - [Terraform MCP server updates: Stacks support, new tools, and tips — HashiCorp Blog](https://www.hashicorp.com/en/blog/terraform-mcp-server-updates-stacks-support-new-tools-and-tips)
+- [Cloud Asset Inventory overview — Google Cloud Documentation](https://cloud.google.com/asset-inventory/docs/overview)
+- [ListAssets — Cloud Asset API, Google Cloud Documentation](https://cloud.google.com/asset-inventory/docs/reference/rest/v1/assets/list)
+- [Searching for relationships — Cloud Asset Inventory, Google Cloud Documentation](https://cloud.google.com/asset-inventory/docs/searching-relationships)
+- [Supported asset types — Cloud Asset Inventory, Google Cloud Documentation](https://cloud.google.com/asset-inventory/docs/asset-types)

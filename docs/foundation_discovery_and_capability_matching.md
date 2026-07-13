@@ -43,18 +43,28 @@ implicit "live API is primary" framing: when a BU has a registered
 cross-check — read that doc's Part C before treating "live API" as the
 only or primary column here.
 
+**Correction (2026-07-13)**: the GCP cell below originally said no
+dedicated live-API tool exists at all for VPC/subnet discovery. That
+was incomplete research — Google's managed Cloud Asset Inventory MCP
+server (`list_assets`) does exactly this, verified in
+`docs/cross_project_network_sharing.md` Part H. Cell corrected below;
+the "weakest of the three" framing in the paragraph after the table no
+longer holds for existence-level discovery specifically.
+
 | Provider | Cluster-internal discovery | Network-level (VPC/VNet/subnet) discovery |
 |---|---|---|
 | **AWS** | `awslabs.eks-mcp-server`'s read tools (`list_k8s_resources`, `get_eks_insights`) | `get_eks_vpc_config` (same server) + `ccapi-mcp-server list_resources` for broader `AWS::EC2::VPC` detail — solid coverage |
-| **GCP** | GKE MCP server — confirmed **read-only**, a clean fit for discovery specifically (no write-permission fight needed) | **No dedicated live-API tool** (GCE MCP server's scope is VM/compute primitives, not VPC networking) — **but see `docs/iac_based_discovery.md`**: Terraform state or GCP Config Connector status (via `kubernetes-mcp-server`) close this without one. Live-API-only discovery for a BU with no `IacSourceRef` registered remains genuinely unclosed — **re-confirmed by a fresh, dedicated search in `docs/gcp_azure_verification_pass.md`**, not just an earlier assumption; no MCP wrapper around `gcloud compute networks`/`subnets` exists. |
+| **GCP** | GKE MCP server — confirmed **read-only**, a clean fit for discovery specifically (no write-permission fight needed) | **Cloud Asset Inventory's `list_assets`** covers `compute.googleapis.com/Network`/`Subnetwork` existence-level discovery directly, verified real (`docs/cross_project_network_sharing.md` Part H) — corrects the earlier "no dedicated live-API tool" claim. Genuinely still gapped, narrower: resolving Shared VPC host/service *relationships* isn't confirmed as Cloud Asset Inventory relationship data, so `getXpnHost`/`listUsable` (same doc, Part D) remain necessary for that specific question. `docs/iac_based_discovery.md`'s Terraform state / Config Connector paths remain valid as the higher-fidelity, intent-carrying alternative when registered. |
 | **Azure** | AKS's own MCP server integration (`learn.microsoft.com/.../aks-model-context-protocol-server`) | **Confirmed, stronger than expected**: that same server retrieves *"VNets, Subnets, Network Security Groups (NSGs), and Route Tables"* tied to the cluster directly. A separate open-source `azure-resource-graph-mcp-server` (github.com/hardik-id) also exists for broader Resource Graph queries — concrete KQL sample queries exist for listing VNets+subnets+CIDR ranges across subscriptions. |
 
 Worth stating plainly: **discovery capability and creation capability
 don't track each other per provider.** AWS and Azure have solid native
 discovery tooling; GCP's write path is also absent (per
-`docs/multi_cloud_foundation_and_iam.md`) *and* its network-discovery
-tooling is the weakest of the three. GCP is the provider needing the
-most manual/custom tooling work on both axes.
+`docs/multi_cloud_foundation_and_iam.md`). GCP's network-discovery
+tooling gap is narrower than originally stated (existence-level
+discovery is covered; Shared VPC relationship resolution isn't) but
+GCP remains the provider needing the most manual/custom tooling work
+across both axes.
 
 ## Part C: `discovered_capabilities` — what `FoundationRecord` was missing
 ```python
@@ -129,11 +139,16 @@ Part C with a new step 0, before the existing steps:
 - `discovered_capabilities` staleness: how often does a foundation get
   re-discovered, and does a stale capability set block a deploy or just
   get logged as a warning? Not decided.
-- Whether GCP's VPC-discovery gap gets solved by wrapping raw `gcloud`
+- ~~Whether GCP's VPC-discovery gap gets solved by wrapping raw `gcloud`
   API calls in a custom tool, or by requiring GCP foundations to always
-  be Terraform-managed (so state is always the discovery source) — not
-  decided, the second option is lower-effort but constrains the
-  creation-path choice for that one provider.
+  be Terraform-managed~~ — **resolved (2026-07-13)**: existence-level
+  discovery is closed by Cloud Asset Inventory's `list_assets`, no
+  custom tool or Terraform-only requirement needed
+  (`docs/cross_project_network_sharing.md` Part H). What's still open:
+  whether Shared VPC host/service relationship resolution ever gets a
+  live-API path beyond `getXpnHost`/`listUsable`, or stays a
+  two-call sequence permanently — not decided, lower stakes than the
+  original question since existence discovery no longer depends on it.
 - Exact adoption-review checklist (Part D, step 2) — sketched at the
   level of "the same bar a fresh creation would have," not itemized
   into a concrete checklist yet.

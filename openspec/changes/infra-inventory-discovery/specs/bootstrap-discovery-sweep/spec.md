@@ -39,14 +39,36 @@ already uses, not an unordered pass.
   compute-layer discovery begins, so compute resources can be
   classified against already-known network context
 
-### Requirement: A GCP BU with no registered IaC state gets an explicit discovery gap flag
-The system SHALL surface an explicit finding when bootstrap discovery
-runs for a GCP BU with no registered `IacSourceRef`, stating that the
-network layer could not be discovered via live API, rather than
-silently producing an inventory missing its network layer.
+### Requirement: GCP network-layer discovery uses Cloud Asset Inventory, and flags only the unresolved Shared VPC relationship
+**Corrected (2026-07-13)** — a prior draft of this requirement stated
+that a GCP BU with no registered `IacSourceRef` gets a blanket
+"network layer could not be discovered" flag. That was based on
+incomplete research: Google's managed Cloud Asset Inventory MCP server
+(`list_assets`) provides existence-level discovery for
+`compute.googleapis.com/Network` and `compute.googleapis.com/Subnetwork`
+regardless of whether an `IacSourceRef` is registered, verified in
+`docs/cross_project_network_sharing.md` Part H. The system SHALL use
+Cloud Asset Inventory for GCP network-layer existence discovery
+whenever live API discovery is needed (i.e., no registered
+`IacSourceRef`, or resources that IaC state doesn't cover), and SHALL
+surface an explicit finding only for the narrower, still-real gap: when
+a discovered GCP network resource's Shared VPC host-project attachment
+cannot be resolved (Cloud Asset Inventory does not confirm exposing
+that relationship type; `getXpnHost`/`listUsable
+`, `docs/cross_project_network_sharing.md` Part D, remain necessary
+for it).
 
-#### Scenario: An unregistered GCP BU's network gap is surfaced, not silent
+#### Scenario: A GCP BU with no registered IaC state still gets its network layer discovered
 - **WHEN** bootstrap discovery runs for a GCP BU with no registered
   `IacSourceRef`
-- **THEN** a finding is recorded stating the network layer could not be
-  discovered, and the resulting inventory is not presented as complete
+- **THEN** Cloud Asset Inventory's `list_assets` populates
+  `InfraInventoryRecord` network-layer rows for existing networks and
+  subnetworks — the inventory is not left missing its network layer
+
+#### Scenario: An unresolved Shared VPC host-project relationship is surfaced, not silent
+- **WHEN** bootstrap discovery finds a GCP network resource whose
+  Shared VPC host-project attachment cannot be resolved via
+  `getXpnHost`
+- **THEN** a finding is recorded stating the host-project relationship
+  could not be resolved, and the resulting inventory is not presented
+  as having complete cross-project network relationship data

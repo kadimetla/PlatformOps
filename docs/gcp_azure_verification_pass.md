@@ -105,14 +105,34 @@ unversioned chart references in CI/CD."* Closes the supply-chain
 concern already flagged in `docs/foundation_app_layering_and_iam_tiers.md`
 Part C step 2 — the tooling supports what the design already required.
 
-## 6. GCP VPC-discovery MCP gap — CONFIRMED still open
-A fresh, dedicated search for an MCP wrapper around
-`gcloud compute networks`/`subnets` commands found nothing. This is
-not a research gap on this project's side — the tool genuinely doesn't
-appear to exist yet. `docs/foundation_discovery_and_capability_matching.md`'s
-original finding stands unchanged; `docs/iac_based_discovery.md`'s
-Terraform-state-first / Config-Connector-via-`kubernetes-mcp-server`
-fallback paths remain the only real answers for GCP network discovery.
+## 6. GCP VPC-discovery MCP gap — CORRECTED, narrower than stated
+**This was genuinely incomplete research, not a confirmed absence.**
+The original search looked for an MCP wrapper specifically around
+`gcloud compute networks`/`subnets` commands and found nothing — but
+never checked Google's own managed **Cloud Asset Inventory** MCP server
+(`cloudasset.googleapis.com`), which has a real, documented `list_assets`
+tool covering `compute.googleapis.com/Network` and
+`compute.googleapis.com/Subnetwork` asset types directly, scoped at
+project/folder/org level. For **existence-level discovery** — does a
+given network resource exist, list everything of this type in this
+project — the gap is closed, verified by direct inspection of the tool's
+documented parameters (`docs/cross_project_network_sharing.md` Part H
+has the detail).
+
+**What remains genuinely gapped**: Cloud Asset Inventory's relationship
+data doesn't clearly expose Shared VPC host/service project
+relationships specifically (the "XpnResource" relationship type) —
+relationship queries need Security Command Center Premium/Enterprise
+tier, and the Shared VPC relationship wasn't confirmed as one of the
+supported types even at that tier. So `getXpnHost`/`listUsable`
+(`docs/cross_project_network_sharing.md` Part D) remain necessary for
+resolving *which host project a service project is attached to* — a
+narrower, real gap than "no live discovery path for the network layer
+at all," which was the original, overstated claim.
+`docs/foundation_discovery_and_capability_matching.md`'s original
+finding and `docs/iac_based_discovery.md`'s Terraform-state-first /
+Config-Connector fallback paths remain valid for what they were
+actually verifying, just not the whole story.
 
 ## 7. Continuous-validation equivalents — confirmed, and one correction to the original framing
 `docs/post_apply_smoke_testing.md` asked whether GCP/Azure have native
@@ -148,12 +168,13 @@ for AWS):
 | GCP project+billing linkage sequence | **Resolved** — exact two-call sequence confirmed |
 | Azure subscription creation mechanics | **Resolved** — exact API, default-MG behavior, and a real failure mode confirmed |
 | Helm chart version-pinning | **Resolved** — confirmed supported |
-| GCP VPC-discovery MCP wrapper | **Confirmed still absent** — not a gap in this project's research, the tool doesn't exist |
+| GCP VPC-discovery MCP wrapper | **Corrected, later** — existence-level discovery closed by Google's own Cloud Asset Inventory MCP server (`list_assets`), not previously considered; Shared VPC host/service *relationship* resolution specifically remains gapped. See item 6's correction above and `docs/cross_project_network_sharing.md` Part H. |
 | GCP/Azure "check block equivalent" | **Reframed** — check blocks are provider-agnostic; the real equivalent need was pre-apply policy validation, which does exist (`terraform vet` + Policy Library for GCP, Azure Policy for Azure) |
 
 Five of eight resolved outright, one reframed into a better-fitting
-answer, one confirmed genuinely absent (not unresearched), one still
-open.
+answer, one corrected later to be narrower than originally claimed (not
+unresearched, just incomplete — a real tool existed that wasn't
+checked), one still open.
 
 ## How this relates to the existing docs
 Updates the specific flags in `docs/multi_cloud_foundation_and_iam.md`,

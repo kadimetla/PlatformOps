@@ -1,17 +1,39 @@
 ## 1. `InfraInventoryRecord` schema and storage
 
 - [ ] 1.1 Add `InfraInventoryRecord` to `harness/schemas.py` (org_id,
-      bu_id, resource_type, resource_identifier, layer, discovered_at,
-      provenance)
+      bu_id, resource_type, resource_category, resource_identifier,
+      layer, discovered_at, provenance). `resource_type` is
+      provider-native (stored exactly as the discovery source returns
+      it — AWS CFN-style, GCP Cloud Asset Inventory `assetType`, Azure
+      ARM `type`), NOT translated into one shared vocabulary —
+      corrected from an earlier draft that mis-stated it as CFN-style
+      throughout, see design.md's "resource_type is provider-native"
+      decision. `resource_category` is a coarse
+      `"network"`/`"compute"`/`"identity"`/`"storage"`/`None` enum,
+      classified at write time per provider, for the cross-provider
+      comparisons that actually need one (task 2.3's discovery
+      ordering) without requiring full type equivalence
 - [ ] 1.2 Add an `InfraInventoryStore` class (`harness/infra_inventory_store.py`)
       opening the same `db_path` `BrokeredToolDispatcher` uses, with an
       `infra_inventory` table keyed on `(org_id, bu_id, resource_type,
       resource_identifier)`
 - [ ] 1.3 Implement `lookup(org_id, bu_id, resource_type, resource_identifier)`
       and `upsert(record)` methods
-- [ ] 1.4 Write tests covering: a lookup returns at most one record;
+- [ ] 1.4 Add a `PROVIDER_TYPE_TO_CATEGORY` classification table (or
+      equivalent per-provider function) mapping each provider's native
+      `resource_type` values this change discovers to a
+      `resource_category` — e.g. `AWS::EC2::VPC`/`AWS::EC2::Subnet`,
+      `compute.googleapis.com/Network`/`Subnetwork`,
+      `Microsoft.Network/virtualNetworks` all classify to `"network"`.
+      Scoped to the resource types this change's discovery mechanisms
+      actually encounter, not an exhaustive catalog of every possible
+      cloud resource type
+- [ ] 1.5 Write tests covering: a lookup returns at most one record;
       inventory and dispatcher tables coexist in one SQLite file without
-      conflict
+      conflict; a GCP-native `resource_type` string round-trips through
+      storage unchanged (not translated); the classification table maps
+      each of the three providers' network-layer types to
+      `resource_category == "network"`
 
 ## 2. Bootstrap discovery sweep
 
@@ -20,24 +42,37 @@
       `terraform-mcp-server`, or CFN stack resources), live API second
       for anything not covered
 - [ ] 2.2 Write each discovered resource as an `InfraInventoryRecord`
-      with `provenance` set accordingly
+      with `provenance` and `resource_category` (via the classification
+      table from task 1.4) set accordingly
 - [ ] 2.3 Sequence discovery network-layer first, then compute, then
       identity, within one sweep — not one unordered pass. Mirrors
       `docs/foundation_layer_decomposition.md`'s creation dependency
-      chain applied to discovery instead of creation.
-- [ ] 2.4 For GCP BUs specifically, when no `IacSourceRef` is
-      registered: record an explicit finding that the network layer
-      could not be discovered (no live-API tool covers
-      `compute.networks.list`/`subnetworks.list`, and the GKE MCP
-      server is read-only and cluster-internal only) — surface it,
-      don't silently produce an inventory missing its network layer
+      chain applied to discovery instead of creation. Ordering is driven
+      by `resource_category`, not by provider-specific type-string
+      parsing — each provider's raw discovery results get classified
+      (task 2.2) before the ordering pass runs, so the ordering logic
+      itself is provider-agnostic
+- [ ] 2.4 For GCP BUs specifically, when live API discovery is needed
+      (no `IacSourceRef` registered, or resources IaC state doesn't
+      cover): use Cloud Asset Inventory's `list_assets` for
+      network-layer existence discovery (`compute.googleapis.com/Network`/
+      `Subnetwork`, verified real —
+      `docs/cross_project_network_sharing.md` Part H — corrects an
+      earlier version of this task that assumed no live-API tool
+      existed at all). Record an explicit finding only when a
+      discovered network resource's Shared VPC host-project attachment
+      can't be resolved via `getXpnHost` (Cloud Asset Inventory doesn't
+      confirm exposing that relationship type) — surface that narrower
+      gap, don't claim the whole network layer is undiscoverable
 - [ ] 2.5 Write tests covering: a BU with registered IaC state only
       falls back to live API for uncovered resources; a BU with no IaC
-      state uses live API for everything; the sweep is idempotent if
-      run twice (no duplicate rows); network-layer records exist before
-      compute-layer discovery begins; an unregistered GCP BU produces an
-      explicit network-discovery-gap finding, not a silently incomplete
-      inventory
+      state uses live API (Cloud Asset Inventory for GCP) for
+      everything; the sweep is idempotent if run twice (no duplicate
+      rows); network-layer records (identified via `resource_category`)
+      exist before compute-layer discovery begins; a GCP network
+      resource with no resolvable Shared VPC host-project attachment
+      produces an explicit relationship-gap finding without blocking
+      the rest of the inventory
 
 ## 3. Incremental inventory update
 

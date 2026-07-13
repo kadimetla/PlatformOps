@@ -44,12 +44,58 @@ elsewhere in this project ("one storage system, not many").
 class InfraInventoryRecord(BaseModel):
     org_id: str
     bu_id: str
-    resource_type: str          # CFN-style, same convention as ToolIntent.resource_type
+    resource_type: str          # provider-native type string, stored as the
+                                 # discovery source returns it -- NOT normalized
+                                 # to CFN-style. See "resource_type is
+                                 # provider-native" decision below.
+    resource_category: Optional[str] = None  # "network" | "compute" |
+                                 # "identity" | "storage" | None if unclassified
     resource_identifier: str
     layer: Optional[str] = None # "foundation" | "app" | None if unclassified
     discovered_at: datetime
     provenance: str             # "iac_state" | "live_api"
 ```
+
+**`resource_type` is provider-native, not CFN-style — corrected
+(2026-07-13).** An earlier draft of this schema commented `resource_type`
+as *"CFN-style, same convention as `ToolIntent.resource_type`"* — grounded
+in `harness/skill_matching.py`'s real `SPEC_TYPE_TO_CFN_TYPE` table and
+`infra/allowed-resource-types.json`, but that convention is genuinely
+AWS-only (2 entries, both `AWS::*`) and nothing in this codebase maps a
+GCP Cloud Asset Inventory `assetType` (`compute.googleapis.com/Network`)
+or an Azure ARM `type` (`Microsoft.Network/virtualNetworks`) into it —
+confirmed by direct code search, not assumed. Three genuinely
+incompatible namespacing schemes (`Service::Type`,
+`service.googleapis.com/Type`, `Provider/type`), not one convention with
+different casing.
+
+Two options considered and rejected in favor of provider-native storage
+plus a coarse `resource_category` field:
+- **Force everything into CFN-style** via per-provider translation
+  tables (`GCP_TYPE_TO_CFN_TYPE`, `AZURE_TYPE_TO_CFN_TYPE`, same shape as
+  `SPEC_TYPE_TO_CFN_TYPE`) — rejected. Nothing that reads
+  `InfraInventoryRecord` today needs full type equivalence:
+  `normalize_resource_types()` (the only real consumer of the CFN-style
+  convention) operates on `spec['resources']`, which is AWS-only today,
+  and never reads `InfraInventoryRecord` at all. Building an exhaustive
+  translation table solves a problem nothing currently has, and GCP/Azure
+  have resource types with no CFN equivalent at all — an unresolvable
+  asymmetry, not just missing entries.
+- **Store provider-native with no categorization at all** — rejected
+  too far the other way: `tasks.md` 2.3's network-before-compute-before-
+  identity discovery ordering (`docs/foundation_layer_decomposition.md`'s
+  dependency chain applied to discovery) genuinely needs *some*
+  cross-provider comparison — "is this a network resource" — just not
+  full type equivalence.
+
+**Chosen: store `resource_type` exactly as the discovery source returns
+it, add `resource_category` as a coarse, cheap-to-populate enum for the
+one thing that actually needs cross-provider comparison.** Provenance
+of the raw type string stays unambiguous (each convention's prefix
+self-identifies the provider: `AWS::`, `*.googleapis.com/`,
+`Microsoft.*/`), so no separate `cloud_provider` field is added here —
+flagged as an open question below in case multi-account-per-BU querying
+needs it explicitly rather than inferred from the prefix.
 
 **`layer` is nullable and unreconciled with `FoundationRecord` on
 purpose, for now.** Whether this table should eventually absorb
@@ -122,7 +168,15 @@ Alternative considered: discover everything in one unordered pass,
 classify relationships afterward — rejected, since a live listing call
 returning resources in arbitrary order gives no way to tell a
 dependency edge from two unrelated resources without the network
-context already in hand.
+context already in hand. **This ordering is exactly what
+`resource_category` exists to make cheap** — each provider's discovery
+call classifies its own results (`compute.googleapis.com/Network` /
+`compute.googleapis.com/Subnetwork` → `"network"`; `AWS::EC2::VPC` /
+`AWS::EC2::Subnet` → `"network"`; `Microsoft.Network/virtualNetworks` →
+`"network"`, and so on per category) at write time, so the ordering pass
+filters on one coarse field instead of re-deriving "is this a network
+resource" from three different provider-native type vocabularies at
+read time.
 
 ## Risks / Trade-offs
 
@@ -147,18 +201,45 @@ context already in hand.
   [Mitigation] not addressed in this design; worth a follow-up if it
   proves real, not designed defensively against a hypothetical scale
   problem now.
-- [Risk] **GCP has no live-API discovery path for the network layer at
-  all** — confirmed in `docs/gcp_azure_verification_pass.md`: no tool
-  wraps `compute.networks.list`/`subnetworks.list`, and the GKE MCP
-  server is read-only *and cluster-internal only* (tells you what's
-  inside a cluster, nothing about the VPC it sits in). A GCP BU with no
-  registered `IacSourceRef` cannot have its network layer discovered by
-  this change's bootstrap sweep at all → [Mitigation] bootstrap
-  discovery SHALL flag this explicitly for GCP BUs with no registered
-  IaC state — *"network layer could not be discovered, register IaC
-  state or provide it manually"* — rather than silently producing an
-  inventory that's missing its most foundational layer. Not a
-  workaround for the underlying tooling gap, which stays open.
+- [Risk] `resource_type`'s provider self-identifies via its string
+  prefix (`AWS::`, `*.googleapis.com/`, `Microsoft.*/`) rather than a
+  dedicated `cloud_provider` field — cheap today, since
+  `docs/multi_account_per_bu_design.md`'s per-account scoping means a
+  bootstrap sweep already runs against one known-provider account at a
+  time. Not yet checked: whether request-time or nightly-sweep querying
+  across a BU's multiple accounts needs to filter/group by provider
+  explicitly rather than parsing prefixes → [Mitigation] not addressed
+  here; add `cloud_provider` as an explicit column later if prefix-
+  parsing proves awkward in practice, rather than adding it defensively
+  now with no confirmed caller.
+- [Risk] **Corrected (2026-07-13)** — previously stated as "GCP has no
+  live-API discovery path for the network layer at all," which was
+  incomplete research, not a confirmed absence: the original check
+  looked for an MCP wrapper around `compute.networks.list`/
+  `subnetworks.list` specifically and never checked Google's own managed
+  Cloud Asset Inventory MCP server (`list_assets`), which directly
+  covers `compute.googleapis.com/Network` and
+  `compute.googleapis.com/Subnetwork` asset types, verified by direct
+  inspection of its documented parameters
+  (`docs/cross_project_network_sharing.md` Part H). A GCP BU with no
+  registered `IacSourceRef` **can** have its network layer's existence
+  discovered by this change's bootstrap sweep. What remains genuinely
+  gapped, narrower than originally stated: Cloud Asset Inventory doesn't
+  confirm exposing Shared VPC host/service *relationship* data (the
+  `XpnResource` relationship type isn't documented as supported even at
+  Security Command Center Premium/Enterprise tier), so resolving *which
+  host project* a service project's network actually lives in still
+  requires the dedicated `getXpnHost`/`listUsable` calls
+  (`docs/cross_project_network_sharing.md` Part D) → [Mitigation]
+  bootstrap discovery SHALL use Cloud Asset Inventory for GCP
+  existence-level network discovery regardless of whether `IacSourceRef`
+  is registered, and SHALL flag explicitly, only for the Shared VPC
+  relationship-resolution gap specifically, when a discovered GCP
+  network resource's host-project attachment cannot be resolved via
+  `getXpnHost` — *"network resource discovered, host-project
+  relationship could not be resolved, register IaC state or provide it
+  manually"* — narrower than the original "network layer could not be
+  discovered" flag, since the layer itself is no longer undiscoverable.
 - [Risk] **This gap is deeper than "no listing tool" once cross-project
   network sharing is in play** — `docs/cross_project_network_sharing.md`:
   even with a working `compute.networks.list` equivalent, a GCP service

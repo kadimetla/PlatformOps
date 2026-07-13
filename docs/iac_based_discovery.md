@@ -10,6 +10,20 @@ Also corrects that doc's implicit discovery-priority assumption:
 IaC state should be queried *before* live API discovery when a source
 is registered, not treated as a GCP-only fallback.
 
+**Correction (2026-07-13)**: at the time this doc was written, the "GCP
+VPC-discovery gap" was believed to mean no live-API discovery path
+existed at all for a BU with no registered IaC source. That was
+incomplete research — Google's managed Cloud Asset Inventory MCP server
+(`list_assets`) closes existence-level discovery even with no
+`IacSourceRef` registered. See
+`docs/cross_project_network_sharing.md` Part H for the verification.
+What this doc actually closes is narrower and still real: IaC state
+carries *declared intent* Cloud Asset Inventory can't recover, and (for
+GCP specifically) resolving Shared VPC host/service *relationships*
+still has no live-API path outside the dedicated calls in
+`docs/cross_project_network_sharing.md` Part D. The per-provider table
+below is corrected accordingly.
+
 ## Part A: Three IaC-based discovery paths, ranked by existing support
 
 ### 1. Terraform state — zero new integration
@@ -96,7 +110,7 @@ what surfaced this, but the fix generalizes.
 | Provider | IaC-based discovery | Live API discovery (now the cross-check, not primary) |
 |---|---|---|
 | **AWS** | Terraform state via `terraform-mcp-server`, if `IacSourceRef.tool == "terraform"` | `awslabs.eks-mcp-server` read tools + `ccapi-mcp-server list_resources` (unchanged from prior doc) |
-| **GCP** | Terraform state, **or** Config Connector status via `kubernetes-mcp-server` (new) | GKE MCP (read-only, cluster-internal only) — VPC-level live discovery still has no dedicated tool, but is no longer the only option now that IaC-based paths exist |
+| **GCP** | Terraform state, **or** Config Connector status via `kubernetes-mcp-server` (new) | Cloud Asset Inventory `list_assets` (existence-level, verified — `docs/cross_project_network_sharing.md` Part H) + GKE MCP (read-only, cluster-internal only); Shared VPC host/service *relationship* resolution still needs the dedicated `getXpnHost`/`listUsable` calls (Part D of that doc), no live-API shortcut for that specific question |
 | **Azure** | Terraform state, if used | AKS MCP server integration + `azure-resource-graph-mcp-server` (unchanged, already solid) |
 
 ## Open questions / not yet decided
