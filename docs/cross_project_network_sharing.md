@@ -129,11 +129,101 @@ specified rather than a named-but-unverified gap:
      service_project=service_project)           the InfraInventoryRecord write
 ```
 
+## Part E: AWS's exact discovery API calls, verified
+Simpler than GCP's, for the common case — no extra lookup needed at all
+for per-BU discovery.
+
+**`DescribeSubnets`, called in the participant/service account itself,
+already returns shared subnets.** That's the whole point of RAM
+resource sharing — the shared resource becomes visible in the
+participant's own account context. Each subnet's `OwnerId` field shows
+the *original* owning account; if it differs from the calling account's
+own ID, that subnet is shared-in, not owned. For per-BU discovery
+specifically, this confirms Part C's original claim precisely: no
+separate "which account owns this" lookup is required before
+`DescribeSubnets` — the ownership signal comes back on the same call.
+
+The RAM-specific APIs matter for the **owner/network account's** view —
+seeing the full sharing configuration and who it's shared with, the AWS
+analog of GCP's `getXpnResources`:
+1. **`GetResourceShares`** — find resource shares owned or shared with
+   the caller
+2. **`ListResources`** (`resource-type=ec2:Subnet`, scoped to a
+   resource-share ARN) — get the actual shared subnet resources
+3. **`GetResourceShareAssociations`** (`association-type=PRINCIPAL`) —
+   which accounts have access to those shares
+
+## Part F: Azure's exact discovery API calls, verified — and a better mechanism than naive graph-walking
+**Per-VNet REST**, confirms the graph-traversal characterization from
+Part C is real:
+```
+GET https://management.azure.com/subscriptions/{subscriptionId}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{vnet}/virtualNetworkPeerings?api-version=2024-03-01
+```
+Returns one VNet's direct peers only — transitive reachability means
+recursively following each peering's `remoteVirtualNetwork` reference,
+VNet by VNet.
+
+**But Azure Resource Graph (KQL) is the practical mechanism for
+bootstrap-scale discovery, not per-VNet REST calls.** One query against
+the `virtualNetworks` resource type, expanding the
+`virtualNetworkPeerings` property, returns every VNet and its peering
+edges **across every subscription the caller has Reader access to, in
+one call** — Resource Graph runs cross-subscription by default, capped
+at 1000 rows per response, paginated beyond that. The better design:
+fetch the whole peering graph's edges in one (or a few, paginated)
+Resource Graph query, then do the actual BFS/DFS traversal **locally, in
+process**, against the already-fetched edge list — not recursive
+per-VNet API calls. The same "bulk listing, then reason locally" shape
+GCP's `listUsable` already gives for free, applied to a genuine graph
+instead of a flat list.
+
+**Cross-tenant is the one place this doesn't fully resolve**: Resource
+Graph only sees what the calling identity itself has access to —
+genuine cross-tenant discovery still needs Azure Lighthouse delegation,
+confirming what Part A already flagged, not a new gap this narrows.
+
+## Part G: Could Terraform itself abstract away Parts D–F? Verified — no, not for this
+Worth checking directly rather than assuming, since `terraform-mcp-server`
+is already integrated in this project: could an ad-hoc, data-source-only
+Terraform configuration (`data "google_compute_shared_vpc_host_project"`,
+`data "aws_subnets"`, `data "azurerm_virtual_network_peering"`) replace
+Parts D–F's raw provider API calls with one consistent tool instead of
+three provider integrations?
+
+**Checked the real, current tool surface — it doesn't support this.**
+`create_run`'s documented run types are exactly two: `plan_and_apply`
+and `refresh_state`, both scoped to an **existing HCP Terraform/
+Terraform Enterprise workspace** with configuration already associated
+(VCS-linked or CLI-uploaded). There is no "evaluate these data sources
+on demand, no existing workspace needed" capability anywhere in the
+documented surface. Using Terraform for this would mean maintaining a
+dedicated, pre-configured discovery workspace per BU/org with the right
+data-source blocks already committed — a real, ongoing operational
+burden, not the lightweight reuse this section originally floated. For
+resources with no Terraform representation at all (exactly what the
+live-listing pass exists to catch), there's nothing to attach that
+discovery to in the first place.
+
+**Conclusion**: raw provider APIs (Parts D–F) remain the verified,
+necessary mechanism for cross-project sharing discovery. This doesn't
+generalize away — don't design toward an ad-hoc-Terraform-discovery
+shortcut for this specific problem.
+
+One real, useful thing this check did surface: **`refresh_state`** — a
+genuine, documented run type, *"refreshes state without making
+changes"* — is the concrete Terraform-path mechanism for checking drift
+on resources **already tracked** in a workspace's state. That's a
+different problem than this doc covers (discovering resources with no
+existing state at all), but it directly concretizes
+`infra-inventory-discovery`'s nightly-drift-sweep design — see that
+change's `design.md` and spec.
+
 ## Open questions / not yet decided
-- AWS and Azure's equivalent exact discovery-time API calls (the
-  precise `DescribeSubnets` filter shape for shared subnets, and the
-  Azure peering-graph traversal calls) weren't verified to this same
-  depth — GCP's alone is now fully specified.
+- The exact Azure Lighthouse delegation setup required for cross-tenant
+  Resource Graph queries specifically — named as the mechanism, not
+  verified to API-call depth the way the same-tenant case now is. All
+  three providers' *same-boundary* discovery mechanics (GCP, AWS, and
+  Azure within one tenant) are now fully specified.
 - The Azure peering-graph traversal algorithm for discovery purposes —
   flagged as harder than the other two, not designed.
 - Whether `InfraInventoryRecord` needs a distinct field for "owning
@@ -158,6 +248,10 @@ specified rather than a named-but-unverified gap:
   bootstrap-discovery-sweep design — its existing GCP network-discovery-gap
   risk note should be extended with this, not treated as a separate
   finding (see that change's `design.md`).
+- Part G's `refresh_state` finding concretizes that same change's
+  nightly-drift-sweep native-drift-detection mechanism — a different
+  problem (already-tracked resources) from the rest of this doc
+  (resources with no tracking at all), captured there, not here.
 - Doesn't change the one required next step
   (`plan_request(envelope)`, already implemented — this is a discovery/
   inventory-side concern, unrelated to the drafting boundary).
@@ -174,3 +268,14 @@ specified rather than a named-but-unverified gap:
 - [Method: projects.getXpnHost — Compute Engine, Google Cloud Documentation](https://docs.cloud.google.com/compute/docs/reference/rest/v1/projects/getXpnHost)
 - [Method: subnetworks.listUsable — Compute Engine, Google Cloud Documentation](https://cloud.google.com/compute/docs/reference/rest/v1/subnetworks/listUsable)
 - [Method: projects.getXpnResources — Compute Engine, Google Cloud Documentation](https://cloud.google.com/compute/docs/reference/rest/v1/projects/getXpnResources)
+- [DescribeSubnets — Amazon Elastic Compute Cloud API Reference](https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeSubnets.html)
+- [ListResources — AWS Resource Access Manager API Reference](https://docs.aws.amazon.com/ram/latest/APIReference/API_ListResources.html)
+- [GetResourceShares — AWS Resource Access Manager API Reference](https://docs.aws.amazon.com/ram/latest/APIReference/API_GetResourceShares.html)
+- [GetResourceShareAssociations — AWS Resource Access Manager API Reference](https://docs.aws.amazon.com/ram/latest/APIReference/API_GetResourceShareAssociations.html)
+- [Virtual Network Peerings - List — REST API (Azure Virtual Networks), Microsoft Learn](https://learn.microsoft.com/en-us/rest/api/virtualnetwork/virtual-network-peerings/list)
+- [Azure Resource Graph sample queries for Azure networking — Microsoft Learn](https://learn.microsoft.com/en-us/azure/networking/resource-graph-samples)
+- [How to Query Azure Resource Graph Across Multiple Subscriptions and Management Groups — OneUptime](https://oneuptime.com/blog/post/2026-02-16-how-to-query-azure-resource-graph-across-multiple-subscriptions-and-management-groups/view)
+- [hashicorp/terraform-mcp-server — GitHub](https://github.com/hashicorp/terraform-mcp-server)
+- [Terraform MCP server overview — Terraform, HashiCorp Developer](https://developer.hashicorp.com/terraform/mcp-server)
+- [Terraform MCP server reference — Terraform, HashiCorp Developer](https://developer.hashicorp.com/terraform/mcp-server/reference)
+- [Terraform MCP server updates: Stacks support, new tools, and tips — HashiCorp Blog](https://www.hashicorp.com/en/blog/terraform-mcp-server-updates-stacks-support-new-tools-and-tips)

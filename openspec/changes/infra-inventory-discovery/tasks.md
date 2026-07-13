@@ -54,11 +54,16 @@
 
 - [ ] 4.1 Implement the native drift detection pass — CloudFormation
       `DetectStackDrift`/`DescribeStackResourceDrifts` for CFN-tracked
-      resources, `terraform plan` against registered state for
+      resources, `terraform-mcp-server`'s `create_run` with run type
+      `refresh_state` (verified real, read-only — not a generic
+      "terraform plan" description) against registered state for
       Terraform-tracked ones
-- [ ] 4.2 Implement the live listing pass — cross-checks
-      `InfraInventoryRecord` against a live resource listing to catch
-      resources with no IaC representation at all
+- [ ] 4.2 Implement the live listing pass via raw provider APIs —
+      cross-checks `InfraInventoryRecord` against a live resource listing
+      to catch resources with no IaC representation at all.
+      `terraform-mcp-server` has no ad-hoc discovery capability for this
+      (verified, `docs/cross_project_network_sharing.md` Part G) — don't
+      attempt to route this pass through it
 - [ ] 4.3 Reconcile `InfraInventoryRecord` from both passes' findings
 - [ ] 4.4 Write `DRIFT_DETECTED` rows to the existing `audit_logs` table
       (new decision value, no schema change) for every discrepancy —

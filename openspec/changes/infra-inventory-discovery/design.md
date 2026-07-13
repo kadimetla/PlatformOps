@@ -74,13 +74,27 @@ can't cover both drift directions.** CloudFormation's own
 explicitly defined in the stack template"* — it cannot discover a
 resource that was never part of any tracked stack. So: native drift
 detection (CFN `DetectStackDrift`/`DescribeStackResourceDrifts`,
-Terraform `plan` against registered state) for resources the harness
-already tracks, plus a live listing pass specifically to catch resources
-with no IaC representation at all. Alternative considered: live listing
-only, skip native drift detection — rejected, native detection is
-authoritative and cheaper for the (likely majority) of resources that
-do have IaC state; the live pass is the fallback for what it can't see,
-not a replacement for it.
+Terraform's `refresh_state` run type against registered state — see
+below) for resources the harness already tracks, plus a live listing
+pass specifically to catch resources with no IaC representation at all.
+Alternative considered: live listing only, skip native drift detection —
+rejected, native detection is authoritative and cheaper for the (likely
+majority) of resources that do have IaC state; the live pass is the
+fallback for what it can't see, not a replacement for it.
+
+**The Terraform-path native drift check is `create_run`'s `refresh_state`
+run type, verified, not a generic "run `terraform plan`" description.**
+`docs/cross_project_network_sharing.md` Part G checked
+`terraform-mcp-server`'s real, current tool surface directly: `create_run`
+supports exactly two run types, `plan_and_apply` and `refresh_state` —
+the latter *"refreshes state without making changes,"* the precise
+read-only semantics this pass needs, scoped to a workspace's already-tracked
+resources. That same check confirmed the tool has **no** ad-hoc,
+data-source-only query capability — so it cannot be used for the live
+listing pass or for discovering resources/relationships with no existing
+workspace at all (including the cross-project network sharing case in
+that doc); raw provider APIs remain necessary there. `refresh_state`
+only concretizes the native-drift-detection half of this sweep.
 
 **Drift findings write to the existing `audit_logs` table as a new
 `DRIFT_DETECTED` decision value**, not a new findings store — same

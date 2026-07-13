@@ -1,11 +1,14 @@
 ## ADDED Requirements
 
 ### Requirement: The nightly sweep runs both a native drift check and a live listing pass
-The system SHALL run native drift detection (CloudFormation
-`DetectStackDrift`/`DescribeStackResourceDrifts`, or `terraform plan`
-against registered state) against every resource with known IaC
-provenance, AND SHALL separately run a live listing pass to detect
-resources with no IaC representation at all.
+The system SHALL run native drift detection — CloudFormation
+`DetectStackDrift`/`DescribeStackResourceDrifts`, or `terraform-mcp-server`'s
+`create_run` with run type `refresh_state` against a registered
+workspace — against every resource with known IaC provenance, AND SHALL
+separately run a live listing pass (raw provider APIs — `terraform-mcp-server`
+has no ad-hoc discovery capability for resources outside a tracked
+workspace, verified in `docs/cross_project_network_sharing.md` Part G)
+to detect resources with no IaC representation at all.
 
 #### Scenario: A resource with no IaC state is still caught
 - **WHEN** a resource exists in the cloud account but was never part of
