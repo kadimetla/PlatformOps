@@ -73,7 +73,8 @@ hub-spoke model works at all.
   first identifying its host project (a separate lookup), then
   discovering network resources *there*, then separately checking
   `networkUser` bindings to know what's actually usable. Three lookups,
-  not one.
+  not one — see Part D below for the exact, verified API calls, not just
+  the concept.
 - **AWS**: a shared subnet's true owner account is always explicit in
   the resource itself (`OwnerId`) — the cross-boundary case is more
   mechanically discoverable than GCP's, still cross-account, but no
@@ -84,11 +85,55 @@ hub-spoke model works at all.
   no single authoritative owner to query — you have to walk the peering
   graph to know what's actually reachable.
 
+## Part D: GCP's exact discovery API calls, verified
+The internal API surface still calls Shared VPC by its old codename
+**"XPN"** throughout, even though the user-facing product name is
+"Shared VPC" — worth knowing before these method names look unrelated
+to the feature.
+
+**1. `compute.projects.getXpnHost`** — the host-project lookup itself:
+```
+GET https://compute.googleapis.com/compute/v1/projects/{project}/getXpnHost
+```
+Called *as the service project*. Returns the host project's full
+`Project` resource it's linked to — empty if the project isn't attached
+to any Shared VPC host at all.
+
+**2. `compute.subnetworks.listUsable`** — the actual network-layer
+discovery step, not just the relationship check:
+```
+GET https://compute.googleapis.com/compute/v1/projects/{HOST_PROJECT_ID}/aggregated/subnetworks/listUsable
+```
+(`gcloud compute networks subnets list-usable --project=HOST_PROJECT_ID
+--service-project=SERVICE_PROJECT_ID` in CLI form.) Called *against the
+host project*, scoped to a specific service project — returns every
+subnet that service project can actually use, whether owned by the host
+or shared into it. This is the call that would populate
+`InfraInventoryRecord`'s network-layer rows for a service project.
+
+**3. `compute.projects.getXpnResources`** — the reverse direction, for
+top-down discovery starting from a known shared-network project rather
+than per-service-project:
+```
+GET https://compute.googleapis.com/compute/v1/projects/{HOST_PROJECT_ID}/getXpnResources
+```
+Called *against a host project*, lists every service project attached
+to it.
+
+**The concrete sequence** for a GCP service project, now fully
+specified rather than a named-but-unverified gap:
+```
+1. getXpnHost(service_project)               → host project ID, or empty
+                                                 (not shared — discover normally)
+2. listUsable(host_project,                  → the actual usable subnet list —
+     service_project=service_project)           the InfraInventoryRecord write
+```
+
 ## Open questions / not yet decided
-- Exact API call(s) for "which host project is this service project
-  attached to" in GCP — the concept is confirmed, the precise
-  discovery-time API method wasn't verified to the same depth as the
-  permission model itself.
+- AWS and Azure's equivalent exact discovery-time API calls (the
+  precise `DescribeSubnets` filter shape for shared subnets, and the
+  Azure peering-graph traversal calls) weren't verified to this same
+  depth — GCP's alone is now fully specified.
 - The Azure peering-graph traversal algorithm for discovery purposes —
   flagged as harder than the other two, not designed.
 - Whether `InfraInventoryRecord` needs a distinct field for "owning
@@ -126,3 +171,6 @@ hub-spoke model works at all.
 - [Azure Virtual Network Peering overview — Microsoft Learn](https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-peering-overview)
 - [Create Virtual Network Peering Between Different Subscriptions — Microsoft Learn](https://learn.microsoft.com/en-us/azure/virtual-network/create-peering-different-subscriptions)
 - [Virtual Network Connectivity Options and Spoke-To-Spoke Communication — Azure Architecture Center, Microsoft Learn](https://learn.microsoft.com/en-us/azure/architecture/reference-architectures/hybrid-networking/virtual-network-peering)
+- [Method: projects.getXpnHost — Compute Engine, Google Cloud Documentation](https://docs.cloud.google.com/compute/docs/reference/rest/v1/projects/getXpnHost)
+- [Method: subnetworks.listUsable — Compute Engine, Google Cloud Documentation](https://cloud.google.com/compute/docs/reference/rest/v1/subnetworks/listUsable)
+- [Method: projects.getXpnResources — Compute Engine, Google Cloud Documentation](https://cloud.google.com/compute/docs/reference/rest/v1/projects/getXpnResources)
