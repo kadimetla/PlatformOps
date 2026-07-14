@@ -6,7 +6,7 @@
       closed as part of this change (design.md Goals). Task 3.9 below
       implements it.
 - [x] 1.2 Confirm the parallel-build package name — **resolved
-      2026-07-14: `langgraph_agents/`**, reads naturally as a Python
+      2026-07-14: `workflows/drafting/`**, reads naturally as a Python
       package and matches the existing flat top-level convention
       (`gateway/`, `agents/`, `mcp_server/`, `spec/`, `skills/`)
 - [ ] 1.3 Audit `config/models.yaml` for the exact set of LLM providers
@@ -66,7 +66,7 @@
 ## 4. Build the new plan_request() implementation
 
 - [ ] 4.1 Implement a new `plan_request(envelope, bundle, usage_store)
-      -> (PlanRecord, list[ToolIntent])` against `langgraph_agents/`, in
+      -> (PlanRecord, list[ToolIntent])` against `workflows/drafting/`, in
       a distinctly-named module — `gateway/plan_request.py` stays
       untouched during this step
 - [ ] 4.2 Port compliance preflight (`run_compliance_preflight`) and

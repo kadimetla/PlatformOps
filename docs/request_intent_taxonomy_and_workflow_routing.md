@@ -72,7 +72,7 @@ it actually touches:
 | Audit type | Example | Data source | Status |
 |---|---|---|---|
 | **Decision/approval audit** | "why was this denied," "show approval history" | `audit_logs`/`approvals` | Real, built (`gateway/tool_dispatcher.py`) |
-| **Existence/discovery check** | "does bucket X already exist" | `InfraInventoryRecord` | Designed (`infra-inventory-discovery`), not built. **Reclassified**: this is discovery, not audit — same underlying data as Part C's webapp-deployment-candidate scenario, just a narrower query. Kept in this table because it's how users will phrase it, but it routes to the *discovery* query path, not a separate "audit" one. |
+| **Existence/discovery check** | "does bucket X already exist" | `InfraInventoryRecord` | Designed (`infra-inventory-discovery`), not built. **Reclassified**: this is discovery, not audit — same underlying data as Part C's webapp-deployment-candidate scenario, just a narrower lookup. Kept in this table because it's how users will phrase it, but it routes to `workflows/discovery/`, not `workflows/audit/`. |
 | **Drift audit** | "what's currently drifted from IaC state" | `audit_logs`'s `DRIFT_DETECTED` rows | Already fully speced — `infra-inventory-discovery`'s nightly-drift-sweep writes exactly this; only the *read* path against it is new |
 | **Policy/compliance audit** | "which resources currently violate policy X" | Re-running `spec/check_compliance.py`-shaped rules against *live discovered state* | New combination — `check_compliance.py` today only ever runs pre-apply, against a not-yet-created spec. Auditing already-existing resources against the same rules retroactively is a distinct, undesigned use of it. |
 | **Cost/billing audit** | "how much did BU X spend this month" | **Nothing today** | **Explicitly flagged future gap, out of scope for this doc's first version.** `PlanRecord.estimated_monthly_cost`/`ToolIntent.estimated_monthly_cost` are drafting-time estimates, not real billing data — needs live cloud billing API integration (AWS Cost Explorer, GCP Billing export, Azure Cost Management), none of which exist in `mcp_server/external_servers.py` today. Answering from stale estimates instead of real billing data would be a real accuracy trade-off, not a free substitute — deliberately not designed here rather than papered over. |
@@ -84,19 +84,31 @@ audit decomposition above, and a few more scenarios grounded in
 capabilities this project has already designed elsewhere (not
 speculative additions) — meant to be extended, not exhaustive.
 
+**Workflow naming, corrected (2026-07-14)**: an earlier draft of this
+table routed every read scenario to a single, generically-named `query`
+graph. Corrected for the same reason `openspec/changes/migrate-to-langgraph/`
+renamed `langgraph_agents/` to `workflows/drafting/` — a workflow should
+be named for what it processes, not left generic. Reads split cleanly
+into two workflows by data source (Part B already drew this line for
+scenario #2, just not consistently through the rest of the table):
+`workflows/audit/` (reads `audit_logs`/`approvals`/compliance rules —
+decision, drift, policy, skill-lifecycle) and `workflows/discovery/`
+(reads `InfraInventoryRecord`/`FoundationRecord.discovered_capabilities`
+— existence, capability-matching, cross-project lookups).
+
 | # | Scenario | Category | Data source(s) | Workflow | Status |
 |---|---|---|---|---|---|
-| 1 | "Why was request X denied?" | Read, deterministic | `audit_logs`/`approvals` | `query` graph, decision-audit branch | Data real; read workflow not built |
-| 2 | "Does bucket `platformops-demo-x` already exist?" | Read, deterministic | `InfraInventoryRecord` | `query` graph, discovery branch | Schema designed, not built |
-| 3 | "What drifted last night?" | Read, deterministic | `audit_logs` (`DRIFT_DETECTED`) | `query` graph, drift branch | Sweep fully speced; read side new |
-| 4 | "Which resources violate the public-write-prohibited policy right now?" | Read, judgment-required | live `InfraInventoryRecord` + `spec/check_compliance.py` rules | `query` graph, policy-audit branch (LLM interprets rule applicability) | New combination, undesigned |
-| 5 | "Show existing infra suitable to deploy a webapp for BU X" | Read, judgment-required | `InfraInventoryRecord` + `FoundationRecord.discovered_capabilities` | `discovery-match` graph — may hand off into `drafting` if the user picks a candidate | `discovered_capabilities` matching designed (`docs/foundation_discovery_and_capability_matching.md`); the read-then-optionally-write chaining is new |
+| 1 | "Why was request X denied?" | Read, deterministic | `audit_logs`/`approvals` | `workflows/audit/`, decision branch | Data real; read workflow not built |
+| 2 | "Does bucket `platformops-demo-x` already exist?" | Read, deterministic | `InfraInventoryRecord` | `workflows/discovery/`, existence branch | Schema designed, not built |
+| 3 | "What drifted last night?" | Read, deterministic | `audit_logs` (`DRIFT_DETECTED`) | `workflows/audit/`, drift branch | Sweep fully speced; read side new |
+| 4 | "Which resources violate the public-write-prohibited policy right now?" | Read, judgment-required | live `InfraInventoryRecord` + `spec/check_compliance.py` rules | `workflows/audit/`, policy branch (LLM interprets rule applicability) | New combination, undesigned |
+| 5 | "Show existing infra suitable to deploy a webapp for BU X" | Read, judgment-required | `InfraInventoryRecord` + `FoundationRecord.discovered_capabilities` | `workflows/discovery/`, capability-match branch — may hand off into `workflows/drafting/` if the user picks a candidate | `discovered_capabilities` matching designed (`docs/foundation_discovery_and_capability_matching.md`); the read-then-optionally-write chaining is new |
 | 6 | "Show me BU X's cost this month" | Read, judgment-required (would be) | none — **out of scope, flagged future gap** | n/a | Not designed (Part B) |
-| 7 | "Deploy an S3 bucket named `platformops-demo-x`" (exact skill match) | Write, deterministic | skill templates + `WorkspaceBundle` | `drafting` graph, deterministic branch | Built (`check_structured_match`/`SkillTemplateFillAgent`) |
-| 8 | "Set up a webapp with a database and CDN for BU X" (free text, no exact skill) | Write, judgment-required | LLM drafting | `drafting` graph, LLM branch → `approval` → `dispatch` | `drafting`/`approval`/`dispatch` designed in `migrate-to-langgraph`; `approval`/`dispatch` not yet built |
-| 9 | "Which skills are provisional vs. stable for this BU?" | Read, deterministic | `SkillUsageStore` | `query` graph, skill-lifecycle branch | Data real and tested (`gateway/skill_usage_store.py`); read workflow new |
-| 10 | "What's pending my approval right now?" | Read, deterministic | `approvals` (`pending_approval:*` states) | `query` graph, decision-audit branch (same as #1, different filter) | State machine designed (`docs/control_ui_approval_queue_design.md`), not built |
-| 11 | "What's this GCP service project's Shared VPC host?" | Read, deterministic (multi-step, not multi-turn) | `getXpnHost`/`listUsable` live API sequence | `query` graph, discovery branch (cross-project variant) | API sequence verified (`docs/cross_project_network_sharing.md` Part D), no read workflow wraps it yet |
+| 7 | "Deploy an S3 bucket named `platformops-demo-x`" (exact skill match) | Write, deterministic | skill templates + `WorkspaceBundle` | `workflows/drafting/`, deterministic branch | Built (`check_structured_match`/`SkillTemplateFillAgent`) |
+| 8 | "Set up a webapp with a database and CDN for BU X" (free text, no exact skill) | Write, judgment-required | LLM drafting | `workflows/drafting/`, LLM branch → `workflows/approval/` → `workflows/dispatch/` | `drafting`/`approval`/`dispatch` designed in `migrate-to-langgraph`; `approval`/`dispatch` not yet built |
+| 9 | "Which skills are provisional vs. stable for this BU?" | Read, deterministic | `SkillUsageStore` | `workflows/audit/`, skill-lifecycle branch | Data real and tested (`gateway/skill_usage_store.py`); read workflow new |
+| 10 | "What's pending my approval right now?" | Read, deterministic | `approvals` (`pending_approval:*` states) | `workflows/audit/`, decision branch (same as #1, different filter) | State machine designed (`docs/control_ui_approval_queue_design.md`), not built |
+| 11 | "What's this GCP service project's Shared VPC host?" | Read, deterministic (multi-step, not multi-turn) | `getXpnHost`/`listUsable` live API sequence | `workflows/discovery/`, cross-project branch | API sequence verified (`docs/cross_project_network_sharing.md` Part D), no read workflow wraps it yet |
 
 ## Part D: Two invocation entry points — chat-triggered vs. schedule-triggered
 
@@ -133,32 +145,45 @@ point, not a variant of the chat one.
 └─────────────────────────────┘     └──────────────────────────────┘
 ```
 
-## Part E: Inside a read workflow — the `query` graph shape
+## Part E: Inside a read workflow — two graphs, not one generic `query` graph
 
-For the deterministic audit/discovery types (#1, #2, #3, #9, #10, #11),
-one shared **query graph** with a deterministic router node picks which
-plain-Python lookup function to call — mirroring
-`check_structured_match()`'s existing pattern, not inventing a new one.
-For judgment-required types (#4, #5), the same graph's router hands off
-to an LLM node that reasons over what the deterministic lookup already
-returned, rather than replacing the lookup:
+**Corrected (2026-07-14)**: an earlier draft of this section sketched
+one shared `query` graph for every read scenario. Split into
+`workflows/audit/` and `workflows/discovery/` instead, matching Part
+C's corrected routing — each graph's router only ever needs to reason
+about *its own* data source, and whether a graph ever needs an LLM
+branch becomes a property of which folder you're in (`workflows/audit/`
+is deterministic-only today; `workflows/discovery/` is the one with a
+judgment-required branch), not a per-scenario special case inside one
+undifferentiated graph. Both reuse `check_structured_match()`'s
+existing deterministic-router pattern, not a new one:
 
 ```
-query_graph:
+workflows/audit/ graph:
   classify_subtype (deterministic, keyword/rule-based — same
     deterministic-first-then-LLM-fallback shape as envelope_to_spec())
         │
-   ┌────┼─────────┬──────────┬─────────────┬───────────────┐
-   ▼    ▼         ▼          ▼             ▼               ▼
- decision  discovery/    drift        skill-        policy/webapp-
- audit     existence     audit        lifecycle      match (LLM
- (deter-   (deter-       (deter-      (deter-        interprets
- ministic) ministic)     ministic)    ministic)      deterministic
-                                                       lookup output)
+   ┌────┼─────────┬───────────────┐
+   ▼    ▼         ▼               ▼
+ decision  drift        policy (deterministic  skill-lifecycle
+ (deter-   (deter-       lookup + LLM           (deterministic)
+ ministic) ministic)     interprets rule
+                          applicability)
+
+workflows/discovery/ graph:
+  classify_subtype (same deterministic-first shape)
+        │
+   ┌────┼─────────────────┐
+   ▼    ▼                 ▼
+ existence  cross-project   capability-match (LLM interprets
+ (deter-    (deterministic,  deterministic InfraInventoryRecord/
+ ministic)  multi-step API   discovered_capabilities lookup output —
+            sequence)        the one genuinely judgment-required branch)
 ```
 
-Most branches terminate in one pass, synchronously — no checkpointer
-pause needed for the common case, unlike the write-path workflows.
+Most branches in both graphs terminate in one pass, synchronously — no
+checkpointer pause needed for the common case, unlike the write-path
+workflows.
 
 ## Real vs. designed
 
@@ -170,7 +195,7 @@ pause needed for the common case, unlike the write-path workflows.
 | `discovered_capabilities` matching | Designed (`docs/foundation_discovery_and_capability_matching.md`), not built |
 | `check_structured_match()` deterministic-dispatch pattern | Real, built, tested — reused conceptually here, not literally shared code |
 | Cross-project Shared VPC lookup sequence | Verified (`docs/cross_project_network_sharing.md`), no read workflow wraps it |
-| `query` graph (any branch) | Not designed as code, this doc is the first sketch |
+| `workflows/audit/`, `workflows/discovery/` graphs (any branch) | Not designed as code, this doc is the first sketch |
 | Policy/compliance retroactive audit | Not designed beyond Part C's row |
 | Cost/billing audit | Not designed at all — explicit future gap |
 | `on_inbound_message`/`on_scheduled_trigger` entry points | Sketched in `migrate-to-langgraph/design.md` and this doc; no code |
@@ -184,10 +209,10 @@ pause needed for the common case, unlike the write-path workflows.
 - Cost/billing audit's actual data source (which cloud billing APIs,
   whether via a new MCP server or direct SDK calls) — not researched,
   flagged as future work only.
-- Whether the `query` graph should be one graph with many branches (as
-  sketched in Part E) or several smaller graphs per category — Part E
-  assumes one graph for simplicity; not stress-tested against a real
-  implementation.
+- ~~Whether the `query` graph should be one graph with many branches or
+  several smaller graphs per category~~ — **resolved (2026-07-14)**:
+  split into `workflows/audit/` and `workflows/discovery/`, per Part E's
+  correction. Not yet stress-tested against a real implementation.
 - Policy/compliance retroactive audit's exact mechanism — reusing
   `spec/check_compliance.py`'s rule *functions* against live discovered
   resources instead of a draft spec needs those functions to be
@@ -204,9 +229,9 @@ pause needed for the common case, unlike the write-path workflows.
   routing mechanics; this doc adds the schedule-triggered entry point
   and the full scenario taxonomy that section didn't attempt.
 - Reuses `gateway/skill_matching.py`'s `check_structured_match()`
-  deterministic-dispatch pattern as the template for the `query` graph's
-  router node — not new reasoning, an application of a pattern this
-  project already trusts.
+  deterministic-dispatch pattern as the template for the `workflows/audit/`
+  and `workflows/discovery/` graphs' router nodes — not new reasoning,
+  an application of a pattern this project already trusts.
 - Draws the discovery-read scenarios from `infra-inventory-discovery`'s
   `InfraInventoryRecord` schema and nightly-drift-sweep design, and the
   webapp-deployment-candidate scenario from
@@ -215,8 +240,9 @@ pause needed for the common case, unlike the write-path workflows.
   its own data, which is the gap this doc names.
 - Leaves `docs/control_ui_approval_queue_design.md`'s approval state
   machine and `docs/cross_project_network_sharing.md`'s verified API
-  sequences unchanged — this doc only adds that they need a read-query
-  workflow wrapping them, not a redesign of the underlying mechanics.
+  sequences unchanged — this doc only adds that they need a
+  `workflows/audit/`/`workflows/discovery/` read workflow wrapping
+  them, not a redesign of the underlying mechanics.
 - Doesn't change the one required next step
   (`plan_request(envelope)`, already implemented) — this is entirely
   about the read-path and orchestration layers built around it.

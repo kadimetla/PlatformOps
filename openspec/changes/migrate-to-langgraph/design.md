@@ -45,11 +45,22 @@ new information this session produced, not re-derived here.
 
 ## Decisions
 
-**Parallel-build in a new `langgraph_agents/` package, not in-place
-rewrite.** Mirrors `agents/`'s existing flat top-level module
-convention (`gateway/`, `agents/`, `mcp_server/`, `spec/`, `skills/`).
-`gateway/plan_request.py`'s ADK-based internals stay untouched and
-green until a new, separately-tested `graph.stream()`-based
+**Parallel-build in a new `workflows/drafting/` package, not in-place
+rewrite, and named by workflow, not by framework — corrected
+(2026-07-14) from an earlier `langgraph_agents/` choice.** The original
+name mirrored `agents/`'s flat top-level convention but named the
+*implementation technology* rather than *what the folder processes* —
+a real mismatch once `design.md`'s own "Beyond This Change" section and
+`docs/request_intent_taxonomy_and_workflow_routing.md` established that
+gateway will orchestrate several separately-lifecycled LangGraph
+workflows (`drafting`, `approval`, `dispatch`, `audit`, `discovery`),
+each its own graph referenced by name in a `WORKFLOW_REGISTRY`. A flat
+`langgraph_agents/` folder would have become an undifferentiated home
+for all of them; `workflows/<name>/` makes the module path and the
+registry key the same string, and this change specifically builds only
+`workflows/drafting/` — the others are future siblings, not scaffolded
+here. `gateway/plan_request.py`'s ADK-based internals stay untouched
+and green until a new, separately-tested `graph.stream()`-based
 implementation exists and passes an equivalent suite; only then does
 `plan_request()` get repointed at it, in one commit. Alternative
 considered: rewrite `agents/*.py` and `plan_request.py` in place —
@@ -139,7 +150,7 @@ discipline, new mechanism underneath.
   matches until it gets the same verification pass.
 - [Risk] A parallel-build package sitting alongside `agents/` mid-migration
   could confuse a contributor about which is authoritative
-  → [Mitigation] a clear module-level docstring in `langgraph_agents/`
+  → [Mitigation] a clear module-level docstring in `workflows/drafting/`
   stating it's the not-yet-cut-over replacement; delete it immediately
   at cutover rather than leaving both around indefinitely.
 - [Risk] Cutover is a single commit repointing `plan_request()` — if it
@@ -165,18 +176,18 @@ discipline, new mechanism underneath.
    `langchain-mcp-adapters`, `langchain` + the specific provider
    packages `config/models.yaml` needs) alongside `google-adk`, not
    replacing it yet.
-2. Build `langgraph_agents/` — the `StateGraph`, node functions,
+2. Build `workflows/drafting/` — the `StateGraph`, node functions,
    `MultiServerMCPClient` MCP wiring, `init_chat_model` model config —
    structurally mirroring today's `agents/*.py` graph shape (Decisions
    above cover the two intentional deviations: `security_agent` as a
    node, vendored skill-loading).
 3. Build a new `plan_request()` implementation against
-   `langgraph_agents/`, same external signature, in a distinctly-named
+   `workflows/drafting/`, same external signature, in a distinctly-named
    module so `gateway/plan_request.py` stays untouched.
 4. Port the existing 41 tests to exercise the new implementation;
    both suites pass simultaneously.
 5. Cutover: repoint `gateway/plan_request.py`'s implementation at
-   `langgraph_agents/` in one commit. `agents/*.py` and the old
+   `workflows/drafting/` in one commit. `agents/*.py` and the old
    `plan_request()` internals are deleted from the active path but not
    yet removed from the repo.
 6. After one release cycle with no regressions, remove `agents/*.py`,
@@ -203,8 +214,11 @@ silent scope expansion of this change. **Extended further in
 read-path scenario catalog (audit, discovery, cost — flagged as a
 future gap), the schedule-triggered (`on_scheduled_trigger`) entry
 point for cron-driven workflows like the nightly drift sweep, and the
-`query` graph shape for deterministic/judgment-required reads — not
-repeated here, that doc is the deeper capture.
+`audit`/`discovery` graph shapes for deterministic/judgment-required
+reads (split from an earlier single "`query` graph" sketch, corrected
+in that doc for the same reason `workflows/drafting/` replaced
+`langgraph_agents/` above — named by what each actually reads, not a
+generic catch-all) — not repeated here, that doc is the deeper capture.
 
 ### The shape: gateway as orchestrator over several separately-lifecycled workflows, not one graph spanning 01–08
 
@@ -359,7 +373,7 @@ trade-off, not solved here.
 - Exact provider package list — depends on auditing `config/models.yaml`,
   not done in this design pass.
 - ~~Final name for the parallel-build package...~~ — **resolved
-  (2026-07-14): `langgraph_agents/`**, matching the existing flat
+  (2026-07-14): `workflows/drafting/`**, matching the existing flat
   top-level convention (`gateway/`, `agents/`, `mcp_server/`, `spec/`,
   `skills/`).
 - **From the Multi-Workflow Orchestration direction above, not yet
