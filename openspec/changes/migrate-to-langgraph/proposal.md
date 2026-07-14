@@ -5,9 +5,10 @@ direct package inspection, not web-sourced assumption — `langgraph==1.2.9`,
 `langchain-mcp-adapters`, `langchain` installed and introspected in an
 isolated scratch venv) found that ADK's real advantages over LangGraph —
 model-agnosticism, MCP tool support, deterministic zero-LLM nodes — all
-have direct, verified LangGraph/LangChain equivalents (`init_chat_model`,
-`langchain-mcp-adapters`'s `StdioConnection`, and a plain Python function,
-respectively), and that Agent Skills progressive disclosure — previously
+have direct, verified LangGraph/LangChain equivalents
+(`langchain_litellm.ChatLiteLLM`, `langchain-mcp-adapters`'s
+`StdioConnection`, and a plain Python function, respectively), and that
+Agent Skills progressive disclosure — previously
 thought to have "no LangGraph-native replacement" — turns out not to be
 an ADK framework capability at all: `list_skills_in_dir`/`load_skill_from_dir`
 are ~50 lines of plain `pathlib`/YAML parsing with zero ADK runtime
@@ -33,10 +34,19 @@ into two separate framework questions.
   existing stdio-launched MCP servers (`aws-iac-mcp-server`,
   `ccapi-mcp-server`, `terraform-mcp-server`), no MCP-server-side changes.
 - Replace `LiteLlm`-based model-agnosticism (`agents/model_config.py`)
-  with `init_chat_model(model, model_provider, ...)` — same
-  "swap providers without changing code" property, with one added cost:
-  a separate integration package per provider (`langchain-openai`,
-  `langchain-anthropic`, etc.) instead of `LiteLlm`'s single package.
+  with `langchain_litellm.ChatLiteLLM` — corrected (2026-07-14) from an
+  initial `init_chat_model` choice once it turned out unnecessary:
+  `ChatLiteLLM` wraps the real `litellm` package directly (the same
+  library ADK's `LiteLlm` always wrapped), keeping the "any provider via
+  an API key, one package" property with **no added per-provider
+  package cost** — `init_chat_model` would have needed a separate
+  integration package per provider (`langchain-openai`,
+  `langchain-anthropic`, etc.).
+- **New scope, not in the original exploration**: every LLM call's
+  input, output, tokens, latency, and success/failure gets captured for
+  observability/evals — `litellm`'s native callback hooks
+  (`success_callback`/`failure_callback`), writing to a new
+  `llm_call_logs` table in the same SQLite file already in use.
 - Rewrite `gateway/plan_request.py`'s execution internals (`Runner`/
   `InMemorySessionService`/event-loop harvesting of `propose_tool_intent`
   calls) against `graph.stream()` and a `BaseCheckpointSaver`
@@ -71,11 +81,12 @@ into two separate framework questions.
   `agents/*.py` and `gateway/plan_request.py`'s ADK-specific execution
   internals — routing, provisioning tool-calling nodes, security review
   as a structural graph node, MCP tool binding via
-  `langchain-mcp-adapters`, model-agnosticism via `init_chat_model`, and
-  checkpointing via a persistent `SqliteSaver` — all while preserving
-  `plan_request()`'s existing external contract and the
-  propose-never-execute boundary `BrokeredToolDispatcher` enforces
-  downstream.
+  `langchain-mcp-adapters`, model-agnosticism via
+  `langchain_litellm.ChatLiteLLM`, per-call observability logging via
+  `litellm` callbacks, and checkpointing via a persistent `SqliteSaver`
+  — all while preserving `plan_request()`'s existing external contract
+  and the propose-never-execute boundary `BrokeredToolDispatcher`
+  enforces downstream.
 
 ### Modified Capabilities
 <!-- openspec/specs/ is currently empty -- wire-plan-request-envelope
@@ -94,8 +105,12 @@ spec already established. -->
   signature unchanged); `mcp_server/external_servers.py` (connection
   configs re-expressed as `StdioConnection` TypedDicts).
 - **New dependencies**: `langgraph`, `langgraph-checkpoint-sqlite`,
-  `langchain-mcp-adapters`, `langchain` plus per-provider packages for
-  whichever model providers this project actually uses.
+  `langchain-mcp-adapters`, `litellm`, `langchain-litellm`. (`langchain`
+  and `langchain-google-genai` were added, then removed once
+  `ChatLiteLLM` made them unnecessary — see design.md's correction.)
+- **New table**: `llm_call_logs` in the same SQLite file
+  `gateway/tool_dispatcher.py` already opens — every LLM call's input/
+  output/tokens/latency/success, via `litellm` callback hooks.
 - **Dependency removed, at final cutover only**: `google-adk` — not
   removed until the parallel build passes an equivalent test suite and
   `plan_request()` is swapped over; both frameworks coexist until then.

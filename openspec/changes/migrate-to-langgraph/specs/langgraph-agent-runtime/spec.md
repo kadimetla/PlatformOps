@@ -39,17 +39,37 @@ and `terraform-mcp-server` using `langchain-mcp-adapters`'
   subprocess this project already runs today, via `StdioConnection`
   instead of ADK's `StdioServerParameters`
 
-### Requirement: Model selection is provider-agnostic via init_chat_model
-The system SHALL select LLM models through `init_chat_model(model,
-model_provider, ...)`, preserving the ability to switch providers via
-configuration without changing agent code, equivalent to the existing
-`LiteLlm`-based mechanism.
+### Requirement: Model selection is provider-agnostic via ChatLiteLLM
+The system SHALL select LLM models through `langchain_litellm.ChatLiteLLM`,
+preserving the ability to switch providers via configuration without
+changing agent code or adding a per-provider integration package,
+equivalent to the existing `LiteLlm`-based mechanism.
 
 #### Scenario: Switching a node's model provider requires no code change
 - **WHEN** `config/models.yaml` is changed to point a role at a
   different provider
 - **THEN** the corresponding LangGraph node picks up the new provider
-  on next run without any change to the node's own function code
+  on next run without any change to the node's own function code or
+  its installed dependencies
+
+### Requirement: Every LLM call is captured for observability
+The system SHALL log every LLM call's input, output, token counts,
+latency, and success/failure to an `llm_call_logs` table in the same
+SQLite database `gateway/tool_dispatcher.py` already opens, via
+`litellm`'s native callback hooks — regardless of which node or
+provider made the call.
+
+#### Scenario: A drafting node's LLM call is captured
+- **WHEN** any LangGraph node makes an LLM call through `ChatLiteLLM`
+- **THEN** an `llm_call_logs` row is written recording the prompt,
+  response, token counts, latency, and outcome, without the calling
+  node needing to log anything itself
+
+#### Scenario: A failed LLM call is still captured
+- **WHEN** an LLM call raises an error (rate limit, timeout, provider
+  outage)
+- **THEN** an `llm_call_logs` row is still written recording the
+  failure, not silently dropped
 
 ### Requirement: Checkpointing uses a persistent saver, never in-memory past local dev
 The system SHALL use a persistent `BaseCheckpointSaver` (a

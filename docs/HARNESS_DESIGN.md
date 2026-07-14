@@ -417,6 +417,18 @@ rather than repeating this one:
   discovery assumption the moment `docs/multi_account_per_bu_design.md`'s
   already-established multi-account-per-BU premise meets any of these
   three patterns — each in a different way.
+- `docs/discovery_before_drafting_and_presentation_layer.md` —
+  corrects an earlier persona-based framing (infra team vs. app
+  developer) to the real axis: discovery must precede drafting for
+  any request that extends, modifies, or references existing
+  infrastructure, not just app-tier deploys — foundation-tier
+  requests like adding a node pool or cloning a BU's setup need it
+  too, and `workflows/drafting/` (real, built) has no
+  discovery-integration point for any of them yet. Connects the
+  background bootstrap/incremental/nightly discovery mechanisms and
+  the `InfraRelationship` semantic model to a presentation layer —
+  an ephemeral A2UI chat card and a persistent Control UI view, both
+  reading the same underlying data.
 - `docs/infra_graph_modeling_and_db_options.md` — names a gap
   `infra-inventory-discovery`'s `InfraInventoryRecord` schema never
   covered (existence only, no relationships between resources), surveys

@@ -34,6 +34,16 @@ new information this session produced, not re-derived here.
   is already being rebuilt as a real bound tool in this migration
   (Decisions below), the provisioning nodes route every mutating call
   through it instead of calling CCAPI/Terraform tools directly.
+- **Decided (2026-07-14)**: model backend is `litellm` (via
+  `langchain_litellm.ChatLiteLLM`), not `init_chat_model` + per-provider
+  packages — supports any provider via an API key with one dependency,
+  matching the property this project had with ADK's `LiteLlm` and
+  removing a cost the original design accepted unnecessarily.
+- **Decided (2026-07-14), new scope**: every LLM call's input, output,
+  tokens, latency, and success/failure gets captured for observability/
+  evals, via `litellm`'s native callback hooks, written to a new
+  `llm_call_logs` table in the same SQLite file `tool_dispatcher.py`
+  already opens.
 
 **Non-Goals:**
 - Adopting `interrupt()`/`Command(resume=...)` for mid-draft human
@@ -88,13 +98,56 @@ servers this project already runs (`aws-iac-mcp-server`,
 directly onto the existing `command`/`args`/`env` values — this is a
 re-expression of existing config, not new integration work.
 
-**Model-agnosticism via `init_chat_model(model, model_provider, ...)`,
-accepting one real added cost.** Confirmed real: *"switch between
-models/providers without changing your code."* Unlike `LiteLlm` (one
-package, 100+ providers), `init_chat_model` needs a separate
-integration package per provider actually used (`langchain-openai`,
-`langchain-anthropic`, etc.) — install only the providers
-`config/models.yaml` actually references, not defensively all of them.
+**Model-agnosticism via `langchain_litellm.ChatLiteLLM`, corrected
+(2026-07-14) from an earlier `init_chat_model` choice.** The original
+choice accepted a real cost — a separate LangChain integration package
+per provider (`langchain-openai`, `langchain-anthropic`, etc.) — as the
+price of leaving ADK's `LiteLlm` wrapper behind. That cost turns out to
+be unnecessary: `langchain-litellm` (verified real, `ChatLiteLLM`
+confirmed to support `.bind_tools()`, so it works with the same
+MCP-tool-binding nodes `init_chat_model`-backed models would have)
+wraps the real `litellm` package directly — the exact same library
+ADK's `LiteLlm` was always a thin wrapper around. This restores the
+"one package, any provider via an API key" property this project had
+before the migration, with **no added per-provider package cost**, and
+without needing ADK at all. Confirmed minimal footprint: `pip show
+langchain-litellm` lists only `langchain-core`, `litellm`, `httpx`,
+`cryptography` as dependencies — not the full `langchain` metapackage,
+which is not needed anywhere else in this migration either (`langgraph.prebuilt.create_react_agent`
+only needs `langchain-core`). Both `langchain` and `langchain-google-genai`
+were added then removed from `pyproject.toml` during this same
+implementation session once this was confirmed.
+
+**A real gotcha this correction avoided**: `init_chat_model`'s own
+docstring warns a bare `gemini-...` model name is inferred as
+`model_provider="google_vertexai"` by default — *"default changes in
+next major; pass `model_provider` to lock in."* This project actually
+uses Google AI Studio (`README.md`'s `GOOGLE_API_KEY`), not Vertex AI —
+had `init_chat_model` shipped without an explicit, hardcoded
+`model_provider="google_genai"` override, every model call would have
+silently authenticated against the wrong Google Cloud surface entirely.
+`ChatLiteLLM` sidesteps this: `litellm`'s own model-string convention
+(`gemini/gemini-2.5-flash`) is unambiguous about provider without
+needing a second parameter to get right.
+
+**LLM call observability — new requirement, not in the original
+proposal.** Every LLM call (prompt in, response out, tokens, latency,
+cost, success/failure) must be captured for metrics/evals. `litellm`
+has real, built-in hooks for this — confirmed present:
+`litellm.success_callback`/`failure_callback`/`callbacks` — a custom
+Python callback function registered once, fired on every call
+regardless of which node or provider made it. **Decision: write
+captured calls to a new `llm_call_logs` table in the same SQLite file
+`gateway/tool_dispatcher.py` already opens**, not a new storage system
+or an external observability platform (Langfuse, Helicone, etc.) —
+consistent with `docs/config_storage_backend.md`'s "one storage
+system, not many" principle, applied here the same way it was applied
+against adopting a dedicated graph database in
+`docs/infra_graph_modeling_and_db_options.md`. Named, not built,
+external integrations remain a real, deliberate escalation path if a
+dedicated observability platform is ever needed — `litellm`'s callback
+list accepts named integrations directly, so this isn't a dead end if
+outgrown.
 
 **Checkpointing uses a persistent `SqliteSaver`-family saver from the
 start, never `InMemorySaver` past local dev.** `InMemorySaver` (the
@@ -130,6 +183,41 @@ tool (`langchain_core.tools`), walks the final state's message list for
 `tool_calls` named `propose_tool_intent` after `graph.stream()`
 completes, and constructs `ToolIntent`s only then — same two-pass
 discipline, new mechanism underneath.
+
+**The drafting graph's topology is static (`route_toolchain` →
+provisioning → `security_review` → `END`), not dynamically constructed
+— matches original ADK behavior exactly, not a limitation worth
+lifting yet.** Verified during this implementation: LangGraph has no
+supported way to construct new graph topology at request time (a
+checkpoint references specific node names from *the* compiled graph;
+resuming against a differently-constructed one is undefined). What it
+does support, real and verified, is dynamic *routing* among a fixed,
+pre-declared node set — `Send(node_name, input)` for runtime fan-out to
+an existing node (e.g., once per resource in a spec, count unknown
+ahead of time) and `Command(goto=node_name)` for any node to
+dynamically redirect to any other, including looping back. The packaged
+version, `langgraph_supervisor.create_supervisor(agents: list[Pregel],
+model, ...)`, confirmed installed and real, builds exactly this: a
+supervisor LLM dynamically choosing which of a *fixed, pre-built* agent
+list to hand off to per turn. None of this was adopted here because the
+original `security_agent`'s own instruction is explicit about *not*
+looping — *"If security_agent rejects the plan, return its reason to
+the user instead of retrying silently"* — so the static graph already
+matches the behavior being preserved.
+
+**Two concrete, real future enhancements this unlocks, named for later
+rather than built now:**
+- **A revision loop**: `security_review` returning `Command(goto="cdk_provisioning")`
+  on rejection instead of hard-terminating, letting a provisioning node
+  redraft against the rejection reason — a genuine behavioral
+  improvement, but out of this change's "internals swap, not a
+  contract change" scope.
+- **Mixed-toolchain fan-out via `Send`**: today's (and the original
+  ADK's) toolchain choice is one-per-request, cdk *or* terraform, never
+  both. `Send` could dispatch per-resource provisioning across both
+  toolchains in one request if that requirement ever arises — not a
+  parity requirement, since the system being replaced never supported
+  it either.
 
 ## Risks / Trade-offs
 
@@ -173,14 +261,14 @@ discipline, new mechanism underneath.
 
 ## Migration Plan
 1. Add new dependencies (`langgraph`, `langgraph-checkpoint-sqlite`,
-   `langchain-mcp-adapters`, `langchain` + the specific provider
-   packages `config/models.yaml` needs) alongside `google-adk`, not
-   replacing it yet.
+   `langchain-mcp-adapters`, `litellm`, `langchain-litellm`) alongside
+   `google-adk`, not replacing it yet.
 2. Build `workflows/drafting/` — the `StateGraph`, node functions,
-   `MultiServerMCPClient` MCP wiring, `init_chat_model` model config —
+   `MultiServerMCPClient` MCP wiring, `ChatLiteLLM` model config —
    structurally mirroring today's `agents/*.py` graph shape (Decisions
-   above cover the two intentional deviations: `security_agent` as a
-   node, vendored skill-loading).
+   above cover the three intentional deviations: `security_agent` as a
+   node, vendored skill-loading, and `litellm` callback-based LLM call
+   observability).
 3. Build a new `plan_request()` implementation against
    `workflows/drafting/`, same external signature, in a distinctly-named
    module so `gateway/plan_request.py` stays untouched.
