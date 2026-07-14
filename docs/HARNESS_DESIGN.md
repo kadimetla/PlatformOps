@@ -417,6 +417,17 @@ rather than repeating this one:
   discovery assumption the moment `docs/multi_account_per_bu_design.md`'s
   already-established multi-account-per-BU premise meets any of these
   three patterns — each in a different way.
+- `docs/infra_graph_modeling_and_db_options.md` — names a gap
+  `infra-inventory-discovery`'s `InfraInventoryRecord` schema never
+  covered (existence only, no relationships between resources), surveys
+  six graph/semantic-modeling database options against it, and finds
+  one real, current disqualifier along the way: KuzuDB's GitHub repo
+  was archived after Apple's February 2026 acquisition of Kùzu Inc.,
+  independently confirmed by Graphiti's own docs marking it
+  unmaintained. Recommends starting with a plain edges table in the
+  existing SQLite file, not a new graph database, with FalkorDB and
+  DuckDB's DuckPGQ extension named as concrete, conditional next steps
+  rather than adopted now.
 - `docs/request_intent_taxonomy_and_workflow_routing.md` — extends
   `openspec/changes/migrate-to-langgraph/design.md`'s multi-workflow
   orchestration sketch: classifies any request on two axes (read vs.
