@@ -97,7 +97,7 @@ LangGraph implementation is being built in parallel — cutover SHALL NOT
 happen until an equivalent LangGraph-based suite also passes.
 
 #### Scenario: CI is green on both implementations simultaneously, pre-cutover
-- **WHEN** the LangGraph implementation exists in `agents_langgraph/`
+- **WHEN** the LangGraph implementation exists in `langgraph_agents/`
   but `plan_request()` still points at the ADK implementation
 - **THEN** both the existing 41-test suite and the new LangGraph-targeted
   suite pass in the same CI run

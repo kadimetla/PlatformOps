@@ -5,8 +5,10 @@
       `terraform_provisioning_agent` — **resolved 2026-07-14: yes**,
       closed as part of this change (design.md Goals). Task 3.9 below
       implements it.
-- [ ] 1.2 Confirm the parallel-build package name (`agents_langgraph/`
-      used as a placeholder throughout this change)
+- [x] 1.2 Confirm the parallel-build package name — **resolved
+      2026-07-14: `langgraph_agents/`**, reads naturally as a Python
+      package and matches the existing flat top-level convention
+      (`gateway/`, `agents/`, `mcp_server/`, `spec/`, `skills/`)
 - [ ] 1.3 Audit `config/models.yaml` for the exact set of LLM providers
       in use, to scope which `langchain-<provider>` integration
       packages task 2.1 actually needs (not a defensive install-everything)
@@ -64,7 +66,7 @@
 ## 4. Build the new plan_request() implementation
 
 - [ ] 4.1 Implement a new `plan_request(envelope, bundle, usage_store)
-      -> (PlanRecord, list[ToolIntent])` against `agents_langgraph/`, in
+      -> (PlanRecord, list[ToolIntent])` against `langgraph_agents/`, in
       a distinctly-named module — `gateway/plan_request.py` stays
       untouched during this step
 - [ ] 4.2 Port compliance preflight (`run_compliance_preflight`) and

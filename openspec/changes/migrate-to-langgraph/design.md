@@ -45,7 +45,7 @@ new information this session produced, not re-derived here.
 
 ## Decisions
 
-**Parallel-build in a new `agents_langgraph/` package, not in-place
+**Parallel-build in a new `langgraph_agents/` package, not in-place
 rewrite.** Mirrors `agents/`'s existing flat top-level module
 convention (`gateway/`, `agents/`, `mcp_server/`, `spec/`, `skills/`).
 `gateway/plan_request.py`'s ADK-based internals stay untouched and
@@ -139,7 +139,7 @@ discipline, new mechanism underneath.
   matches until it gets the same verification pass.
 - [Risk] A parallel-build package sitting alongside `agents/` mid-migration
   could confuse a contributor about which is authoritative
-  → [Mitigation] a clear module-level docstring in `agents_langgraph/`
+  → [Mitigation] a clear module-level docstring in `langgraph_agents/`
   stating it's the not-yet-cut-over replacement; delete it immediately
   at cutover rather than leaving both around indefinitely.
 - [Risk] Cutover is a single commit repointing `plan_request()` — if it
@@ -165,18 +165,18 @@ discipline, new mechanism underneath.
    `langchain-mcp-adapters`, `langchain` + the specific provider
    packages `config/models.yaml` needs) alongside `google-adk`, not
    replacing it yet.
-2. Build `agents_langgraph/` — the `StateGraph`, node functions,
+2. Build `langgraph_agents/` — the `StateGraph`, node functions,
    `MultiServerMCPClient` MCP wiring, `init_chat_model` model config —
    structurally mirroring today's `agents/*.py` graph shape (Decisions
    above cover the two intentional deviations: `security_agent` as a
    node, vendored skill-loading).
 3. Build a new `plan_request()` implementation against
-   `agents_langgraph/`, same external signature, in a distinctly-named
+   `langgraph_agents/`, same external signature, in a distinctly-named
    module so `gateway/plan_request.py` stays untouched.
 4. Port the existing 41 tests to exercise the new implementation;
    both suites pass simultaneously.
 5. Cutover: repoint `gateway/plan_request.py`'s implementation at
-   `agents_langgraph/` in one commit. `agents/*.py` and the old
+   `langgraph_agents/` in one commit. `agents/*.py` and the old
    `plan_request()` internals are deleted from the active path but not
    yet removed from the repo.
 6. After one release cycle with no regressions, remove `agents/*.py`,
@@ -358,9 +358,10 @@ trade-off, not solved here.
   before any production (non-SQLite) checkpointing decision.
 - Exact provider package list — depends on auditing `config/models.yaml`,
   not done in this design pass.
-- Final name for the parallel-build package (`agents_langgraph/` used
-  above as a placeholder, matching the existing flat top-level
-  convention) — low-stakes, worth a quick confirmation before `tasks.md`.
+- ~~Final name for the parallel-build package...~~ — **resolved
+  (2026-07-14): `langgraph_agents/`**, matching the existing flat
+  top-level convention (`gateway/`, `agents/`, `mcp_server/`, `spec/`,
+  `skills/`).
 - **From the Multi-Workflow Orchestration direction above, not yet
   decided, not yet in scope for this change**: the multi-open-wait
   ambiguity on free-text-only channels (a user with two simultaneous
