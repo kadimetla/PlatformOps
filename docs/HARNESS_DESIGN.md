@@ -417,6 +417,16 @@ rather than repeating this one:
   discovery assumption the moment `docs/multi_account_per_bu_design.md`'s
   already-established multi-account-per-BU premise meets any of these
   three patterns — each in a different way.
+- `docs/request_intent_taxonomy_and_workflow_routing.md` — extends
+  `openspec/changes/migrate-to-langgraph/design.md`'s multi-workflow
+  orchestration sketch: classifies any request on two axes (read vs.
+  write, deterministic vs. judgment-required), decomposes "audit" into
+  four distinct data sources (decision/approval, discovery/existence,
+  drift, policy/compliance — cost/billing flagged as an explicit,
+  undesigned future gap), catalogs eleven concrete scenarios against
+  that taxonomy, and adds the schedule-triggered (`on_scheduled_trigger`)
+  entry point alongside the chat-triggered one, since nightly-cron
+  audits have no channel/channel_user_id to route by.
 - `gateway/` — real, tested code for the schemas and dispatcher (see
   `tests/test_gateway.py`), the first slice of the design below.
 
