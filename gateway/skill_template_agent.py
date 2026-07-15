@@ -1,27 +1,30 @@
-"""check_structured_match() and SkillTemplateFillAgent -- the zero-LLM
-drafting path for a fully structured skill match. Verified against
+"""check_structured_match() -- the deterministic, zero-LLM check for
+whether a fully structured skill match exists. Verified against
 python-hcl2 (real Terraform HCL parser, not hand-rolled) and pyyaml for
 the two toolchains' native variable-declaration syntax
 (docs/structured_match_rule_for_skills.md Part F).
+
+SkillTemplateFillAgent (an ADK BaseAgent subclass) used to live here
+too -- removed at the migrate-to-langgraph cutover (2026-07-15, task
+7.1/7.2): nothing in the cut-over path calls it anymore, superseded by
+workflows/drafting/skill_fill.py's run_deterministic_skill_fill(), a
+plain function performing the identical fill+validate logic with no
+ADK dependency. check_structured_match() itself is unchanged --
+Skill's import moved from google.adk.skills.models to the vendored
+workflows/drafting/skill_loading, per gateway/skill_matching.py's
+identical swap.
 """
-import hashlib
-import uuid
-from typing import Any, AsyncGenerator, Optional
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 import hcl2
 import yaml
-from google.adk.agents import BaseAgent
-from google.adk.agents.invocation_context import InvocationContext
-from google.adk.events import Event
-from google.adk.skills.models import Skill
-from google.genai import types
-from pydantic import BaseModel, Field
 
 from .schemas import WorkspaceBundle
-from .skill_matching import SPEC_TYPE_TO_CFN_TYPE, resolve_skill_candidates
+from .skill_matching import resolve_skill_candidates
 from .skill_usage_store import SkillUsageStore
-
-MAX_LAYER1_RETRIES = 3
+from workflows.drafting.skill_loading import Skill
 
 
 class TemplateVariable(BaseModel):
@@ -109,127 +112,3 @@ async def check_structured_match(
         has_structured_match=not missing,
         missing_vars=missing,
     )
-
-
-class SkillTemplateFillAgentError(Exception):
-    """Raised when Layer 1 validation fails to produce a valid draft
-    within MAX_LAYER1_RETRIES. Surfaces as a drafting failure -- does
-    NOT trigger a silent fallback to root_agent (docs/structured_match_rule_for_skills.md
-    Part E rule 4)."""
-
-
-class SkillTemplateFillAgent(BaseAgent):
-    """A deterministic BaseAgent subclass -- zero LLM calls. Verified
-    real: BaseAgent's own default _run_async_impl just raises
-    NotImplementedError, a generic hook, not an LLM-specific contract
-    (docs/deterministic_plan_drafting.md)."""
-
-    skill_path: str
-    skill: Skill
-    spec: dict
-    bundle: WorkspaceBundle
-
-    def __init__(self, skill_path: str, skill: Skill, spec: dict, bundle: WorkspaceBundle):
-        super().__init__(
-            name="skill_template_fill_agent",
-            skill_path=skill_path,
-            skill=skill,
-            spec=spec,
-            bundle=bundle,
-        )
-
-    def _fill_template(self) -> str:
-        script_name, source = _find_template_script(self.skill)
-        variables = parse_declared_variables(self.skill)
-        resolved: dict[str, Any] = {}
-        for v in variables:
-            if v.name in self.spec:
-                resolved[v.name] = self.spec[v.name]
-            elif hasattr(self.bundle, v.name):
-                resolved[v.name] = getattr(self.bundle, v.name)
-        assignments = "\n".join(f'{name} = "{value}"' for name, value in resolved.items())
-        return (
-            f"# Module: {self.skill.name} ({script_name})\n\n"
-            f"{source}\n\n"
-            f"# Resolved values for this request (terraform.tfvars-shaped):\n"
-            f"{assignments}\n"
-        )
-
-    def _validate(self, draft: str) -> list[str]:
-        """Layer 1, scoped: confirms the module source re-parses cleanly
-        after templating. Does NOT shell out to `terraform validate`/
-        `cfn-lint` -- those require external binaries not assumed present
-        in every environment this runs in. A real gap versus the full
-        Layer 1 design in docs/three_layer_validation_model.md, flagged
-        here rather than silently treated as equivalent."""
-        script_name, _ = _find_template_script(self.skill)
-        module_source = draft.split("\n\n# Resolved values", 1)[0].split("\n\n", 1)[1]
-        try:
-            if script_name.endswith(".tf"):
-                hcl2.loads(module_source)
-            else:
-                yaml.safe_load(module_source)
-        except Exception as e:  # noqa: BLE001 -- surfaced as a validation failure, not raised raw
-            return [f"template re-parse failed after filling: {e}"]
-        return []
-
-    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-        last_failures: list[str] = []
-        for _attempt in range(MAX_LAYER1_RETRIES):
-            try:
-                draft = self._fill_template()
-            except Exception as e:  # noqa: BLE001 -- a parse failure while
-                # filling is a Layer 1 problem too, not just post-fill
-                # re-validation; must not propagate as a raw parser
-                # exception (this was a real bug, caught by a failing test).
-                last_failures = [f"template fill failed: {e}"]
-                continue
-            last_failures = self._validate(draft)
-            if not last_failures:
-                # One propose_tool_intent per resource -- ToolIntent.resource_type
-                # is singular (one intent = one resource operation), not a
-                # list; plan_id/plan_hash are unknown here (computed by
-                # plan_request() after the full draft is assembled) and
-                # left for the caller to fill in.
-                resources = self.spec.get("resources", [])
-                per_resource_cost = self.spec.get("estimated_monthly_usd", 0.0) / max(
-                    len(resources), 1
-                )
-                for resource in resources:
-                    yield Event(
-                        author=self.name,
-                        invocation_id=ctx.invocation_id,
-                        content=types.Content(
-                            role="model",
-                            parts=[
-                                types.Part(
-                                    function_call=types.FunctionCall(
-                                        name="propose_tool_intent",
-                                        args={
-                                            "intent_id": str(uuid.uuid4()),
-                                            "resource_type": SPEC_TYPE_TO_CFN_TYPE[
-                                                resource["type"]
-                                            ],
-                                            "resource_identifier": resource["name"],
-                                            "operation": "CreateResource",
-                                            "region": self.spec.get(
-                                                "region", self.bundle.aws_region
-                                            ),
-                                            "estimated_monthly_cost": per_resource_cost,
-                                            "payload": resource,
-                                        },
-                                    )
-                                )
-                            ],
-                        ),
-                    )
-                yield Event(
-                    author=self.name,
-                    invocation_id=ctx.invocation_id,
-                    content=types.Content(role="model", parts=[types.Part(text=draft)]),
-                    turn_complete=True,
-                )
-                return
-        raise SkillTemplateFillAgentError(
-            f"Layer 1 validation failed after {MAX_LAYER1_RETRIES} attempts: {last_failures}"
-        )

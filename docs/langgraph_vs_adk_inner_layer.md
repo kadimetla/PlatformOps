@@ -17,6 +17,15 @@ those stay verified-by-package-inspection; everything LangGraph-side
 here is web-sourced, not independently installed and inspected the
 same way. Nothing built.
 
+**Superseded (2026-07-14/15)**: the migration this doc only speculated
+about actually happened — `openspec/changes/migrate-to-langgraph` is
+built and cut over, `gateway/plan_request.py` now runs on LangGraph.
+Every "cost" Part D claimed below turned out to be wrong or resolved
+differently once verified by direct package inspection instead of web
+research — see the corrections inline in Parts C/D rather than a
+rewrite, so the reasoning trail (why this doc originally recommended
+staying on ADK) stays legible.
+
 ## Part A: Two different questions, previously conflated
 `docs/harness_deep_dive.md` §6 evaluates LangGraph/Temporal/CrewAI only
 as candidates for the **outer** plan→review→approve workflow layer —
@@ -55,25 +64,40 @@ outside both to Temporal for the outer layer in the first place.
 | | ADK (verified/built against in this project) | LangGraph |
 |---|---|---|
 | Agent composition | Hierarchical tree, `sub_agents=[...]` — matches this project's existing `orchestrator → provisioning_agent → cdk/terraform_provisioning_agent` shape exactly, already built | Explicit graph — nodes + conditional edges, more precise control over branching, but a rewrite of the existing shape |
-| Skill/reusable-capability loading | `SkillToolset`/Agent Skills spec — **verified real** by direct package inspection (`docs/plan_request_verified_implementation.md`), resolves this project's skill-loading gap natively | No equivalent surfaced in research — nothing LangGraph-native matching progressive-disclosure skill loading |
-| Deterministic (non-LLM) branch | `BaseAgent` subclass, zero LLM calls — **verified real** (`docs/deterministic_plan_drafting.md`) | Trivial, arguably more natural — a LangGraph node is just a Python function; a non-LLM node costs nothing extra structurally |
-| Model-agnosticism | `LiteLlm` wrapper — **verified real**, any litellm-supported provider incl. self-hosted (`docs/model_agnosticism_and_hermes_agent_evaluation.md`) | Provider-agnostic by design via LangChain's own chat-model abstraction — arguably even more natural, this is closer to LangChain's original reason to exist |
+| Skill/reusable-capability loading | `SkillToolset`/Agent Skills spec — **verified real** by direct package inspection (`docs/plan_request_verified_implementation.md`), resolves this project's skill-loading gap natively | **Corrected (2026-07-14)**: "no equivalent" was wrong — `list_skills_in_dir`/`load_skill_from_dir` turned out to be ~50 lines of plain `pathlib`/YAML parsing with **zero ADK runtime coupling**, confirmed by reading the installed source directly. Vendored into `workflows/drafting/skill_loading.py`, verified byte-for-byte identical output against the real `google.adk.skills` on this project's actual skills. Not a LangGraph-native replacement — a discovery that the original capability was never ADK-specific at all. |
+| Deterministic (non-LLM) branch | `BaseAgent` subclass, zero LLM calls — **verified real** (`docs/deterministic_plan_drafting.md`) | Confirmed correct, and built: `workflows/drafting/skill_fill.py`'s `run_deterministic_skill_fill()` is a plain function, verified end-to-end — no subclassing needed, simpler than the ADK version it replaced. |
+| Model-agnosticism | `LiteLlm` wrapper — **verified real**, any litellm-supported provider incl. self-hosted (`docs/model_agnosticism_and_hermes_agent_evaluation.md`) | **Corrected (2026-07-14)**: "LangChain's own chat-model abstraction" was the wrong guess — that's `init_chat_model`, which needs a separate integration package per provider. The actual equivalent, `langchain_litellm.ChatLiteLLM`, wraps the real `litellm` package directly (the same library ADK's `LiteLlm` always wrapped) — verified real, `bind_tools()` confirmed present, keeps the "one package, any provider" property with zero added cost. Built in `workflows/drafting/model_config.py`. |
 | MCP tool support | First-class, already wired in this repo (`aws-iac-mcp-server`, `ccapi-mcp-server`, `terraform-mcp-server`) | Real, actively maintained: `langchain-mcp-adapters` (v0.3.0, June 2026), `MultiServerMCPClient` for connecting multiple MCP servers, stdio + SSE transports — confirmed directly, not assumed. Not a blocker either way. |
 | State/audit transparency | State threaded through `Session`/`Event` — workable, less explicit | A first-class `state` object passed node-to-node and mutated visibly at each step — a real LangGraph strength for auditability |
 | Durability | Checkpoint-based, not true durable execution (Part B) | Same — checkpoint-based, not true durable execution, and explicitly single-process unless distributed locking is added separately |
 
 ## Part D: The asymmetry that actually matters for this project
-Every ADK-side row above traces back to something this project has
-**already verified by direct package inspection and designed against**
-— `SkillToolset` resolves an actual gap this project had
-(`docs/skill_loading_and_enforcement_gap.md`), `BaseAgent` is the
-mechanism behind `SkillTemplateFillAgent`
-(`docs/deterministic_plan_drafting.md`), `LiteLlm` is the mechanism
-behind model-agnosticism (`docs/model_agnosticism_and_hermes_agent_evaluation.md`).
-Switching the inner agent layer to LangGraph would mean re-deriving all
-three with no LangGraph-native replacement surfaced for the
-skill-loading piece specifically — that's the concrete cost, not a
-vague "switching frameworks is risky" argument.
+
+**Corrected in place (2026-07-14/15) — this section's core claim was
+wrong.** It argued switching to LangGraph meant "re-deriving all three"
+ADK-side capabilities with no replacement for skill-loading
+specifically. Once actually attempted (`openspec/changes/migrate-to-langgraph`),
+verified by direct package inspection rather than web research: none of
+the three needed re-deriving.
+- `SkillToolset`'s actual behavior turned out to be pure `pathlib`/YAML
+  parsing with zero ADK coupling — vendored directly, not rebuilt.
+- `BaseAgent`'s zero-LLM pattern ported to a plain function, simpler
+  than the original.
+- `LiteLlm` has a direct LangChain-compatible equivalent
+  (`langchain_litellm.ChatLiteLLM`) wrapping the same underlying
+  `litellm` package, found only after this doc's original research
+  guessed the wrong replacement (`init_chat_model`).
+
+The real cost this doc should have surfaced instead: a genuine
+circular-import restructuring at cutover time (`ComplianceError`/
+`is_valid_spec_shape`/`run_compliance_preflight` extracted to a new
+`gateway/compliance_preflight.py` so `gateway/plan_request.py` and
+`workflows/drafting/plan_request.py` could import from each other
+without a cycle), and a real, still-open deprecation
+(`langgraph.prebuilt.create_react_agent` deprecated as of LangGraph
+v1.0 — see `openspec/changes/migrate-to-langgraph/design.md`'s Risks).
+Neither was knowable from web research alone; both only surfaced during
+actual implementation.
 
 ## Part E: What this changes — a second viable outer-layer topology
 Since Part B shows neither Temporal nor LangGraph gives true durability

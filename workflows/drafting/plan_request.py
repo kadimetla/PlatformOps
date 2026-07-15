@@ -4,9 +4,12 @@ openspec/changes/migrate-to-langgraph/tasks.md section 6, Cutover).
 Same external signature:
     plan_request(envelope, bundle, usage_store) -> (PlanRecord, list[ToolIntent])
 
-Reuses gateway/plan_request.py's already framework-independent pieces
+Reuses gateway/compliance_preflight.py's framework-independent pieces
 directly (ComplianceError, is_valid_spec_shape, run_compliance_preflight)
-rather than duplicating them -- those touch neither ADK nor LangGraph.
+rather than duplicating them -- extracted from gateway/plan_request.py
+at cutover specifically to avoid a circular import (gateway/plan_request.py
+now re-exports plan_request FROM this module, so this module can't
+import back from gateway.plan_request without a cycle).
 Reuses gateway/skill_template_agent.py's check_structured_match()
 directly too; during the parallel-build phase it still resolves skills
 via gateway/skill_matching.py's ADK-backed google.adk.skills imports
@@ -20,7 +23,7 @@ import uuid
 
 import yaml
 
-from gateway.plan_request import (
+from gateway.compliance_preflight import (
     ComplianceError,
     is_valid_spec_shape,
     run_compliance_preflight,

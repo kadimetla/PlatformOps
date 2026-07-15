@@ -12,11 +12,15 @@ detail on top, never contradict this one. See
 is shaped this way.
 
 ## Overview & stack
-PlatformOps: a Google ADK agent graph that provisions AWS infra (S3/
-CloudFront today) via CDK or Terraform, gated by a security-review
-agent. Python 3.11+, MCP servers for cloud reach
-(`mcp_server/external_servers.py`), Pydantic schemas
-(`gateway/schemas.py`), pytest.
+PlatformOps: a LangGraph agent graph (`workflows/drafting/`, cut over
+2026-07-15 from Google ADK — see `openspec/changes/migrate-to-langgraph`)
+that provisions AWS infra (S3/CloudFront today) via CDK or Terraform,
+gated by a security-review node. Python 3.11+, MCP servers for cloud
+reach (`mcp_server/external_servers.py`, bound via `langchain-mcp-adapters`),
+`litellm`/`langchain_litellm.ChatLiteLLM` for model-agnosticism, Pydantic
+schemas (`gateway/schemas.py`), pytest. `google-adk` still installed
+during the one-release-cycle rollback window (`agents/*.py` superseded,
+not yet deleted).
 
 ## Architecture principles (hard rules)
 - Deterministic checks (`spec/check_compliance.py`,
@@ -37,16 +41,30 @@ agent. Python 3.11+, MCP servers for cloud reach
   should not repeat.
 
 ## Conventions
-- `agents/` — ADK agent definitions, one file per agent, `tools=` lists
-  real MCP toolsets.
+- `agents/` — **superseded (2026-07-15), not yet deleted.** The old ADK
+  agent definitions `gateway/plan_request.py` used before
+  `openspec/changes/migrate-to-langgraph`'s cutover. No longer on the
+  active import path (confirmed: nothing outside `agents/` itself
+  imports from it), kept on disk only for the one-release-cycle
+  rollback window that change's design.md deliberately built in — due
+  for real deletion once that window passes (task 7.1), not before.
+- `workflows/drafting/` — the real, cut-over LangGraph replacement for
+  `agents/`'s drafting-time role: routing, provisioning tool-calling
+  nodes, security review, `propose_tool_intent`, LLM-call observability
+  (`llm_call_logs`). One of several planned workflows (`approval`,
+  `dispatch`, `audit`, `discovery` — still design-only,
+  `docs/request_intent_taxonomy_and_workflow_routing.md`), named by
+  what it processes rather than by framework.
 - `gateway/` — the Gateway-layer spike: schemas, config loading, the
-  brokered dispatcher, `plan_request()`. Real, tested code — see
-  `tests/test_gateway.py`. Renamed from `harness/` (2026-07-13) to match
-  what this layer was already called internally, and to stop colliding
-  with `docs/HARNESS_DESIGN.md`'s unrelated, larger-scope "harness"
-  concept (the future runtime that wraps agents with channels/sessions/
-  human review — a bigger, mostly-undesigned thing this folder is one
-  spike toward, not the same thing).
+  brokered dispatcher, `plan_request()` (now a thin re-export of
+  `workflows/drafting/plan_request.py`; `compliance_preflight.py` holds
+  the framework-independent pieces both modules share). Real, tested
+  code — see `tests/test_gateway.py`. Renamed from `harness/`
+  (2026-07-13) to match what this layer was already called internally,
+  and to stop colliding with `docs/HARNESS_DESIGN.md`'s unrelated,
+  larger-scope "harness" concept (the future runtime that wraps agents
+  with channels/sessions/human review — a bigger, mostly-undesigned
+  thing this folder is one spike toward, not the same thing).
 - `skills/` — Agent Skills (`SKILL.md` per folder). Bundled/global tier
   only today; see the catalog below.
 - `spec/` — the durable, version-controlled reference architecture

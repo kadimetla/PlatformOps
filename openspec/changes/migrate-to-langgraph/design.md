@@ -221,6 +221,20 @@ rather than built now:**
 
 ## Risks / Trade-offs
 
+- [Risk] `langgraph.prebuilt.create_react_agent` (used throughout
+  `workflows/drafting/nodes.py`) is deprecated as of LangGraph v1.0 —
+  confirmed by a real deprecation warning surfaced while writing task
+  5.2's tests against the actual installed `langgraph==1.2.9`:
+  *"create_react_agent has been moved to `langchain.agents`... Deprecated
+  in LangGraph V1.0 to be removed in V2.0."* → [Mitigation] not migrated
+  now — still fully functional on the installed 1.x version, and the
+  replacement (`langchain.agents.create_agent`) lives in the full
+  `langchain` package, which was deliberately removed at task 1.4 to
+  keep the `ChatLiteLLM` decision's "no added per-provider or
+  full-`langchain` dependency" property. Re-adding `langchain` just to
+  silence a not-yet-breaking deprecation warning would undo that
+  decision for no immediate benefit. Real, known cost to revisit before
+  any LangGraph v2.0 upgrade — not silently deferred without a note.
 - [Risk] Node functions written now, before the deferred clarification
   follow-on adds `interrupt()`, could have side effects before what
   will later become an interrupt point — `interrupt()`'s own
@@ -285,6 +299,26 @@ rather than built now:**
 wired to anything yet. After step 5, revert the single cutover commit;
 step 6 not having happened yet means the old implementation is still
 present and immediately restorable.
+
+**The one-release-cycle wait between cutover and cleanup, explicitly
+overridden (2026-07-15).** This plan originally called for keeping
+`agents/*.py` and `google-adk` installed for a release cycle after
+cutover before deleting them. Direct user instruction ("use only
+langraph workflow so that we don't have many frameworks to solve")
+explicitly asked for immediate full consolidation instead — steps 6
+and 7 both happened in the same session. Rollback past this point is
+now `git revert` across multiple commits, not "the old files are still
+sitting there," a real reduction in how cheap rollback is — a
+deliberate trade this project chose in exchange for not running two
+agent frameworks simultaneously any longer than necessary. Two real
+gaps in this Migration Plan surfaced only once execution actually
+reached step 7, neither anticipated when this design was written:
+`mcp_server/external_servers.py` depended on ADK's own
+`StdioServerParameters` class (not named as a dependency anywhere
+above) and `gateway/skill_template_agent.py`'s dead
+`SkillTemplateFillAgent` class still had a live ADK import that would
+have broken on `google-adk` removal — both found and fixed as part of
+task 7's actual execution, documented in `tasks.md`.
 
 ## Beyond This Change: Multi-Workflow Orchestration Direction
 

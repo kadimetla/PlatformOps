@@ -106,9 +106,13 @@ async def test_compliance_failure_blocks_drafting_entirely(tmp_path, monkeypatch
 
 
 @pytest.mark.anyio
-async def test_structured_match_drafts_via_skill_template_fill_agent_zero_llm(
+async def test_structured_match_drafts_via_deterministic_zero_llm_path(
     tmp_path, monkeypatch
 ):
+    # Renamed 2026-07-15 (migrate-to-langgraph cutover, task 7.3): this
+    # tests gateway.plan_request's public behavior, now a re-export of
+    # workflows/drafting/plan_request.py -- the ADK SkillTemplateFillAgent
+    # class this test was originally named after no longer exists.
     monkeypatch.chdir(tmp_path)
     _write_skill("workspaces/payments/skills", "s3-skill", TF_MODULE)
     store = _stable_store(tmp_path, "workspaces/payments/skills/s3-skill")

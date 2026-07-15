@@ -14,8 +14,22 @@ docs before relying on them:
   - https://developer.hashicorp.com/terraform/mcp-server
 """
 import os
+from dataclasses import dataclass, field
 
-from google.adk.tools.mcp_tool.mcp_toolset import StdioServerParameters
+
+@dataclass
+class StdioServerParameters:
+    """Plain, framework-independent stdio server config -- replaces
+    ADK's google.adk.tools.mcp_tool.mcp_toolset.StdioServerParameters
+    at the migrate-to-langgraph cutover (task 7.2): the only real
+    consumer left is workflows/drafting/mcp_tools.py's
+    _to_stdio_connection(), which just reads .command/.args/.env --
+    duck-typed, no ADK class needed to satisfy it."""
+
+    command: str
+    args: list[str]
+    env: dict[str, str] = field(default_factory=dict)
+
 
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 AWS_PROFILE = os.environ.get("AWS_PROFILE", "platformops-sandbox")

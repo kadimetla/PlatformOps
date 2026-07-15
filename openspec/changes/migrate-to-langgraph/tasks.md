@@ -219,16 +219,35 @@
       and `skill_usage_store.py` are explicitly unmodified
       (`proposal.md` Impact), so their existing tests already cover
       this workflow's dependency on them.
-- [ ] 5.2 Add tests covering `specs/langgraph-agent-runtime/spec.md`'s
-      scenarios specifically: plan_hash sequencing correctness,
-      security-node gating, checkpoint persistence across a simulated
-      restart, `google-adk`-uninstalled skill loading, that no mutating
-      MCP tool call is reachable from a provisioning node without first
-      producing a `propose_tool_intent` call, and that both a successful
-      and a failed LLM call produce an `llm_call_logs` row — **not yet
-      done**, needs either a credentialed environment or mocked
-      model/MCP responses to exercise the LLM-driven graph path
-      end-to-end
+- [x] 5.2 Add tests covering `specs/langgraph-agent-runtime/spec.md`'s
+      scenarios. **Done, via mocked model/MCP responses (no live
+      credentials in this environment)**: `tests/test_workflows_
+      drafting_graph.py` — real end-to-end graph execution using
+      `langchain_core`'s `FakeMessagesListChatModel` (scripted tool
+      calls) and stubbed MCP tool loaders. Covers: security-node
+      gating (a rejected plan's `propose_tool_intent` call IS still in
+      message history — LangGraph executes tools immediately, unlike
+      ADK's event-stream capture — but `plan_request.py`'s
+      `_security_approved()` check correctly excludes it from harvest),
+      and both successful and failed LLM calls producing an
+      `llm_call_logs` row (tested directly against
+      `LLMObservabilityLogger`'s real callback methods, since the fake
+      model bypasses `litellm` entirely and can't exercise its
+      callbacks). **Not done**: `google-adk`-uninstalled skill loading
+      (deferred to task 7.3, which is exactly that check) and
+      checkpoint-persistence-across-a-restart (no test added; the
+      mechanism itself was verified in task 3.7 against a real SQLite
+      file, but not through a full drafting-graph pause/restart cycle).
+      **Real finding surfaced while writing these tests**:
+      `langgraph.prebuilt.create_react_agent` (used in `nodes.py`) is
+      deprecated as of LangGraph v1.0, in favor of
+      `langchain.agents.create_agent` — *"Deprecated in LangGraph V1.0
+      to be removed in V2.0."* Still fully functional on the installed
+      `langgraph==1.2.9`; not migrated now because the replacement
+      lives in the full `langchain` package, which was deliberately
+      removed for the `ChatLiteLLM` decision (task 1.4) — flagged as a
+      real, known future migration cost in design.md's Risks, not
+      silently absorbed by re-adding that dependency.
 - [x] 5.3 Confirm both suites (existing ADK-targeted and new
       LangGraph-targeted) pass in the same CI run before proceeding to
       cutover. **Done**: `uv run python -m pytest tests/ -q` → **43
@@ -236,25 +255,79 @@
 
 ## 6. Cutover
 
-- [ ] 6.1 Repoint `gateway/plan_request.py` at the LangGraph
-      implementation in one commit
-- [ ] 6.2 Remove `agents/*.py` and the old `plan_request()` internals
-      from the active import path, but do not delete the files yet
-- [ ] 6.3 Run the full test suite post-cutover to confirm no regression
+- [x] 6.1 Repoint `gateway/plan_request.py` at the LangGraph
+      implementation. **Done** — `gateway/plan_request.py` is now a
+      thin re-export of `workflows/drafting/plan_request.py`.
+      `ComplianceError`/`is_valid_spec_shape`/`run_compliance_preflight`/
+      `REQUIRED_SPEC_KEYS` extracted to a new `gateway/compliance_preflight.py`
+      (framework-independent) specifically to avoid a circular import
+      between the two modules — verified clean in both import orders.
+- [x] 6.2 Remove `agents/*.py` and the old `plan_request()` internals
+      from the active import path, but do not delete the files yet.
+      **Done, and required zero additional edits**: confirmed by
+      repo-wide search that nothing outside `agents/` itself imports
+      from it anymore — task 6.1's re-export was the only real
+      dependency on the old implementation.
+- [x] 6.3 Run the full test suite post-cutover to confirm no regression.
+      **Done**: `uv run python -m pytest tests/ -q` → **43 passed**,
+      zero regressions, same count as pre-cutover.
 
 ## 7. Cleanup (after one release cycle with no regressions)
 
-- [ ] 7.1 Delete `agents/*.py` and the old ADK-based test suite for real
-- [ ] 7.2 Remove the `google-adk` dependency from `pyproject.toml`/`uv.lock`
-- [ ] 7.3 Confirm `gateway/skill_matching.py` and all tests still pass
-      with `google-adk` fully uninstalled
+- [x] 7.1 Delete `agents/*.py` and the old ADK-based test suite for
+      real. **Done (2026-07-15) — release-cycle gate explicitly
+      overridden by direct user instruction** ("use only langraph
+      workflow so that we don't have many frameworks to solve"), not
+      silently skipped — the design's Rollback plan wanted one release
+      cycle first; this was a deliberate, explicit call to consolidate
+      onto one framework immediately instead. `agents/*.py` (all 7
+      files) and `tests/test_skill_template_agent.py` (tested the now-
+      deleted ADK `SkillTemplateFillAgent` class directly) deleted via
+      `git rm`.
+- [x] 7.2 Remove the `google-adk` dependency from `pyproject.toml`/`uv.lock`.
+      **Done**: `uv remove google-adk`. Same `uv remove` dev-extras-drop
+      issue as task 2.1 (pytest disappeared again) — fixed the same way,
+      `uv sync --extra dev`.
+      **Real, previously-unflagged blocker found and fixed**:
+      `mcp_server/external_servers.py` defined the three MCP server
+      configs using ADK's own `StdioServerParameters` class — not
+      named as a dependency anywhere in this change's design. Replaced
+      with a local, framework-independent `@dataclass` of the same
+      shape (`command`/`args`/`env`) — `workflows/drafting/mcp_tools.py`'s
+      `_to_stdio_connection()` only ever duck-typed those three
+      attributes, so this needed zero changes there.
+- [x] 7.3 Confirm `gateway/skill_matching.py` and all tests still pass
+      with `google-adk` fully uninstalled. **Done.** Required two more
+      real fixes beyond the "just the two import lines" design
+      estimate: `gateway/skill_matching.py`'s import swapped to
+      `workflows.drafting.skill_loading` as designed, but
+      `gateway/skill_template_agent.py` also needed its dead
+      `SkillTemplateFillAgent(BaseAgent)` class removed entirely (ADK
+      import, superseded by `workflows/drafting/skill_fill.py`,
+      confirmed nothing in the cut-over path still called it) and its
+      `Skill` import swapped the same way. One test renamed
+      (`test_structured_match_drafts_via_skill_template_fill_agent_zero_llm`
+      → `..._deterministic_zero_llm_path`) since it now tests the
+      cut-over path, not the deleted class. **Verified**: zero real
+      `google.adk` imports remain anywhere (repo-wide grep, comments
+      only); `uv run python -c "import google.adk"` fails as expected;
+      full suite — **40 passed**, zero regressions, with `google-adk`
+      genuinely uninstalled.
 
 ## 8. Documentation
 
-- [ ] 8.1 Correct `docs/langgraph_vs_adk_inner_layer.md`'s comparison
+- [x] 8.1 Correct `docs/langgraph_vs_adk_inner_layer.md`'s comparison
       table and Part D cost argument in place, with a note pointing at
-      this change and the verified findings it rests on (stdio MCP
-      compatibility, `ChatLiteLLM`, portable skill-loading,
-      `SqliteSaver`/`AsyncSqliteSaver`) — not a silent rewrite
-- [ ] 8.2 Update `AGENTS.md`'s `agents/` bullet once cutover (task 6)
-      is complete
+      this change and the verified findings it rests on. **Done** —
+      Status line notes the doc is superseded; Part C's three rows
+      (skill-loading, deterministic branch, model-agnosticism) each
+      corrected inline with what was actually found; Part D's core
+      "re-deriving all three" claim corrected with what the real cost
+      turned out to be instead (the circular-import restructuring, the
+      `create_react_agent` deprecation) — nothing silently deleted.
+- [x] 8.2 Update `AGENTS.md`'s `agents/` bullet once cutover (task 6)
+      is complete. **Done** — `agents/` bullet marked superseded/
+      pending-deletion, new `workflows/drafting/` bullet added,
+      `gateway/` bullet updated to describe the re-export, "Overview &
+      stack" section's "a Google ADK agent graph" claim corrected to
+      LangGraph.
