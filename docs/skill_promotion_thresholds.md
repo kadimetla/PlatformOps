@@ -77,7 +77,11 @@ This mirrors Argo Rollouts' *"explicit, step-based rollout with manual
 approval gates between stages"* model deliberately, not Flagger's
 fully-automated one — automated pre-check, human approval still
 required, since skill promotion is lower-volume and higher-stakes than
-a traffic canary.
+a traffic canary. **Direct human review only, same gap as Gate 1's
+admission review**: `docs/external_ticket_approval_integration.md`'s
+ServiceNow/Jira design doesn't cover this promotion review either
+(confirmed 2026-07-14) — no external-ticket path exists for either
+skill-review gate today.
 
 ## Part D: Demotion — the piece nothing addressed before now
 Flagger's inverse pattern: *"if a metric fails for 5 consecutive

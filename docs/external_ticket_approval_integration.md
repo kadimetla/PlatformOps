@@ -141,6 +141,19 @@ that.
 - Whether `ticket_scope_verified` needs its own audit-log entry
   distinct from the approval decision itself, for compliance auditors
   who care specifically about ticket-scope match history — not decided.
+- **Scope gap, confirmed by re-reading this doc (2026-07-14): this
+  design covers only the `PlanRecord`/`ApprovalRecord` dispatch-time
+  human-approval gate — it says nothing about, and provides no path
+  for, the two separate human-review gates in the skill-proposal
+  lifecycle** (`docs/skills_and_workspace_design.md` Part C's admission
+  review, and `docs/skill_promotion_thresholds.md` Gate 3's BU→org
+  promotion review). Both of those are still "a `TeamMember` with
+  `role="approver"`/`"admin"` reviews it directly" with no
+  ServiceNow/Jira option designed. If an org wants skill admission or
+  promotion to also route through an external ticket instead of a
+  direct human review, that's new scope, not something this design
+  already covers by extension — not decided whether it's even wanted,
+  just named as a real gap rather than silently assumed covered.
 
 ## How this relates to the existing docs
 - Gives concrete design to the "Jira/ServiceNow" and "ticket comment"
@@ -154,6 +167,10 @@ that.
   verification instead of internal `ApprovalRecord` matching.
 - Doesn't change the one required next step
   (`plan_request(envelope)`, `docs/planned_implementation.md` Phase 3).
+- **Explicitly does NOT cover** `docs/skills_and_workspace_design.md`
+  Part C's skill-admission review or `docs/skill_promotion_thresholds.md`
+  Gate 3's BU→org promotion review — both cross-linked back to this
+  doc's Open Questions with that gap named plainly (2026-07-14).
 
 ## Sources
 - [echelon-ai-labs/servicenow-mcp — GitHub](https://github.com/echelon-ai-labs/servicenow-mcp)

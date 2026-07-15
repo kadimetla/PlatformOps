@@ -192,7 +192,12 @@ this schema was design-only, with no storage location, until that doc.
 2. A human reviewer (a BU `TeamMember` with `role="approver"` or
    `"admin"`) reviews `draft_skill_md` + `draft_iac_snippet` — same shape
    as `ApprovalRecord.human_approved`, applied to a skill instead of a
-   cloud change.
+   cloud change. **Direct human review only — `docs/external_ticket_
+   approval_integration.md`'s ServiceNow/Jira design is scoped
+   exclusively to `PlanRecord`/`ApprovalRecord`'s dispatch-time gate,
+   confirmed (2026-07-14) not to cover this admission review at all.**
+   Routing skill admission through an external ticket instead is
+   undesigned, not just unbuilt.
 3. On approval, it's materialized as a real skill at
    `workspaces/<agent_id>/skills/<name>/SKILL.md`, `version=1`.
 4. **Promotion upward (BU → org, or org → bundled) is a separate,
