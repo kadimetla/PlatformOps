@@ -87,19 +87,23 @@
 
 ## 4. Nightly drift sweep
 
-- [ ] 4.1 Implement the native drift detection pass — CloudFormation
-      `DetectStackDrift`/`DescribeStackResourceDrifts` for CFN-tracked
-      resources, `terraform-mcp-server`'s `create_run` with run type
-      `refresh_state` (verified real, read-only — not a generic
-      "terraform plan" description) against registered state for
-      Terraform-tracked ones
-- [ ] 4.2 Implement the live listing pass via raw provider APIs —
-      cross-checks `InfraInventoryRecord` against a live resource listing
-      to catch resources with no IaC representation at all.
+- [x] 4.1 ~~Implement the native drift detection pass~~ — **removed
+      from v1 scope (2026-07-15)**, deferred until `InfraInventoryRecord`
+      gains a `properties` field (see design.md's correction and
+      `docs/infra_discovery_triggers_and_extensibility.md` Part C).
+      Marked done-as-removed rather than left pending, so it doesn't
+      read as forgotten work.
+- [ ] 4.2 Implement the live listing pass via raw provider APIs — now
+      the sweep's only pass. Cross-checks `InfraInventoryRecord` against
+      a live resource listing to catch both resources with no IaC
+      representation at all AND resources the harness tracked that no
+      longer exist (absence in the live listing = the manual-deletion
+      signal, since there's no second pass to cross-reference against).
       `terraform-mcp-server` has no ad-hoc discovery capability for this
       (verified, `docs/cross_project_network_sharing.md` Part G) — don't
       attempt to route this pass through it
-- [ ] 4.3 Reconcile `InfraInventoryRecord` from both passes' findings
+- [ ] 4.3 Reconcile `InfraInventoryRecord` from the live listing pass's
+      findings
 - [ ] 4.4 Write `DRIFT_DETECTED` rows to the existing `audit_logs` table
       (new decision value, no schema change) for every discrepancy —
       never issue a `ToolIntent` or mutate real infrastructure
@@ -108,9 +112,9 @@
       database
 - [ ] 4.6 Write tests covering: a resource with no IaC state is still
       caught by the live listing pass; a manually deleted tracked
-      resource is caught by native drift detection; a drift finding
-      never produces a `ToolIntent`; one org's sweep never touches
-      another org's data
+      resource is caught by the same pass, via its absence from the
+      live listing; a drift finding never produces a `ToolIntent`; one
+      org's sweep never touches another org's data
 
 ## 5. Verification
 

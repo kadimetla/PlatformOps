@@ -1,27 +1,30 @@
 ## ADDED Requirements
 
-### Requirement: The nightly sweep runs both a native drift check and a live listing pass
-The system SHALL run native drift detection — CloudFormation
-`DetectStackDrift`/`DescribeStackResourceDrifts`, or `terraform-mcp-server`'s
-`create_run` with run type `refresh_state` against a registered
-workspace — against every resource with known IaC provenance, AND SHALL
-separately run a live listing pass (raw provider APIs — `terraform-mcp-server`
-has no ad-hoc discovery capability for resources outside a tracked
+### Requirement: The nightly sweep runs one live listing pass for v1
+**Corrected (2026-07-15) from an earlier two-pass requirement** — see
+`design.md`'s "Nightly sweep is ONE pass" decision. The system SHALL
+run a live listing pass (raw provider APIs — `terraform-mcp-server` has
+no ad-hoc discovery capability for resources outside a tracked
 workspace, verified in `docs/cross_project_network_sharing.md` Part G)
-to detect resources with no IaC representation at all.
+against every resource, comparing what's actually live against what
+`InfraInventoryRecord` expects, to detect both resources with no IaC
+representation at all and resources the harness tracked that no longer
+exist. The system SHALL NOT run native drift detection (CloudFormation
+`DetectStackDrift`/`DescribeStackResourceDrifts`, Terraform's
+`refresh_state`) in v1 — deferred until `InfraInventoryRecord` gains a
+`properties` field capable of representing what native drift detection
+would find (`docs/infra_discovery_triggers_and_extensibility.md` Part C).
 
 #### Scenario: A resource with no IaC state is still caught
 - **WHEN** a resource exists in the cloud account but was never part of
   any tracked Terraform state or CloudFormation stack
-- **THEN** the live listing pass detects it, even though native drift
-  detection could not have (it only checks resources explicitly defined
-  in a tracked template)
+- **THEN** the live listing pass detects it
 
 #### Scenario: A tracked resource that was manually deleted is caught
 - **WHEN** a resource with `provenance="iac_state"` no longer exists in
   the cloud account
-- **THEN** native drift detection (or the live listing cross-check)
-  identifies the discrepancy
+- **THEN** the live listing pass identifies the discrepancy by its
+  absence
 
 ### Requirement: The nightly sweep is report-only
 The system SHALL reconcile `InfraInventoryRecord` to reflect what the

@@ -417,6 +417,17 @@ rather than repeating this one:
   discovery assumption the moment `docs/multi_account_per_bu_design.md`'s
   already-established multi-account-per-BU premise meets any of these
   three patterns — each in a different way.
+- `docs/infra_discovery_triggers_and_extensibility.md` — precisely
+  names the four discovery triggers (bootstrap at onboarding,
+  incremental riding on dispatch, targeted per chat request, nightly
+  cron) and where each sits relative to the chat request lifecycle —
+  bootstrap and nightly sit entirely outside it. Deliberately leaves
+  two questions open (staleness escalation for targeted discovery,
+  nightly's pass count) while documenting the additive-schema plumbing
+  that keeps both cheap to resolve later rather than a rearchitecture.
+  Resolves `infra-inventory-discovery/design.md`'s long-dangling
+  "nightly sweep is two passes" open thread — decided to one pass
+  first, propagated into that change's actual artifacts.
 - `docs/discovery_before_drafting_and_presentation_layer.md` —
   corrects an earlier persona-based framing (infra team vs. app
   developer) to the real axis: discovery must precede drafting for

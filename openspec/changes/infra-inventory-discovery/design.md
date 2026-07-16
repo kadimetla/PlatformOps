@@ -114,28 +114,41 @@ it (`BrokeredToolDispatcher`'s existing audit write). Piggybacking the
 inventory write onto that same code path costs nothing extra and can't
 drift from reality the way a separate, later reconciliation pass could.
 
-**Nightly sweep is two passes, not one, because one pass structurally
-can't cover both drift directions.** CloudFormation's own
+**Nightly sweep is ONE pass (live listing) for v1 — corrected
+(2026-07-15) from an earlier "two passes" decision.** The original
+reasoning was sound as far as it went — CloudFormation's own
 `DetectStackDrift` docs confirm it *"only checks resource properties
-explicitly defined in the stack template"* — it cannot discover a
-resource that was never part of any tracked stack. So: native drift
-detection (CFN `DetectStackDrift`/`DescribeStackResourceDrifts`,
-Terraform's `refresh_state` run type against registered state — see
-below) for resources the harness already tracks, plus a live listing
-pass specifically to catch resources with no IaC representation at all.
-Alternative considered: live listing only, skip native drift detection —
-rejected, native detection is authoritative and cheaper for the (likely
-majority) of resources that do have IaC state; the live pass is the
-fallback for what it can't see, not a replacement for it.
+explicitly defined in the stack template,"* so native drift detection
+(CFN `DetectStackDrift`/`DescribeStackResourceDrifts`, Terraform's
+`refresh_state` run type) genuinely can't discover a resource with no
+IaC representation, which a live listing pass can. But that reasoning
+assumed native drift detection's output — property-level drift — was
+usable. It isn't yet: `InfraInventoryRecord` is existence-only, no
+`properties` field, so even if native drift detection ran and found a
+property mismatch, nothing in this schema could represent or surface
+that finding. Running a pass whose output can't be stored is not a
+mitigation, it's dead work. **Decided**: build the live listing pass
+only for v1 — it already catches both "resource exists but harness
+never knew" and, by comparing what `InfraInventoryRecord` expects
+against what's actually live, "resource the harness tracked no longer
+exists." Native drift detection (and the `refresh_state` mechanism
+below, which stays a real, verified finding) becomes a genuinely
+separate, additive follow-on, explicitly gated on a future
+`properties` field being added to `InfraInventoryRecord` — not
+something to build in parallel with a schema that can't hold its
+output. See `docs/infra_discovery_triggers_and_extensibility.md` Part C
+for why this is a safe, additive-schema deferral, not an unresolved
+gap.
 
-**The Terraform-path native drift check is `create_run`'s `refresh_state`
-run type, verified, not a generic "run `terraform plan`" description.**
+**The Terraform-path native drift check — for the deferred, future
+follow-on pass, not v1 — is `create_run`'s `refresh_state` run type,
+verified, not a generic "run `terraform plan`" description.**
 `docs/cross_project_network_sharing.md` Part G checked
 `terraform-mcp-server`'s real, current tool surface directly: `create_run`
 supports exactly two run types, `plan_and_apply` and `refresh_state` —
 the latter *"refreshes state without making changes,"* the precise
-read-only semantics this pass needs, scoped to a workspace's already-tracked
-resources. That same check confirmed the tool has **no** ad-hoc,
+read-only semantics that future pass would need, scoped to a
+workspace's already-tracked resources. That same check confirmed the tool has **no** ad-hoc,
 data-source-only query capability — so it cannot be used for the live
 listing pass or for discovering resources/relationships with no existing
 workspace at all (including the cross-project network sharing case in
