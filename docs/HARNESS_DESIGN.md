@@ -469,6 +469,17 @@ rather than repeating this one:
   live cloud APIs. This workflow only ever reads what that sweep wrote;
   it was never the thing doing the discovering. See design.md's rename
   note for the full reasoning.
+- `docs/creation_profiles_and_deterministic_discovery.md` — finds that
+  `Skill`, `WorkspaceBundle`, and `IacSourceRef` each partially capture
+  "how a resource was made," but none survive past plan execution —
+  `ToolIntent`/`PlanRecord`/`InfraInventoryRecord` share zero fields,
+  confirmed by grep. Proposes stamping a `CreationProfile` (skill_path,
+  toolchain, IaC source) onto `InfraInventoryRecord` at the same
+  incremental-update hook `infra-inventory-discovery` task 3.1 already
+  plans, so discovering a harness-created resource later is a direct
+  lookup instead of `docs/iac_based_discovery.md`'s search chain — and
+  narrows (doesn't resolve) the "never checked vs. confirmed absent"
+  ambiguity in `workflows/inquiry/`'s `InquiryResult.found: bool`.
 - `docs/discovery_before_drafting_and_presentation_layer.md` —
   corrects an earlier persona-based framing (infra team vs. app
   developer) to the real axis: discovery must precede drafting for
