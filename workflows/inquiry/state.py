@@ -1,6 +1,8 @@
-"""Graph state and boundary models for the discovery workflow. See
-openspec/changes/build-discovery-workflow/design.md's Decisions --
-DiscoveryQuery/DiscoveryResult are new, explicit models, not a reuse of
+"""Graph state and boundary models for the inquiry workflow (renamed
+from workflows/discovery/ on 2026-07-17 -- see
+openspec/changes/build-discovery-workflow/design.md's "Renamed to
+workflows/inquiry/" note for why). See design.md's Decisions --
+InquiryQuery/InquiryResult are new, explicit models, not a reuse of
 InfraInventoryRecord directly: a query needs a lookup key, a result
 needs an explicit found: bool a bare record can't represent.
 """
@@ -11,7 +13,7 @@ from pydantic import BaseModel
 from gateway.schemas import InfraInventoryRecord, WorkspaceBundle
 
 
-class DiscoveryQuery(BaseModel):
+class InquiryQuery(BaseModel):
     """org_id/bu_id are assumed already resolved from the authenticated
     session -- never parsed from resource_type_description or any other
     free-text field (docs/intent_routing_and_staged_confirmation.md
@@ -24,7 +26,7 @@ class DiscoveryQuery(BaseModel):
     resource_type_description: Optional[str] = None
 
 
-class DiscoveryResult(BaseModel):
+class InquiryResult(BaseModel):
     """resource_type is always populated on a resolved lookup (whether
     given directly or classified) so a caller can show the
     interpretation alongside the answer, in one response -- Part D's
@@ -38,9 +40,9 @@ class DiscoveryResult(BaseModel):
     clarifying_question: Optional[str] = None
 
 
-class DiscoveryState(TypedDict):
-    query: DiscoveryQuery
+class InquiryState(TypedDict):
+    query: InquiryQuery
     bundle: WorkspaceBundle
     resolved_resource_type: Optional[str]
     clarifying_question: Optional[str]
-    result: Optional[DiscoveryResult]
+    result: Optional[InquiryResult]

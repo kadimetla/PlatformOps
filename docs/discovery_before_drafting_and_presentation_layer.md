@@ -14,6 +14,13 @@ from earlier in the same exploration thread (Part A). Verified against
 the actual text of the docs it cites by direct source inspection, not
 recalled from memory.
 
+**Note (2026-07-17)**: `workflows/discovery/` below refers to the same
+package now named `workflows/inquiry/` — renamed once it became clear
+"discovery" already named the separate background sweep system this
+doc describes, distinct from the request-time query workflow.
+References below have been updated to the new name; see
+`openspec/changes/build-discovery-workflow/design.md`'s rename note.
+
 ## Part A: Correction — "discovery-before-drafting" is not persona-based, it's request-shape-based
 
 An earlier framing in this exploration split use of this system into
@@ -72,7 +79,7 @@ template. No lookup for this exists in any doc.
                               │  cloud API round-trip per request
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  workflows/discovery/ (design only, docs/request_intent_taxonomy_   │
+│  workflows/inquiry/ (design only, docs/request_intent_taxonomy_   │
 │  and_workflow_routing.md)                                          │
 │                                                                     │
 │  "Extend/clone" query: target (or reference) BU's foundation        │
@@ -136,7 +143,7 @@ conflating — both reading the *same* `InfraInventoryRecord`/
   own lookup shape, distinct from "discover my own target BU," not
   designed anywhere yet.
 - Where exactly the `TeamMember` role×scope check gets enforced —
-  inside `workflows/discovery/` itself, or as a separate gate before
+  inside `workflows/inquiry/` itself, or as a separate gate before
   it's invoked (mirrors binding resolution, `spec/flow_steps/02`) —
   not decided.
 
@@ -149,7 +156,7 @@ conflating — both reading the *same* `InfraInventoryRecord`/
   `docs/infra_graph_modeling_and_db_options.md` (`InfraRelationship`
   edges, still design-only) as the data layer underneath
   `docs/request_intent_taxonomy_and_workflow_routing.md`'s
-  `workflows/discovery/` workflow.
+  `workflows/inquiry/` workflow.
 - Extends `docs/foundation_discovery_and_capability_matching.md`'s
   `discovered_capabilities` matching and `docs/foundation_app_layering_
   and_iam_tiers.md`'s foundation/app-tier approval-bar distinction with

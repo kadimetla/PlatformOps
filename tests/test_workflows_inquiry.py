@@ -1,21 +1,22 @@
-"""Tests workflows/discovery/'s existence-check graph end-to-end.
-Fixture rows are written directly to InfraInventoryStore -- no
-discovery-sweep dependency, matching workflows/drafting/'s own tests
-writing fixture skills to disk directly. Covers
-specs/discovery-existence-check/spec.md's scenarios.
+"""Tests workflows/inquiry/'s existence-check graph end-to-end (package
+renamed from workflows/discovery/ on 2026-07-17). Fixture rows are
+written directly to InfraInventoryStore -- no discovery-sweep
+dependency, matching workflows/drafting/'s own tests writing fixture
+skills to disk directly. Covers
+openspec/changes/build-discovery-workflow/specs/inquiry-existence-check/spec.md's
+scenarios.
 """
-import datetime
 import tempfile
 
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, ToolCall
 
-import workflows.discovery.nodes as nodes_module
+import workflows.inquiry.nodes as nodes_module
 from gateway.infra_inventory_store import InfraInventoryStore
 from gateway.schemas import InfraInventoryRecord, WorkspaceBundle
-from workflows.discovery.discover_request import discover_request
-from workflows.discovery.state import DiscoveryQuery
+from workflows.inquiry.inquiry_request import inquiry_request
+from workflows.inquiry.state import InquiryQuery
 
 
 class _ScriptedFakeChatModel(FakeMessagesListChatModel):
@@ -69,13 +70,13 @@ async def test_found_resource_returns_the_record(store, bundle):
             provenance="iac_state",
         )
     )
-    query = DiscoveryQuery(
+    query = InquiryQuery(
         org_id="acme",
         bu_id="payments",
         resource_identifier="invoices-prod",
         resource_type="AWS::S3::Bucket",
     )
-    result = await discover_request(query, bundle, store)
+    result = await inquiry_request(query, bundle, store)
 
     assert result.found is True
     assert result.record is not None
@@ -84,13 +85,13 @@ async def test_found_resource_returns_the_record(store, bundle):
 
 @pytest.mark.anyio
 async def test_not_found_resource_returns_no_record(store, bundle):
-    query = DiscoveryQuery(
+    query = InquiryQuery(
         org_id="acme",
         bu_id="payments",
         resource_identifier="does-not-exist",
         resource_type="AWS::S3::Bucket",
     )
-    result = await discover_request(query, bundle, store)
+    result = await inquiry_request(query, bundle, store)
 
     assert result.found is False
     assert result.record is None
@@ -107,13 +108,13 @@ async def test_record_scoped_to_another_bu_is_invisible(store, bundle):
             provenance="iac_state",
         )
     )
-    query = DiscoveryQuery(
+    query = InquiryQuery(
         org_id="acme",
         bu_id="payments",
         resource_identifier="invoices-prod",
         resource_type="AWS::S3::Bucket",
     )
-    result = await discover_request(query, bundle, store)
+    result = await inquiry_request(query, bundle, store)
 
     assert result.found is False
 
@@ -125,13 +126,13 @@ async def test_given_resource_type_skips_classification(store, bundle, monkeypat
 
     monkeypatch.setattr(nodes_module, "get_model", fail_if_called)
 
-    query = DiscoveryQuery(
+    query = InquiryQuery(
         org_id="acme",
         bu_id="payments",
         resource_identifier="invoices-prod",
         resource_type="AWS::S3::Bucket",
     )
-    result = await discover_request(query, bundle, store)
+    result = await inquiry_request(query, bundle, store)
 
     assert result.resource_type == "AWS::S3::Bucket"
 
@@ -152,13 +153,13 @@ async def test_free_text_description_resolves_via_select_resource_type(store, bu
             provenance="iac_state",
         )
     )
-    query = DiscoveryQuery(
+    query = InquiryQuery(
         org_id="acme",
         bu_id="payments",
         resource_identifier="invoices-prod",
         resource_type_description="an S3 bucket",
     )
-    result = await discover_request(query, bundle, store)
+    result = await inquiry_request(query, bundle, store)
 
     assert result.found is True
     assert result.resource_type == "AWS::S3::Bucket"  # interpretation shown alongside the answer
@@ -171,13 +172,13 @@ async def test_unresolvable_description_returns_clarifying_question(store, bundl
         "get_model",
         lambda role: _fake_model_selecting(clarifying_question="Did you mean an S3 bucket or a VPC?"),
     )
-    query = DiscoveryQuery(
+    query = InquiryQuery(
         org_id="acme",
         bu_id="payments",
         resource_identifier="invoices-prod",
         resource_type_description="some cloud thing",
     )
-    result = await discover_request(query, bundle, store)
+    result = await inquiry_request(query, bundle, store)
 
     assert result.clarifying_question == "Did you mean an S3 bucket or a VPC?"
     assert result.found is False
@@ -193,13 +194,13 @@ async def test_empty_candidate_list_returns_clarifying_question_without_a_model_
 
     monkeypatch.setattr(nodes_module, "get_model", fail_if_called)
 
-    query = DiscoveryQuery(
+    query = InquiryQuery(
         org_id="acme",
         bu_id="payments",
         resource_identifier="invoices-prod",
         resource_type_description="an S3 bucket",
     )
-    result = await discover_request(query, empty_bundle, store)
+    result = await inquiry_request(query, empty_bundle, store)
 
     assert result.clarifying_question is not None
     assert result.found is False

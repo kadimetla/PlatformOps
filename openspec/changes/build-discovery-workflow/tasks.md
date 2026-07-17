@@ -1,14 +1,22 @@
+<!-- Renamed 2026-07-17: workflows/discovery/ -> workflows/inquiry/,
+discover_request() -> inquiry_request(), Discovery* -> Inquiry*,
+tests/test_workflows_discovery.py -> tests/test_workflows_inquiry.py,
+specs/discovery-existence-check/ -> specs/inquiry-existence-check/. See
+design.md's rename note. Task descriptions below reflect the current
+names; **Done** notes are otherwise unchanged from when each task was
+completed. -->
+
 ## 1. State and models
 
-- [x] 1.1 Create `workflows/discovery/__init__.py`. **Done.**
-- [x] 1.2 Create `workflows/discovery/state.py`: `DiscoveryQuery`,
-      `DiscoveryResult` (Pydantic models, per `design.md`'s Decisions),
-      and `DiscoveryState` (TypedDict). **Done, with one deviation from
-      this task's original text**: `store` is NOT a `DiscoveryState`
+- [x] 1.1 Create `workflows/inquiry/__init__.py`. **Done.**
+- [x] 1.2 Create `workflows/inquiry/state.py`: `InquiryQuery`,
+      `InquiryResult` (Pydantic models, per `design.md`'s Decisions),
+      and `InquiryState` (TypedDict). **Done, with one deviation from
+      this task's original text**: `store` is NOT an `InquiryState`
       field — injected via `functools.partial` into `existence_check`
       instead, mirroring `workflows/drafting/graph.py`'s own
       `mcp_client` injection (avoids putting a non-serializable object
-      in graph state). `DiscoveryState` ended up
+      in graph state). `InquiryState` ended up
       `{query, bundle, resolved_resource_type, clarifying_question, result}`
       — `bundle` added because `classify_resource_type` needs
       `WorkspaceBundle.allowed_resource_types` as its candidate list.
@@ -23,15 +31,15 @@
       doesn't force `tool_choice`; `ChatLiteLLM`'s forced-tool-choice
       behavior isn't verified against the installed version, so this
       avoids relying on an unverified API shape.
-- [x] 2.2 Implement `classify_resource_type` node in `workflows/discovery/nodes.py`.
+- [x] 2.2 Implement `classify_resource_type` node in `workflows/inquiry/nodes.py`.
       **Done** — skips the model call entirely when
-      `DiscoveryQuery.resource_type` is already set.
+      `InquiryQuery.resource_type` is already set.
 - [x] 2.3 Handle an empty candidate list as an automatic
       clarifying-question case. **Done**, checked before the model call.
 
 ## 3. Existence check
 
-- [x] 3.1 Implement `existence_check` node in `workflows/discovery/nodes.py`.
+- [x] 3.1 Implement `existence_check` node in `workflows/inquiry/nodes.py`.
       **Done.**
 - [x] 3.2 Ensure a not-found lookup returns `found=False` cleanly, no
       exception. **Done** — `InfraInventoryStore.lookup()` already
@@ -39,19 +47,19 @@
 
 ## 4. Graph and entry function
 
-- [x] 4.1 Create `workflows/discovery/graph.py`: `build_discovery_graph()`
+- [x] 4.1 Create `workflows/inquiry/graph.py`: `build_inquiry_graph()`
       wiring `classify_resource_type -> existence_check` as a fixed
       two-node sequence (no router, per design.md). **Done.**
-- [x] 4.2 Create `workflows/discovery/discover_request.py`:
-      `discover_request(query, bundle, store) -> DiscoveryResult`.
+- [x] 4.2 Create `workflows/inquiry/inquiry_request.py`:
+      `inquiry_request(query, bundle, store) -> InquiryResult`.
       **Done, with one signature deviation**: takes `bundle` as a third
       parameter (not just `query`/`store`) — needed to reach
       `classify_resource_type`'s candidate list, same reason `store`
-      moved out of `DiscoveryState` above.
+      moved out of `InquiryState` above.
 
 ## 5. Tests
 
-- [x] 5.1 Write `tests/test_workflows_discovery.py` with fixture rows
+- [x] 5.1 Write `tests/test_workflows_inquiry.py` with fixture rows
       written directly to `InfraInventoryStore`. **Done**, 7 tests.
 - [x] 5.2 Cover: found; not-found; wrong-BU-scoped-out. **Done.**
 - [x] 5.3 Cover: `resource_type` already given skips classification.
@@ -62,7 +70,7 @@
       returns a `clarifying_question`, no existence check performed.
       **Done**, two separate tests (unresolvable description; empty
       candidate list also asserts no model call).
-- [x] 5.6 Cover: `DiscoveryResult.resource_type` is populated on the
+- [x] 5.6 Cover: `InquiryResult.resource_type` is populated on the
       classified path. **Done.**
 
 ## 6. Verification
@@ -73,3 +81,22 @@
       `gateway/infra_inventory_store.py`.
 - [x] 6.2 Run `openspec validate build-discovery-workflow --type change`
       to confirm the change now passes. **Done** — see below.
+
+## 7. Rename (2026-07-17, post-completion)
+
+- [x] 7.1 Rename `workflows/discovery/` -> `workflows/inquiry/`,
+      `discover_request.py` -> `inquiry_request.py`, and every
+      `Discovery*` symbol -> `Inquiry*` throughout the package. **Done**
+      — `git mv` used to preserve history; all internal imports updated.
+- [x] 7.2 Rename `tests/test_workflows_discovery.py` ->
+      `tests/test_workflows_inquiry.py`, update all references. **Done**
+      — 7/7 tests still pass post-rename.
+- [x] 7.3 Rename the capability spec `specs/discovery-existence-check/`
+      -> `specs/inquiry-existence-check/`, update requirement text.
+      **Done.**
+- [x] 7.4 Update `design.md`/`proposal.md`/this file with an explicit
+      rename note (not a silent rewrite), per this project's own
+      correction convention. **Done.**
+- [x] 7.5 Re-run `uv run python -m pytest tests/ -q` and
+      `openspec validate build-discovery-workflow --type change` after
+      the rename to confirm nothing broke.

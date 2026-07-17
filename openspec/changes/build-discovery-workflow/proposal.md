@@ -1,6 +1,17 @@
+<!-- Renamed 2026-07-17: the package proposed below as workflows/discovery/
+was built, then renamed to workflows/inquiry/ (discover_request() ->
+inquiry_request()) once a real naming collision surfaced -- "discovery"
+was already the name of the separate background sweep system
+(infra-inventory-discovery) that populates InfraInventoryStore via live
+cloud APIs, distinct from this workflow, which only ever reads what
+that sweep already wrote. See design.md's rename note for the full
+reasoning. References below are updated to the current names; this
+proposal's own change folder name is left as build-discovery-workflow,
+the historical record of what was proposed. -->
+
 ## Why
 `docs/request_intent_taxonomy_and_workflow_routing.md` designed
-`workflows/discovery/` as the read-path counterpart to `workflows/drafting/`
+`workflows/inquiry/` as the read-path counterpart to `workflows/drafting/`
 (real, built, cut over) — but nothing in the real request lifecycle
 today can answer "does this resource already exist" at all.
 `docs/infra_discovery_triggers_and_extensibility.md` traced a concrete
@@ -14,12 +25,20 @@ query workflow that actually uses it, closing the smallest, most
 concrete version of that gap first.
 
 ## What Changes
-- New `workflows/discovery/` package: a `StateGraph` with one
-  deterministic node (`existence_check`) querying `InfraInventoryStore.lookup()`
-  — zero LLM calls, mirrors `workflows/drafting/`'s deterministic
-  zero-LLM skill-fill path in shape, not copied code.
-- New entry function, `discover_request(query, store) -> DiscoveryResult`,
-  in `workflows/discovery/discover_request.py` — same external-boundary
+- New `workflows/inquiry/` package: a `StateGraph` with a bounded
+  classification node (`classify_resource_type`, skipped when the
+  resource type is already given) followed by one deterministic node
+  (`existence_check`) querying `InfraInventoryStore.lookup()` — the
+  only LLM call in the graph is the classification step, and it's
+  skippable; `existence_check` itself is zero-LLM, mirroring
+  `workflows/drafting/`'s deterministic zero-LLM skill-fill path in
+  shape, not copied code. **Updated 2026-07-17**: the classification
+  node was added during design (Part D of
+  `docs/intent_routing_and_staged_confirmation.md`, folded in after
+  this proposal was first written) — this line originally said "one
+  deterministic node."
+- New entry function, `inquiry_request(query, bundle, store) -> InquiryResult`,
+  in `workflows/inquiry/inquiry_request.py` — same external-boundary
   shape as `gateway/plan_request.py`'s `plan_request()`, a callable
   contract, not yet wired to any channel adapter (`on_inbound_message()`
   doesn't exist for any workflow today, including `drafting` — `plan_request()`
@@ -39,14 +58,14 @@ concrete version of that gap first.
   pipeline.
 - **NOT in scope**: any presentation layer (A2UI card, Control UI view —
   `docs/discovery_before_drafting_and_presentation_layer.md` Part C).
-  `DiscoveryResult` is a plain Pydantic model; rendering it is a
+  `InquiryResult` is a plain Pydantic model; rendering it is a
   separate, later concern.
 
 ## Capabilities
 
 ### New Capabilities
-- `discovery-existence-check`: the deterministic `workflows/discovery/`
-  graph and `discover_request()` entry function answering "does this
+- `inquiry-existence-check`: the deterministic `workflows/inquiry/`
+  graph and `inquiry_request()` entry function answering "does this
   specific resource already exist" against `InfraInventoryStore`, with
   no LLM calls and no live cloud API calls (queries already-stored
   data only — staleness escalation stays the open question
@@ -58,11 +77,11 @@ concrete version of that gap first.
 task 1) are consumed as-is, not modified. -->
 
 ## Impact
-- **New code**: `workflows/discovery/__init__.py`, `state.py`, `nodes.py`,
-  `graph.py`, `discover_request.py` — mirrors `workflows/drafting/`'s
+- **New code**: `workflows/inquiry/__init__.py`, `state.py`, `nodes.py`,
+  `graph.py`, `inquiry_request.py` — mirrors `workflows/drafting/`'s
   file layout for consistency, not because the logic is equivalent
-  (this graph has one deterministic node, not a multi-node LLM ReAct
-  loop).
+  (this graph has one deterministic node plus one classification node,
+  not a multi-node LLM ReAct loop).
 - **Consumes, doesn't change**: `gateway/infra_inventory_store.py`,
   `gateway/schemas.py`'s `InfraInventoryRecord` (both real, built,
   tested this session).

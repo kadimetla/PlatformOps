@@ -1,8 +1,12 @@
-"""Node functions for the discovery workflow's StateGraph --
-existence-check slice only (build-discovery-workflow's scope;
-capability-match and cross-project branches are deferred, not built as
-unused router destinations -- design.md's "two nodes in a fixed
-sequence, not a router").
+"""Node functions for the inquiry workflow's StateGraph -- renamed from
+workflows/discovery/ on 2026-07-17 to stop overloading "discovery" for
+two different things: the background sweep system that populates
+InfraInventoryStore (infra-inventory-discovery, still mostly unbuilt)
+vs. this workflow, which only ever reads it (existence-check slice
+only; build-discovery-workflow's scope). capability-match and
+cross-project branches are deferred, not built as unused router
+destinations -- design.md's "two nodes in a fixed sequence, not a
+router".
 
 classify_resource_type is a single-shot bound-tool call, not
 create_react_agent's ReAct loop -- this is one classification decision,
@@ -14,16 +18,16 @@ logic, same reuse discipline workflows/drafting/plan_request.py already
 applies to gateway/compliance_preflight.py.
 
 existence_check is fully deterministic, zero LLM calls, and runs
-unconditionally so discover_request() always returns exactly one
-DiscoveryResult, whether or not classification resolved a type.
+unconditionally so inquiry_request() always returns exactly one
+InquiryResult, whether or not classification resolved a type.
 """
 from gateway.infra_inventory_store import InfraInventoryStore
-from workflows.discovery.state import DiscoveryResult, DiscoveryState
-from workflows.discovery.tools import select_resource_type
 from workflows.drafting.model_config import get_model
+from workflows.inquiry.state import InquiryResult, InquiryState
+from workflows.inquiry.tools import select_resource_type
 
 
-async def classify_resource_type(state: DiscoveryState) -> dict:
+async def classify_resource_type(state: InquiryState) -> dict:
     """Skips the LLM call entirely when query.resource_type is already
     given (Tier 1/Tier 2 already resolved it upstream) -- design.md's
     "skip entirely" decision."""
@@ -70,7 +74,7 @@ async def classify_resource_type(state: DiscoveryState) -> dict:
     }
 
 
-async def existence_check(state: DiscoveryState, store: InfraInventoryStore) -> dict:
+async def existence_check(state: InquiryState, store: InfraInventoryStore) -> dict:
     """When classify_resource_type left no resolved_resource_type, this
     builds the clarifying-question result instead of a lookup -- no
     InfraInventoryStore call is made in that case (spec's "no existence
@@ -79,7 +83,7 @@ async def existence_check(state: DiscoveryState, store: InfraInventoryStore) -> 
     resolved_type = state.get("resolved_resource_type")
     if not resolved_type:
         return {
-            "result": DiscoveryResult(
+            "result": InquiryResult(
                 found=False,
                 resource_identifier=query.resource_identifier,
                 clarifying_question=state.get("clarifying_question"),
@@ -88,7 +92,7 @@ async def existence_check(state: DiscoveryState, store: InfraInventoryStore) -> 
 
     record = store.lookup(query.org_id, query.bu_id, resolved_type, query.resource_identifier)
     return {
-        "result": DiscoveryResult(
+        "result": InquiryResult(
             found=record is not None,
             resource_type=resolved_type,
             resource_identifier=query.resource_identifier,

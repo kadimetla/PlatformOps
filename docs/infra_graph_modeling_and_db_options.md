@@ -18,6 +18,13 @@ naming a real gap in `InfraInventoryRecord`'s schema (existence only,
 no relationships) and surveying what would fill it, without deciding
 to build anything yet.
 
+**Note (2026-07-17)**: `workflows/discovery/` below refers to the same
+package now built and named `workflows/inquiry/` — renamed once it
+became clear "discovery" already named the separate background sweep
+system this doc extends, distinct from the request-time query
+workflow. References below have been updated to the new name; see
+`openspec/changes/build-discovery-workflow/design.md`'s rename note.
+
 ## Part A: This project has already needed a graph, three times, without naming it
 
 | Where | What it actually is | How it's modeled today |
@@ -52,7 +59,7 @@ explicit and queryable instead of implicit knowledge buried in
 per-provider application code.
 
 **Where this actually pays for itself**: `docs/request_intent_taxonomy_and_workflow_routing.md`'s
-`workflows/discovery/` capability-match branch (scenario #5 — "show
+`workflows/inquiry/` capability-match branch (scenario #5 — "show
 existing infra suitable to deploy a webapp") is the one place an LLM
 already reasons over discovery output. Handing it an actual subgraph —
 "here's the VPC, here's what's contained in it, here's what depends on
@@ -84,7 +91,7 @@ foundation"), not a subsumption-reasoning question.
 | Tool | Paradigm | Embedded? | Verified status | Verdict |
 |---|---|---|---|---|
 | **KuzuDB** | Property graph | Yes — in-process, MIT-licensed, real Python bindings, Cypher | **Real maintenance red flag**: GitHub repo archived October 2025, final release `0.11.3`; Apple agreed to acquire Kùzu Inc. per a February 2026 EU DMA filing. Community fork exists, unproven. Independently corroborated by Graphiti's own docs, which mark Kuzu as *"Deprecated — upstream Kuzu project is no longer maintained."* | **Reject** — real, disqualifying risk for new adoption today |
-| **FalkorDB** | Property graph | Mostly — `FalkorDBLite` self-manages an embedded Redis process | Actively maintained (RedisGraph's successor after its EOL), real `falkordb-py` client, Cypher support, explicit multi-tenancy design (*"10,000+ isolated graphs"* per instance) — fits this project's per-org/BU shape well | **Defer, not reject** — the concrete next step up if `workflows/discovery/`'s LLM branch needs real GraphRAG-style retrieval, or traversal volume genuinely outgrows in-process BFS/DFS |
+| **FalkorDB** | Property graph | Mostly — `FalkorDBLite` self-manages an embedded Redis process | Actively maintained (RedisGraph's successor after its EOL), real `falkordb-py` client, Cypher support, explicit multi-tenancy design (*"10,000+ isolated graphs"* per instance) — fits this project's per-org/BU shape well | **Defer, not reject** — the concrete next step up if `workflows/inquiry/`'s LLM branch needs real GraphRAG-style retrieval, or traversal volume genuinely outgrows in-process BFS/DFS |
 | **DuckDB + DuckPGQ** | Property graph | Yes — DuckDB itself is embedded, no server, same category as SQLite | Real extension implementing SQL/PGQ (ISO-standard SQL property-graph syntax, not a new query language), loadable as a community extension since DuckDB v1.0.0 without special flags | **Defer, not reject** — a smaller step up than FalkorDB (standard SQL, still embedded), but a *second* embedded engine alongside the SQLite file already in use, not reusing it |
 | **Graphiti** | Framework over a property-graph backend, LLM-mediated construction | **No, not by default** — verified from the real repo: standard path is `docker compose up` (Neo4j) or `docker compose --profile falkordb up` (FalkorDB), a genuine server requirement. One narrow exception: `graphiti-core[falkordblite]` gives an embedded variant, needs Python 3.12+, presented as a special case | Active development (v0.29.2, June 2026, 888 commits, 28.7k stars) — real and maintained, but **solves a different problem**: built to extract entities/relationships from unstructured, evolving data via LLM inference (*"Graphiti depends on structured (JSON) output for entity/edge extraction and deduplication"*), with bi-temporal fact invalidation for data that changes interpretation over time | **Reject** — not because it isn't real, but because every relationship this project has identified (GCP `getXpnHost`, AWS `DescribeSubnets.OwnerId`, Azure Resource Graph peering edges) is already structured and unambiguous the moment the API call returns. No extraction problem exists to justify an LLM-mediated construction layer |
 | **RDFLib** | RDF/semantic | Yes — pure Python, in-memory or Berkeley-DB-backed | Actively maintained (v8 in development), mature, real SPARQL support | Not recommended — right paradigm question answered "no" in Part C, not a maintenance or reality concern |
@@ -111,7 +118,7 @@ problem now"*).
 Two named, conditional next steps, not open-ended "revisit later":
 - **DuckPGQ** if plain recursive CTEs against the edges table genuinely
   get unwieldy, but a separate always-on server still isn't wanted.
-- **FalkorDB** if `workflows/discovery/`'s capability-match branch needs
+- **FalkorDB** if `workflows/inquiry/`'s capability-match branch needs
   real GraphRAG-style retrieval tooling, or graph-per-tenant isolation
   at a scale a hand-fetched subgraph can't comfortably serve.
 
@@ -144,7 +151,7 @@ they solve a different-shaped problem than this one.
   graph database before the plain-table approach is proven
   insufficient.
 - Feeds `docs/request_intent_taxonomy_and_workflow_routing.md`'s
-  `workflows/discovery/` capability-match branch — the concrete
+  `workflows/inquiry/` capability-match branch — the concrete
   consumer that would benefit most from a real relationships model,
   named there as still undesigned.
 - Doesn't change the one required next step

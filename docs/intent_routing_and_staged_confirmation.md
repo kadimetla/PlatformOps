@@ -8,13 +8,17 @@ reviewed_by: unreviewed (first draft)
 # Intent Routing and Staged Confirmation
 
 ## Status
-Design only. Nothing here is built. Traces directly against real,
-already-built code (`workflows/drafting/plan_request.py`'s
+Design only when written. Traces directly against real, already-built
+code (`workflows/drafting/plan_request.py`'s
 `envelope_to_spec()`/`check_structured_match()`/`skill_fill.py`) for
-Part B specifically; the rest is new design extending
+Part B specifically; the rest was new design extending
 `docs/request_intent_taxonomy_and_workflow_routing.md` and
 `openspec/changes/migrate-to-langgraph/design.md`'s multi-workflow
-chain.
+chain. **Update (2026-07-17)**: Part D is no longer design-only —
+`openspec/changes/build-discovery-workflow` built it as
+`workflows/inquiry/` (renamed from `workflows/discovery/`; see that
+change's `design.md` rename note). References to `workflows/discovery/`
+below have been updated to the new name.
 
 ## Part A: Two distinct stages turn text into a running workflow — not one "semantic router"
 
@@ -32,7 +36,7 @@ Input: raw text. Output: a *label* from a small, fixed set
 whichever workflow Stage 1 routed to).** Input: raw text, now known to
 target a specific workflow. Output: a *structure* —
 `workflows/drafting/`'s shape is `app_name`/`region`/`resources`;
-`workflows/discovery/`'s (once built) would be a lookup key, not a
+`workflows/inquiry/`'s (once built) would be a lookup key, not a
 spec. Question: *"what exactly do you want?"*
 
 These stay separate because each workflow needs a different structure
@@ -188,13 +192,13 @@ dispatch completes ──?──▶ (terminal)
 
 **Generalizes to any future workflow, not just the current three**: a
 workflow whose completion is pure information (e.g. a future
-`workflows/discovery/` or `workflows/audit/` query — nothing to
+`workflows/inquiry/` or `workflows/audit/` query — nothing to
 "approve" about finding out whether a bucket exists) needs no gate,
 just a result shown. A workflow whose completion carries a decision
 (the way `approval` does) needs no *downstream* re-confirmation either
 — the decision already traveled forward with it.
 
-## Part D: `workflows/discovery/`'s own Stage 2, and confirmation weight scaling with stakes
+## Part D: `workflows/inquiry/`'s own Stage 2, and confirmation weight scaling with stakes
 
 Tracing a concrete discovery scenario (*"does invoices-prod already
 exist, it's an S3 bucket"*) surfaces that Stage 2's ambiguity problem
@@ -257,7 +261,7 @@ the path.
 | `PlanRecord.vibe_diff` | Real field, not yet populated with a genuinely distinct plain-English form separate from raw plan text |
 | `interrupt()`/`Command(resume=...)` itself | Verified real (LangGraph), not wired into any workflow — and this doc argues `workflows/drafting/` may never need it at all if confirmation stays front-loaded |
 | `org_id`/`bu_id` resolved from the authenticated session, never from text | Consistent with real test fixtures today; no real authentication/JWT layer built yet |
-| `select_resource_type`-style bounded classification for `workflows/discovery/` | Design only, this doc's Part D |
+| `select_resource_type`-style bounded classification for `workflows/inquiry/` | Design only, this doc's Part D |
 | Confirmation-weight-scales-with-stakes principle | Design only, this doc's Part D |
 
 ## Open Questions

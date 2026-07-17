@@ -1,6 +1,7 @@
-"""Builds the discovery workflow's StateGraph -- existence-check slice
-only (build-discovery-workflow's scope). Fixed two-node sequence, not a
-router:
+"""Builds the inquiry workflow's StateGraph -- existence-check slice
+only (build-discovery-workflow's scope; package renamed from
+workflows/discovery/ to workflows/inquiry/ on 2026-07-17, see
+design.md). Fixed two-node sequence, not a router:
 
     classify_resource_type --> existence_check --> END
 
@@ -15,13 +16,13 @@ import functools
 from langgraph.graph import END, StateGraph
 
 from gateway.infra_inventory_store import InfraInventoryStore
-from workflows.discovery.nodes import classify_resource_type, existence_check
-from workflows.discovery.state import DiscoveryState
+from workflows.inquiry.nodes import classify_resource_type, existence_check
+from workflows.inquiry.state import InquiryState
 
 
-def build_discovery_graph(store: InfraInventoryStore):
+def build_inquiry_graph(store: InfraInventoryStore):
     """Returns an uncompiled StateGraph builder -- caller compiles it."""
-    builder = StateGraph(DiscoveryState)
+    builder = StateGraph(InquiryState)
 
     builder.add_node("classify_resource_type", classify_resource_type)
     builder.add_node("existence_check", functools.partial(existence_check, store=store))

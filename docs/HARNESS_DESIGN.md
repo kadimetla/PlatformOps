@@ -445,20 +445,30 @@ rather than repeating this one:
   workflow handoffs need a real gate versus an informational message
   only (did the completing stage decide something, or just produce
   something) — then extends that same rule one level deeper for
-  `workflows/discovery/`'s own execution (confirmation weight scales
+  `workflows/inquiry/`'s own execution (confirmation weight scales
   with reversibility/stakes, not with whether an LLM was involved),
   and states that `org_id`/`bu_id` are never extracted from text at
-  all, only ever resolved from the authenticated session.
+  all, only ever resolved from the authenticated session. (This doc
+  predates the `workflows/discovery/` → `workflows/inquiry/` rename
+  below and still says "discovery" throughout — read as the same
+  workflow.)
 - `openspec/changes/build-discovery-workflow/design.md` — the OpenSpec
   change that builds `docs/intent_routing_and_staged_confirmation.md`
-  Part D concretely: `workflows/discovery/`'s own two-node graph
+  Part D concretely: `workflows/inquiry/`'s own two-node graph
   (`classify_resource_type` via a bound `select_resource_type` tool
   call, then `existence_check` against `InfraInventoryStore`), scoped
   to the existence-check branch only (capability-match and cross-
-  project branches deferred). `DiscoveryResult.resource_type` carries
+  project branches deferred). `InquiryResult.resource_type` carries
   the resolved interpretation alongside `found`/`record` in one
   response — no confirmation gate, per Part D's "show, don't block"
-  rule for read-only, reversible requests.
+  rule for read-only, reversible requests. **Renamed 2026-07-17**: this
+  package was built and tested as `workflows/discovery/`, then renamed
+  to `workflows/inquiry/` once it became clear "discovery" already
+  named a different thing — the background sweep system
+  (`infra-inventory-discovery`) that populates `InfraInventoryStore` via
+  live cloud APIs. This workflow only ever reads what that sweep wrote;
+  it was never the thing doing the discovering. See design.md's rename
+  note for the full reasoning.
 - `docs/discovery_before_drafting_and_presentation_layer.md` —
   corrects an earlier persona-based framing (infra team vs. app
   developer) to the real axis: discovery must precede drafting for

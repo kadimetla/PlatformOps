@@ -14,6 +14,14 @@ forcing an answer now — see Part B — and instead documents what
 architectural choices keep those answers cheap to add later. This is
 the point of the doc, not a gap in it.
 
+**Note (2026-07-17)**: `workflows/discovery/` below refers to the same
+package now named `workflows/inquiry/` — renamed after this doc was
+written, once it became clear "discovery" already named the separate
+background sweep system this doc itself describes (the triggers
+below), distinct from the request-time query workflow. References
+below have been updated to the new name; see
+`openspec/changes/build-discovery-workflow/design.md`'s rename note.
+
 ## Part A: What we know — four triggers, not one, each different
 
 ```
@@ -48,7 +56,7 @@ harness itself creates; does not catch anything created or deleted
 outside it.
 
 **② Targeted — a query against already-warm data, not a live scan.**
-The one that fires from a chat request (`workflows/discovery/`, still
+The one that fires from a chat request (`workflows/inquiry/`, still
 design-only). Because ①③④ keep the model warm continuously, this is
 designed to be a fast read, not a live cloud API call triggered by the
 specific message. Two weights: a lightweight existence check (does a
@@ -93,11 +101,11 @@ and `provenance` (`"iac_state"` | `"live_api"`) already exist in the
 schema — every record already carries the information a future
 staleness policy would need (how old, where it came from), without
 needing a schema change to add the *policy* later. The extensibility
-choice for `workflows/discovery/` specifically: its query functions
+choice for `workflows/inquiry/` specifically: its query functions
 should always return `discovered_at` alongside the data (not just the
 resource fact), so a staleness check + live-API-escalation branch can
 be inserted later as **one more conditional edge in an existing graph**
-— not a redesign. This is only possible because `workflows/discovery/`
+— not a redesign. This is only possible because `workflows/inquiry/`
 is its own module (`workflows/<name>/`, the naming-by-workflow decision
 from `migrate-to-langgraph`) — extending it never touches
 `workflows/drafting/` or any other workflow.
@@ -132,7 +140,7 @@ change, and nothing proposed so far requires that expensive kind.
 | `workflows/drafting/` as an independently-extensible module | Real, built, cut over |
 | Bootstrap/incremental/nightly discovery mechanisms | Designed (`infra-inventory-discovery`), not built |
 | `InfraInventoryRecord.discovered_at`/`provenance` | Designed, schema written, not built |
-| `workflows/discovery/`, `workflows/audit/` | Design only, no code |
+| `workflows/inquiry/`, `workflows/audit/` | Design only, no code |
 | Staleness-escalation policy for targeted discovery (OQ1) | Not designed — explicitly deferred |
 | Native drift detection as a second nightly pass (OQ2) | Deferred until `properties` field exists — decided to defer, not undecided |
 
