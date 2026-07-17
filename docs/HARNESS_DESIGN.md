@@ -480,6 +480,21 @@ rather than repeating this one:
   lookup instead of `docs/iac_based_discovery.md`'s search chain — and
   narrows (doesn't resolve) the "never checked vs. confirmed absent"
   ambiguity in `workflows/inquiry/`'s `InquiryResult.found: bool`.
+- `docs/creation_time_relationship_capture_and_diagrams.md` — extends
+  the `CreationProfile` idea one step further: `InfraRelationship`
+  edges (`contained_in`, `depends_on`, `shared_from`,
+  `workload_identity_binds_to`) can be extracted from
+  `ToolIntent.payload` at the same creation-time hook, instead of only
+  inferred later by a discovery sweep — the same "declared intent beats
+  live-API inference" argument `docs/iac_based_discovery.md` Part C
+  made for IaC state, applied one step earlier. Separates diagram
+  rendering into three confidence tiers (mechanical graph render, high
+  confidence; native toolchain graph commands like `terraform graph`,
+  **unverified**, flagged explicitly rather than assumed; LLM
+  narration, lowest confidence) and names data flow diagrams as a
+  separate, harder problem — direction/data-classification isn't
+  captured by the existing relationship vocabulary — not to be
+  conflated with architecture diagrams.
 - `docs/discovery_before_drafting_and_presentation_layer.md` —
   corrects an earlier persona-based framing (infra team vs. app
   developer) to the real axis: discovery must precede drafting for
