@@ -1,39 +1,25 @@
 ## 1. `InfraInventoryRecord` schema and storage
 
-- [ ] 1.1 Add `InfraInventoryRecord` to `gateway/schemas.py` (org_id,
-      bu_id, resource_type, resource_category, resource_identifier,
-      layer, discovered_at, provenance). `resource_type` is
-      provider-native (stored exactly as the discovery source returns
-      it — AWS CFN-style, GCP Cloud Asset Inventory `assetType`, Azure
-      ARM `type`), NOT translated into one shared vocabulary —
-      corrected from an earlier draft that mis-stated it as CFN-style
-      throughout, see design.md's "resource_type is provider-native"
-      decision. `resource_category` is a coarse
-      `"network"`/`"compute"`/`"identity"`/`"storage"`/`None` enum,
-      classified at write time per provider, for the cross-provider
-      comparisons that actually need one (task 2.3's discovery
-      ordering) without requiring full type equivalence
-- [ ] 1.2 Add an `InfraInventoryStore` class (`gateway/infra_inventory_store.py`)
+- [x] 1.1 Add `InfraInventoryRecord` to `gateway/schemas.py`. **Done**
+      (2026-07-16) — exactly as spec'd, `resource_type` provider-native,
+      `resource_category` coarse enum.
+- [x] 1.2 Add an `InfraInventoryStore` class (`gateway/infra_inventory_store.py`)
       opening the same `db_path` `BrokeredToolDispatcher` uses, with an
       `infra_inventory` table keyed on `(org_id, bu_id, resource_type,
-      resource_identifier)`
-- [ ] 1.3 Implement `lookup(org_id, bu_id, resource_type, resource_identifier)`
-      and `upsert(record)` methods
-- [ ] 1.4 Add a `PROVIDER_TYPE_TO_CATEGORY` classification table (or
-      equivalent per-provider function) mapping each provider's native
-      `resource_type` values this change discovers to a
-      `resource_category` — e.g. `AWS::EC2::VPC`/`AWS::EC2::Subnet`,
-      `compute.googleapis.com/Network`/`Subnetwork`,
-      `Microsoft.Network/virtualNetworks` all classify to `"network"`.
-      Scoped to the resource types this change's discovery mechanisms
-      actually encounter, not an exhaustive catalog of every possible
-      cloud resource type
-- [ ] 1.5 Write tests covering: a lookup returns at most one record;
-      inventory and dispatcher tables coexist in one SQLite file without
-      conflict; a GCP-native `resource_type` string round-trips through
-      storage unchanged (not translated); the classification table maps
-      each of the three providers' network-layer types to
-      `resource_category == "network"`
+      resource_identifier)`. **Done.**
+- [x] 1.3 Implement `lookup(org_id, bu_id, resource_type, resource_identifier)`
+      and `upsert(record)` methods. **Done**, `INSERT OR REPLACE`
+      keyed on the primary key — a second `upsert()` on the same key
+      replaces, doesn't duplicate.
+- [x] 1.4 Add a `PROVIDER_TYPE_TO_CATEGORY` classification table. **Done**
+      — `classify_resource_category()`, scoped to network/compute/
+      identity/storage top examples per provider, not exhaustive.
+- [x] 1.5 Write tests. **Done**, `tests/test_infra_inventory_store.py`
+      — 7 tests: lookup semantics (none/found/idempotent-upsert), GCP
+      round-trip fidelity, classification correctness, and real
+      coexistence with `BrokeredToolDispatcher`'s tables in one SQLite
+      file (verified against `ConfigLoader`/`BrokeredToolDispatcher`
+      directly, not mocked).
 
 ## 2. Bootstrap discovery sweep
 

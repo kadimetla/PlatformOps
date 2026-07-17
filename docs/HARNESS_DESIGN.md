@@ -428,6 +428,37 @@ rather than repeating this one:
   Resolves `infra-inventory-discovery/design.md`'s long-dangling
   "nightly sweep is two passes" open thread — decided to one pass
   first, propagated into that change's actual artifacts.
+- `docs/intent_routing_and_staged_confirmation.md` — separates "which
+  workflow handles this text" (gateway-level intent classification,
+  three tiers: structured UI action, text prefix convention, semantic
+  LLM classification with a clarification fallback) from "what
+  structure does this workflow need" (workflow-specific, e.g.
+  `envelope_to_spec()`'s real spec extraction). Designs a new upfront
+  blueprint+artifact confirmation stage for `workflows/drafting/`,
+  grounded directly against real code (`run_deterministic_skill_fill()`'s
+  already-produced filled-template text) — finds the deterministic
+  skill-fill path has zero human visibility anywhere today, making this
+  the only safety checkpoint that path would get. Narrows
+  `migrate-to-langgraph`'s deferred `interrupt()` non-goal: front-loading
+  confirmation may mean the real, built drafting graph never needs it
+  wired in at all. Closes with a general rule for which workflow-to-
+  workflow handoffs need a real gate versus an informational message
+  only (did the completing stage decide something, or just produce
+  something) — then extends that same rule one level deeper for
+  `workflows/discovery/`'s own execution (confirmation weight scales
+  with reversibility/stakes, not with whether an LLM was involved),
+  and states that `org_id`/`bu_id` are never extracted from text at
+  all, only ever resolved from the authenticated session.
+- `openspec/changes/build-discovery-workflow/design.md` — the OpenSpec
+  change that builds `docs/intent_routing_and_staged_confirmation.md`
+  Part D concretely: `workflows/discovery/`'s own two-node graph
+  (`classify_resource_type` via a bound `select_resource_type` tool
+  call, then `existence_check` against `InfraInventoryStore`), scoped
+  to the existence-check branch only (capability-match and cross-
+  project branches deferred). `DiscoveryResult.resource_type` carries
+  the resolved interpretation alongside `found`/`record` in one
+  response — no confirmation gate, per Part D's "show, don't block"
+  rule for read-only, reversible requests.
 - `docs/discovery_before_drafting_and_presentation_layer.md` —
   corrects an earlier persona-based framing (infra team vs. app
   developer) to the real axis: discovery must precede drafting for

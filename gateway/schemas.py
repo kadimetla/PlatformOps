@@ -77,6 +77,42 @@ class ToolIntent(BaseModel):
     payload: Dict[str, Any] = Field(default_factory=dict)
 
 
+class InfraInventoryRecord(BaseModel):
+    """One known infrastructure resource, uniquely identified by
+    (org_id, bu_id, resource_type, resource_identifier) --
+    openspec/changes/infra-inventory-discovery/specs/infra-inventory-record/spec.md.
+    Existence-only in v1, deliberately -- no properties field; native
+    drift detection (which would need one) is an explicit, additive
+    follow-on, not built alongside this (design.md's "Nightly sweep is
+    ONE pass" correction)."""
+
+    org_id: str
+    bu_id: str
+    resource_type: str = Field(
+        ...,
+        description=(
+            "Provider-native, stored exactly as the discovery source returns it "
+            "(AWS CFN-style 'AWS::EC2::VPC', GCP Cloud Asset Inventory assetType "
+            "'compute.googleapis.com/Network', Azure ARM type "
+            "'Microsoft.Network/virtualNetworks') -- never translated into one "
+            "shared vocabulary."
+        ),
+    )
+    resource_category: Optional[str] = Field(
+        None,
+        description=(
+            "Coarse 'network' | 'compute' | 'identity' | 'storage' | None, "
+            "classified at write time per provider -- the one cross-provider "
+            "comparison discovery ordering actually needs, without full type "
+            "equivalence."
+        ),
+    )
+    resource_identifier: str
+    layer: Optional[str] = Field(None, description="'foundation' | 'app' | None if unclassified")
+    discovered_at: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)
+    provenance: str = Field(..., description="'iac_state' | 'live_api'")
+
+
 class SkillPromotionPolicy(BaseModel):
     """Thresholds gating a skill's lifecycle_state transitions
     (docs/skill_promotion_thresholds.md Part E) -- policy, not constants,
