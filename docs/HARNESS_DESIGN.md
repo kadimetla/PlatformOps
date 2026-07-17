@@ -74,7 +74,26 @@ rather than repeating this one:
   foundation isn't one yet: no code loads a `SKILL.md`'s content, no
   code enforces its `allowed-tools`, and one bundled skill isn't wired
   to any agent — read this before building precedence or authoring on
-  top of skills.
+  top of skills. **Updated 2026-07-17**: Finding 1 confirmed still real
+  post-`migrate-to-langgraph` (`workflows/drafting/nodes.py` carried the
+  identical gap over from the deleted `agents/*.py`, unchanged); new
+  Finding 4 added — the deterministic zero-LLM skill-fill path has never
+  been exercised against real skill content either, for a different
+  reason (`provision-infra/SKILL.md` has no `metadata.resource_types`
+  and no `scripts/`).
+- `docs/skill_scripts_as_iac_templates_and_ms_agent_skills_comparison.md` —
+  compares this project's skill mechanism to Microsoft Agent Framework's
+  Agent Skills (three sources, verified): near-identical file shape, but
+  MS's scoping is composition/filtering across tenants where this
+  project uses strict bundled→org→BU precedence, and MS ships a real
+  `load_skill` tool the agent calls — naming precisely the mechanism
+  Finding 1 above says is missing here. Designs `scripts/` as the actual
+  IaC template `_find_template_script()` already knows how to parse and
+  fill, closing Finding 4 for `provision-infra` specifically, and
+  surfaces a second latent bug found while designing it:
+  `_find_template_script()` prefers `.tf` unconditionally, ignoring
+  `route_toolchain()`'s own toolchain choice — would silently pick
+  Terraform even when a request defaults to CDK.
 - `docs/foundation_app_layering_and_iam_tiers.md` — designs the
   compute workloads `README.md`'s roadmap explicitly scopes out today:
   a foundation layer (VPC/EKS, always human-approved) vs. an app layer

@@ -67,6 +67,19 @@ mechanisms with real code sitting next to them, e.g.
 `gateway/tool_dispatcher.py`); here there's no code to wire up at all
 yet.
 
+**Confirmed still real, post-migration (2026-07-17)**: `agents/*.py` no
+longer exists (`migrate-to-langgraph` deleted it), but the identical gap
+was carried into its replacement verbatim, not fixed at cutover.
+`workflows/drafting/nodes.py:87-90`'s `security_review_node` binds
+`tools=[record_security_decision]` only — no `load_skill` tool — while
+its prompt still says *"Load the 'security-review-checklist' skill for
+the exact checks to run."* Same pattern at `workflows/drafting/nodes.py:50`
+and `:70` for `provision-infra`. See
+`docs/skill_scripts_as_iac_templates_and_ms_agent_skills_comparison.md`
+for a comparison against Microsoft Agent Framework's Agent Skills, which
+*does* ship a real `load_skill` tool the agent calls — naming precisely
+the mechanism missing here.
+
 ## Finding 2: `allowed-tools` is not enforced
 A second, related consequence: each `SKILL.md`'s `allowed-tools`
 frontmatter is documentation of intent, not a runtime allow-list.
@@ -94,6 +107,38 @@ procedure. But no agent in `agents/` has it in a `tools=[]` list or
 references it in an `instruction=` string. There is currently no path
 from a user's "does this architecture comply?" question to this skill
 executing at all.
+
+## Finding 4 (2026-07-17, added post-migration): the deterministic path is also unusable against the real bundled skill — for a different reason
+Findings 1–3 are about the LLM-mediated path. The zero-LLM deterministic
+path (`workflows/drafting/skill_fill.py`'s `run_deterministic_skill_fill()`,
+built and tested this session) has its own, separate gap: it has never
+been exercised against real, shipped skill content — only against a
+synthetic fixture `tests/test_plan_request_boundary.py` constructs by
+hand (`os.makedirs(..., "scripts")`, writes `main.tf` itself).
+
+Checked directly against `skills/provision-infra/SKILL.md` — the only
+real skill this project ships that's meant for provisioning:
+- **No `metadata.resource_types` field.** `gateway/skill_matching.py:61`'s
+  match is `set(fm.metadata.get("resource_types", [])) == normalized` —
+  an empty set can never equal a non-empty one, so this skill can never
+  win `find_matching_skill_path()`'s match regardless of what a request
+  asks for.
+- **No `scripts/` directory at all** (`find skills/provision-infra -type
+  f` returns only `SKILL.md`). `workflows/drafting/skill_fill.py:32-38`'s
+  `_find_template_script()` would return `None`, and
+  `run_deterministic_skill_fill()` would exhaust `MAX_LAYER1_RETRIES`
+  and raise `SkillFillError` — never a silent fallback (by design), but
+  also never a successful draft.
+
+So the deterministic path is real, tested, and correct in isolation, but
+has zero real content to operate on today — every test proving it works
+constructs its own throwaway skill. See
+`docs/skill_scripts_as_iac_templates_and_ms_agent_skills_comparison.md`
+for the proposed fix (skills' `scripts/` should hold the actual IaC
+templates `_find_template_script()` already knows how to parse) and a
+second bug that surfaced while designing it (`_find_template_script()`'s
+hardcoded `.tf`-before-`.yaml` preference ignores `route_toolchain()`'s
+own toolchain choice entirely).
 
 ## What this means for the layers built on top
 Everything else designed about skills in this project — precedence
@@ -133,9 +178,11 @@ So there are two separate builds hiding under "skills," not one:
 | Piece | Status |
 |---|---|
 | `SKILL.md` files exist, well-written, correct frontmatter/procedure | Real |
-| Code that loads a `SKILL.md`'s content into an agent's context | **Does not exist** |
+| Code that loads a `SKILL.md`'s content into an agent's context | **Does not exist** (confirmed still true in `workflows/drafting/nodes.py`, post-migration) |
 | `allowed-tools` enforced as a runtime allow-list | **Does not exist** |
 | `sdlc-diagram-compliance-check` wired to any agent | **Does not exist** |
+| `run_deterministic_skill_fill()` itself | Real, built, tested (`workflows/drafting/skill_fill.py`) |
+| The real `provision-infra` skill usable by that function | **Does not exist** — no `metadata.resource_types`, no `scripts/` (Finding 4) |
 | Bundled → org → BU precedence, `resolve_skill()` | Design only (`docs/skills_and_workspace_design.md`) |
 | `SkillProposal` authoring/promotion gate | Design only (`docs/skills_and_workspace_design.md`) |
 
