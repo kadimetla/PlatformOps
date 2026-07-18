@@ -519,6 +519,17 @@ rather than repeating this one:
   separate, harder problem — direction/data-classification isn't
   captured by the existing relationship vocabulary — not to be
   conflated with architecture diagrams.
+- `docs/input_purposing_output_profiles.md` — names a three-part frame
+  every workflow's data model already partially follows: input profile
+  (`WorkspaceBundle` + compliance preflight, real), purposing profile
+  (`CreationProfile`, designed above), output profile (**new here** —
+  `PlanRecord`/`ToolIntent` carry no classification field at all today,
+  while `InfraInventoryRecord` already has two output-profile-shaped
+  fields, `resource_category`/`layer`, once a sweep writes a row —
+  asymmetric between drafting's and inquiry's outputs). Distinguishes
+  this from skill `lifecycle_state`, which looks similar but is an
+  aggregate trust signal across many past requests, not a per-result
+  classification.
 - `docs/discovery_before_drafting_and_presentation_layer.md` —
   corrects an earlier persona-based framing (infra team vs. app
   developer) to the real axis: discovery must precede drafting for
