@@ -139,9 +139,48 @@ templates `_find_template_script()` already knows how to parse) and a
 second bug that surfaced while designing it — **fixed 2026-07-17**:
 `_find_template_script()`'s hardcoded `.tf`-before-`.yaml` preference
 used to ignore `route_toolchain()`'s own toolchain choice entirely; it
-now takes `toolchain` explicitly. The `provision-infra` skill still has
-no `metadata.resource_types` and no real `scripts/` — that part of
-Finding 4 remains open.
+now takes `toolchain` explicitly.
+
+**Finding 4 closed 2026-07-17.** `skills/provision-infra/SKILL.md` now
+declares `metadata.resource_types: [AWS::S3::Bucket]` and ships real
+`scripts/main.tf` and `scripts/template.yaml` (CloudFormation, using the
+verbose `Fn::Ref` form — plain `yaml.safe_load()` doesn't register CFN's
+`!Ref` short-form tag, a real, separate limitation of the fill/validate
+mechanism itself, not fixed here). `tests/test_provision_infra_skill_content.py`
+loads the real skill (not a fixture) and proves `resolve_skill_candidates()`
+and `run_deterministic_skill_fill()` both work against it, for both
+toolchains.
+
+## Finding 5 (2026-07-17, found while closing Finding 4): skill lifecycle promotion is never wired into any real code path
+Closing Finding 4 surfaced a third, separate gap. `find_matching_skill_path()`
+requires `usage_store.get_lifecycle_state(...) == "stable"`
+(`gateway/skill_matching.py:62`); a skill starts `"provisional"` and only
+promotes after `SkillPromotionPolicy.consecutive_success_limit`
+(default 3) consecutive successful uses recorded via
+`SkillUsageStore.record_skill_usage()`. A repo-wide search confirms that
+function is **only ever called from tests** — no production code path
+(`plan_request()`, `BrokeredToolDispatcher`, the LLM-driven graph) calls
+it after a real request completes. So even with Finding 4 fully closed,
+`provision-infra` — or any skill — can never organically reach
+`"stable"` in a running system; every test proving the deterministic
+path works (including this session's new one) manually promotes the
+skill first, the same workaround the pre-existing skill-matching tests
+already used, which is exactly what made this gap invisible until now.
+
+This is a chicken-and-egg problem, not just a missing call: a skill can
+only be *used* via the deterministic path once it's trusted, and can
+only become trusted by being used successfully — nothing today breaks
+that cycle. Closing it needs a real design decision, not a quick patch:
+does the LLM-driven path's *own* successful completions count toward
+promoting a skill it wasn't directly using (unlikely — different code
+paths entirely), does a human get to manually mark a skill trusted after
+review (closer to how `SkillProposal` approval is already designed in
+`docs/skills_and_workspace_design.md` Part C), or does the deterministic
+path get a one-time bootstrap exemption for bundled (not org/BU) skills
+specifically? Not decided — raised here, not fixed, deliberately, since
+picking wrong risks exactly the "one bad pattern trusted automatically"
+risk `docs/skills_and_workspace_design.md` Part C already named for
+skill authoring.
 
 ## What this means for the layers built on top
 Everything else designed about skills in this project — precedence
@@ -185,7 +224,8 @@ So there are two separate builds hiding under "skills," not one:
 | `allowed-tools` enforced as a runtime allow-list | **Does not exist** |
 | `sdlc-diagram-compliance-check` wired to any agent | **Does not exist** |
 | `run_deterministic_skill_fill()` itself | Real, built, tested (`workflows/drafting/skill_fill.py`) |
-| The real `provision-infra` skill usable by that function | **Does not exist** — no `metadata.resource_types`, no `scripts/` (Finding 4) |
+| The real `provision-infra` skill usable by that function | **Fixed 2026-07-17** (Finding 4) — `metadata.resource_types` + `scripts/` for both toolchains, proven against the real skill by `tests/test_provision_infra_skill_content.py` |
+| A skill ever actually reaching `lifecycle_state == "stable"` in a running system | **Does not exist** (Finding 5) — `record_skill_usage()` has zero production callers |
 | Bundled → org → BU precedence, `resolve_skill()` | Design only (`docs/skills_and_workspace_design.md`) |
 | `SkillProposal` authoring/promotion gate | Design only (`docs/skills_and_workspace_design.md`) |
 

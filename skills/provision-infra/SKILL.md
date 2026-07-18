@@ -5,7 +5,18 @@ description: >
   either AWS CDK-native tooling or Terraform depending on the user's stated
   preference. Trigger when the user asks to deploy, host, or provision
   infrastructure on AWS and states or implies a tool preference.
-version: 0.2.0
+version: 0.3.0
+metadata:
+  # Scopes the deterministic zero-LLM path (gateway/skill_matching.py's
+  # find_matching_skill_path()) to the one narrow, fully-proven case this
+  # skill also ships a real scripts/ template for: a single S3 bucket
+  # matching spec/example_submission.yaml's shape. The instructions body
+  # below still covers the broader multi-resource/multi-toolchain
+  # procedure for anything the deterministic path doesn't match --
+  # see docs/skill_scripts_as_iac_templates_and_ms_agent_skills_comparison.md
+  # Part D.
+  resource_types:
+    - AWS::S3::Bucket
 allowed-tools: >-
   mcp__aws_iac__read_iac_documentation_page
   mcp__aws_iac__validate_cloudformation_template

@@ -1,0 +1,32 @@
+# CloudFormation template for provision-infra's deterministic zero-LLM
+# path, the "cdk" toolchain counterpart to main.tf. Same scope: a single
+# S3 bucket matching spec/example_submission.yaml's shape.
+#
+# Parameter is named bucket_name (lowercase), not the usual CFN
+# PascalCase BucketName -- deliberate. workflows/drafting/skill_fill.py's
+# _fill_template() resolves a variable's value by looking up spec[v.name]
+# directly; using the same name as main.tf's Terraform variable means
+# one spec (with one bucket_name key) fills either template, regardless
+# of which toolchain _find_template_script() selects. A PascalCase
+# parameter here would silently fail to resolve from the same spec.
+#
+# Uses the verbose "Fn::Ref" object form, not CFN's !Ref short-form tag
+# -- workflows/drafting/skill_fill.py's parse_declared_variables()/
+# _validate() both use plain yaml.safe_load(), which doesn't register
+# CloudFormation's custom YAML tags (!Ref, !GetAtt, !Sub, ...) and
+# raises on them. Both forms are valid, equivalent CloudFormation;
+# teaching the loader CFN's tags is a separate, bigger change to the
+# fill/validate mechanism itself, out of scope here.
+Parameters:
+  bucket_name:
+    Type: String
+Resources:
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: {"Fn::Ref": "bucket_name"}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true

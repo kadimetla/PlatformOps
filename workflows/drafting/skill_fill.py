@@ -93,10 +93,11 @@ def _fill_template(skill: Skill, spec: dict, bundle: WorkspaceBundle) -> str:
         elif hasattr(bundle, v.name):
             resolved[v.name] = getattr(bundle, v.name)
     assignments = "\n".join(f'{name} = "{value}"' for name, value in resolved.items())
+    resolved_values_label = "terraform.tfvars-shaped" if script_name.endswith(".tf") else "CloudFormation Parameters-shaped"
     return (
         f"# Module: {skill.name} ({script_name})\n\n"
         f"{source}\n\n"
-        f"# Resolved values for this request (terraform.tfvars-shaped):\n"
+        f"# Resolved values for this request ({resolved_values_label}):\n"
         f"{assignments}\n"
     )
 

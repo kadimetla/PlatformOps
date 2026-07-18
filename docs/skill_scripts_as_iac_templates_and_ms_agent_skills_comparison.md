@@ -147,18 +147,23 @@ of constraining future skill authors to one-template-per-skill.
 |---|---|
 | MS Agent Framework research (Part A) | External, verified via the three sources below |
 | `run_deterministic_skill_fill()`, `_find_template_script()` | Real, built, tested |
-| `provision-infra` skill having `metadata.resource_types` + real `scripts/` | **Does not exist** — this doc's Part D, still open |
+| `provision-infra` skill having `metadata.resource_types` + real `scripts/` | **Fixed 2026-07-17** — `AWS::S3::Bucket`, `scripts/main.tf` + `scripts/template.yaml`, proven against the real skill by `tests/test_provision_infra_skill_content.py` |
 | `_find_template_script()` toolchain-awareness | **Fixed 2026-07-17** — both copies, `tests/test_skill_fill_toolchain_selection.py` |
+| A skill ever reaching `lifecycle_state == "stable"` in production | **Does not exist** — found while closing Finding 4; see `docs/skill_loading_and_enforcement_gap.md` Finding 5 |
 | `load_skill`/`read_skill_resource` tools for the LLM-driven path | Not designed — named as the concrete missing piece, not scoped here |
 
 ## Open Questions
 - ~~Toolchain-aware `_find_template_script()` vs. splitting
   `provision-infra` into two skills~~ — **resolved 2026-07-17**, option 1
   (toolchain-aware function), see Part D.
-- `provision-infra` itself still has no `metadata.resource_types` and no
-  real `scripts/` (Finding 4) — the toolchain-selection fix above makes
-  the mechanism correct, it doesn't give the real skill content to
-  select between yet. That part of Part D remains undone.
+- ~~`provision-infra` itself has no `metadata.resource_types` and no real
+  `scripts/`~~ — **resolved 2026-07-17**, Finding 4 fully closed. Closing
+  it surfaced a new, separate gap — `docs/skill_loading_and_enforcement_gap.md`
+  Finding 5: nothing in production code ever calls
+  `SkillUsageStore.record_skill_usage()`, so a skill can mechanically
+  match and fill correctly but can never reach `"stable"` in a real
+  running system. Not fixed here — a real design decision, not a quick
+  patch (see Finding 5 for the options named).
 - Whether `security-review-checklist` and `sdlc-diagram-compliance-check`
   need the same `scripts/`-as-executable-reference treatment, or stay
   pure-instruction skills (the former has `allowed-tools: []` "deliberately

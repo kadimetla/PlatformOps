@@ -76,11 +76,15 @@ rather than repeating this one:
   to any agent — read this before building precedence or authoring on
   top of skills. **Updated 2026-07-17**: Finding 1 confirmed still real
   post-`migrate-to-langgraph` (`workflows/drafting/nodes.py` carried the
-  identical gap over from the deleted `agents/*.py`, unchanged); new
-  Finding 4 added — the deterministic zero-LLM skill-fill path has never
-  been exercised against real skill content either, for a different
-  reason (`provision-infra/SKILL.md` has no `metadata.resource_types`
-  and no `scripts/`).
+  identical gap over from the deleted `agents/*.py`, unchanged); Finding
+  4 (the deterministic path never exercised against real skill content)
+  **closed** — `provision-infra` now has `metadata.resource_types` and a
+  real `scripts/` for both toolchains. Closing it surfaced **Finding 5**,
+  not fixed: nothing in production code ever calls
+  `SkillUsageStore.record_skill_usage()`, so a skill can mechanically
+  match and fill correctly but can never reach `lifecycle_state ==
+  "stable"` in a real running system — a chicken-and-egg gap needing a
+  real design decision, not a quick patch.
 - `docs/skill_scripts_as_iac_templates_and_ms_agent_skills_comparison.md` —
   compares this project's skill mechanism to Microsoft Agent Framework's
   Agent Skills (three sources, verified): near-identical file shape, but
@@ -89,12 +93,11 @@ rather than repeating this one:
   `load_skill` tool the agent calls — naming precisely the mechanism
   Finding 1 above says is missing here. Designs `scripts/` as the actual
   IaC template `_find_template_script()` already knows how to parse and
-  fill — still open for `provision-infra` itself (no `metadata.resource_types`,
-  no real `scripts/` yet) — and surfaced a second bug, **fixed
-  2026-07-17**: `_find_template_script()` used to prefer `.tf`
-  unconditionally, ignoring `route_toolchain()`'s own toolchain choice;
-  it now takes `toolchain` explicitly in both copies (`workflows/drafting/skill_fill.py`
-  and `gateway/skill_template_agent.py`), covered by
+  fill; **both closed 2026-07-17**: `_find_template_script()` now takes
+  `toolchain` explicitly (both copies, was always preferring `.tf`
+  unconditionally), and `provision-infra` ships real
+  `scripts/main.tf`/`scripts/template.yaml`, proven against the real
+  skill by `tests/test_provision_infra_skill_content.py` and
   `tests/test_skill_fill_toolchain_selection.py`.
 - `docs/foundation_app_layering_and_iam_tiers.md` — designs the
   compute workloads `README.md`'s roadmap explicitly scopes out today:
