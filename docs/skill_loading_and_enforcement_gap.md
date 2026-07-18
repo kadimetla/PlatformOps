@@ -136,9 +136,12 @@ constructs its own throwaway skill. See
 `docs/skill_scripts_as_iac_templates_and_ms_agent_skills_comparison.md`
 for the proposed fix (skills' `scripts/` should hold the actual IaC
 templates `_find_template_script()` already knows how to parse) and a
-second bug that surfaced while designing it (`_find_template_script()`'s
-hardcoded `.tf`-before-`.yaml` preference ignores `route_toolchain()`'s
-own toolchain choice entirely).
+second bug that surfaced while designing it — **fixed 2026-07-17**:
+`_find_template_script()`'s hardcoded `.tf`-before-`.yaml` preference
+used to ignore `route_toolchain()`'s own toolchain choice entirely; it
+now takes `toolchain` explicitly. The `provision-infra` skill still has
+no `metadata.resource_types` and no real `scripts/` — that part of
+Finding 4 remains open.
 
 ## What this means for the layers built on top
 Everything else designed about skills in this project — precedence

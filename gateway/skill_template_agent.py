@@ -41,24 +41,38 @@ class SkillMatch(BaseModel):
     missing_vars: list[str] = Field(default_factory=list)
 
 
-def _find_template_script(skill: Skill) -> Optional[tuple[str, str]]:
-    """Returns (script_name, source) for the first Terraform (.tf) or
-    CloudFormation (.yaml/.yml/.json) script bundled with the skill."""
+_CFN_SUFFIXES = (".yaml", ".yml", ".json")
+
+
+def _find_template_script(skill: Skill, toolchain: str) -> Optional[tuple[str, str]]:
+    """Returns (script_name, source) for the script matching the
+    requested toolchain ('terraform' -> .tf, anything else ->
+    CloudFormation-style .yaml/.yml/.json), falling back to whatever's
+    bundled if no exact match exists. Kept in lockstep with
+    workflows/drafting/skill_fill.py's identical function -- see that
+    file's docstring and
+    docs/skill_scripts_as_iac_templates_and_ms_agent_skills_comparison.md
+    Part D for why toolchain-awareness matters here: this function's
+    result feeds check_structured_match()'s missing_vars check, which
+    must agree with whichever template run_deterministic_skill_fill()
+    actually fills, or the two could validate against different
+    templates for the same request."""
+    preferred, fallback = ((".tf",), _CFN_SUFFIXES) if toolchain == "terraform" else (_CFN_SUFFIXES, (".tf",))
     for name in skill.resources.list_scripts():
-        if name.endswith(".tf"):
+        if name.endswith(preferred):
             return name, str(skill.resources.get_script(name))
     for name in skill.resources.list_scripts():
-        if name.endswith((".yaml", ".yml", ".json")):
+        if name.endswith(fallback):
             return name, str(skill.resources.get_script(name))
     return None
 
 
-def parse_declared_variables(skill: Skill) -> list[TemplateVariable]:
+def parse_declared_variables(skill: Skill, toolchain: str) -> list[TemplateVariable]:
     """Reads required variables from the toolchain's own native
     declaration syntax -- Terraform's variable {} blocks (via python-hcl2,
     a real parser, not regex) or CloudFormation's Parameters: block --
     never a bespoke format."""
-    found = _find_template_script(skill)
+    found = _find_template_script(skill, toolchain)
     if found is None:
         return []
     script_name, source = found
@@ -99,7 +113,8 @@ async def check_structured_match(
         return SkillMatch(spec=spec, has_structured_match=False)
 
     skill_path, skill = candidates[0]
-    required = parse_declared_variables(skill)
+    toolchain = spec.get("toolchain", "cdk")
+    required = parse_declared_variables(skill, toolchain)
     missing = [
         v.name
         for v in required

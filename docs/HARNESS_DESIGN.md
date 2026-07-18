@@ -89,11 +89,13 @@ rather than repeating this one:
   `load_skill` tool the agent calls — naming precisely the mechanism
   Finding 1 above says is missing here. Designs `scripts/` as the actual
   IaC template `_find_template_script()` already knows how to parse and
-  fill, closing Finding 4 for `provision-infra` specifically, and
-  surfaces a second latent bug found while designing it:
-  `_find_template_script()` prefers `.tf` unconditionally, ignoring
-  `route_toolchain()`'s own toolchain choice — would silently pick
-  Terraform even when a request defaults to CDK.
+  fill — still open for `provision-infra` itself (no `metadata.resource_types`,
+  no real `scripts/` yet) — and surfaced a second bug, **fixed
+  2026-07-17**: `_find_template_script()` used to prefer `.tf`
+  unconditionally, ignoring `route_toolchain()`'s own toolchain choice;
+  it now takes `toolchain` explicitly in both copies (`workflows/drafting/skill_fill.py`
+  and `gateway/skill_template_agent.py`), covered by
+  `tests/test_skill_fill_toolchain_selection.py`.
 - `docs/foundation_app_layering_and_iam_tiers.md` — designs the
   compute workloads `README.md`'s roadmap explicitly scopes out today:
   a foundation layer (VPC/EKS, always human-approved) vs. an app layer

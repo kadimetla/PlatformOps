@@ -114,7 +114,7 @@ checks for `.tf` files first, unconditionally, and only falls back to
 **always** resolve to Terraform regardless of `route_toolchain()`'s own
 choice (`workflows/drafting/nodes.py:27-32`, default `"cdk"`) —
 silently contradicting the graph's own routing decision one layer
-below it. Two ways to close this, not decided here:
+below it. Two ways to close this were named, not decided:
 1. Make `_find_template_script()` toolchain-aware — take
    `spec["toolchain"]` as a parameter, look for the matching extension
    first.
@@ -124,21 +124,41 @@ below it. Two ways to close this, not decided here:
    `_find_template_script()`'s current "one template per skill"
    assumption without changing it.
 
-Option 2 is simpler and changes no existing code, only skill content —
-worth weighing against option 1's cost before deciding.
+**Fixed 2026-07-17, option 1.** `_find_template_script(skill, toolchain)`
+now takes the toolchain explicitly, prefers the matching extension
+(`terraform` → `.tf`, anything else → CFN-style `.yaml`/`.yml`/`.json`),
+and falls back to whatever's bundled if no exact match exists — so a
+skill shipping only one template (today's real case, per Finding 4)
+still resolves correctly regardless of toolchain. Fixed in **both**
+copies — `workflows/drafting/skill_fill.py` and
+`gateway/skill_template_agent.py`'s duplicate (used by
+`check_structured_match()`'s `missing_vars` check) — kept in lockstep
+deliberately, since the two must agree on which template a request
+resolves to. `run_deterministic_skill_fill()` and
+`check_structured_match()` both now derive `toolchain =
+spec.get("toolchain", "cdk")` once and thread it through. Covered by
+`tests/test_skill_fill_toolchain_selection.py` (4 tests, including one
+asserting both copies resolve identically). Option 2 (splitting the
+skill) wasn't taken — option 1 fixes the shared mechanism once instead
+of constraining future skill authors to one-template-per-skill.
 
 ## Real vs. designed
 | Piece | Status |
 |---|---|
 | MS Agent Framework research (Part A) | External, verified via the three sources below |
 | `run_deterministic_skill_fill()`, `_find_template_script()` | Real, built, tested |
-| `provision-infra` skill having `metadata.resource_types` + real `scripts/` | **Does not exist** — this doc's Part D |
-| `_find_template_script()` toolchain-awareness | Not designed — two options named, not chosen |
+| `provision-infra` skill having `metadata.resource_types` + real `scripts/` | **Does not exist** — this doc's Part D, still open |
+| `_find_template_script()` toolchain-awareness | **Fixed 2026-07-17** — both copies, `tests/test_skill_fill_toolchain_selection.py` |
 | `load_skill`/`read_skill_resource` tools for the LLM-driven path | Not designed — named as the concrete missing piece, not scoped here |
 
 ## Open Questions
-- Toolchain-aware `_find_template_script()` vs. splitting
-  `provision-infra` into two skills — not decided (Part D).
+- ~~Toolchain-aware `_find_template_script()` vs. splitting
+  `provision-infra` into two skills~~ — **resolved 2026-07-17**, option 1
+  (toolchain-aware function), see Part D.
+- `provision-infra` itself still has no `metadata.resource_types` and no
+  real `scripts/` (Finding 4) — the toolchain-selection fix above makes
+  the mechanism correct, it doesn't give the real skill content to
+  select between yet. That part of Part D remains undone.
 - Whether `security-review-checklist` and `sdlc-diagram-compliance-check`
   need the same `scripts/`-as-executable-reference treatment, or stay
   pure-instruction skills (the former has `allowed-tools: []` "deliberately

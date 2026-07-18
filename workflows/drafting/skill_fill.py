@@ -29,18 +29,30 @@ class TemplateVariable(BaseModel):
     default: Optional[str] = None
 
 
-def _find_template_script(skill: Skill) -> Optional[tuple[str, str]]:
+_CFN_SUFFIXES = (".yaml", ".yml", ".json")
+
+
+def _find_template_script(skill: Skill, toolchain: str) -> Optional[tuple[str, str]]:
+    """Prefers the script matching the requested toolchain ('terraform'
+    -> .tf, anything else -> CloudFormation-style .yaml/.yml/.json),
+    falling back to whatever's bundled if no exact match exists -- so a
+    skill shipping only one template still resolves regardless of
+    toolchain (docs/skill_scripts_as_iac_templates_and_ms_agent_skills_comparison.md
+    Part D: this used to always prefer .tf unconditionally, silently
+    ignoring route_toolchain()'s own choice whenever a skill shipped
+    both templates)."""
+    preferred, fallback = ((".tf",), _CFN_SUFFIXES) if toolchain == "terraform" else (_CFN_SUFFIXES, (".tf",))
     for name in skill.resources.list_scripts():
-        if name.endswith(".tf"):
+        if name.endswith(preferred):
             return name, str(skill.resources.get_script(name))
     for name in skill.resources.list_scripts():
-        if name.endswith((".yaml", ".yml", ".json")):
+        if name.endswith(fallback):
             return name, str(skill.resources.get_script(name))
     return None
 
 
-def parse_declared_variables(skill: Skill) -> list[TemplateVariable]:
-    found = _find_template_script(skill)
+def parse_declared_variables(skill: Skill, toolchain: str) -> list[TemplateVariable]:
+    found = _find_template_script(skill, toolchain)
     if found is None:
         return []
     script_name, source = found
@@ -71,8 +83,9 @@ class SkillFillError(Exception):
 
 
 def _fill_template(skill: Skill, spec: dict, bundle: WorkspaceBundle) -> str:
-    script_name, source = _find_template_script(skill)
-    variables = parse_declared_variables(skill)
+    toolchain = spec.get("toolchain", "cdk")
+    script_name, source = _find_template_script(skill, toolchain)
+    variables = parse_declared_variables(skill, toolchain)
     resolved: dict[str, Any] = {}
     for v in variables:
         if v.name in spec:
@@ -88,8 +101,8 @@ def _fill_template(skill: Skill, spec: dict, bundle: WorkspaceBundle) -> str:
     )
 
 
-def _validate(skill: Skill, draft: str) -> list[str]:
-    script_name, _ = _find_template_script(skill)
+def _validate(skill: Skill, draft: str, toolchain: str) -> list[str]:
+    script_name, _ = _find_template_script(skill, toolchain)
     module_source = draft.split("\n\n# Resolved values", 1)[0].split("\n\n", 1)[1]
     try:
         if script_name.endswith(".tf"):
@@ -109,6 +122,7 @@ def run_deterministic_skill_fill(skill: Skill, spec: dict, bundle: WorkspaceBund
     LLM-driven propose_tool_intent calls are, in plan_request.py).
     Raises SkillFillError after MAX_LAYER1_RETRIES failed attempts --
     never silently falls back to the LLM-driven graph."""
+    toolchain = spec.get("toolchain", "cdk")
     last_failures: list[str] = []
     for _attempt in range(MAX_LAYER1_RETRIES):
         try:
@@ -117,7 +131,7 @@ def run_deterministic_skill_fill(skill: Skill, spec: dict, bundle: WorkspaceBund
             # Layer 1 problem too, must not propagate as a raw parser exception
             last_failures = [f"template fill failed: {e}"]
             continue
-        last_failures = _validate(skill, draft)
+        last_failures = _validate(skill, draft, toolchain)
         if not last_failures:
             resources = spec.get("resources", [])
             per_resource_cost = spec.get("estimated_monthly_usd", 0.0) / max(len(resources), 1)
