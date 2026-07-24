@@ -149,12 +149,20 @@ body sections) beyond the `allowed-tools` fix already applied — and
 whether `spec/` should rename to `specs/` to match the course
 convention exactly (`docs/course_concepts_and_project_structure.md`).
 
-### 10. Formalize a Crossplane-inspired Composition concept?
+### 10. Formalize a Crossplane-inspired Composition concept? — **REFRAMED, see `docs/composable_foundation_blueprints.md`**
 Whether the platform-defines/app-consumes abstraction pattern
 (independently validated by both `IacSourceRef` and Crossplane's
 Composition/Claim model) deserves its own named PlatformOps artifact,
 or stays implicit in the existing skill/`IacSourceRef` precedence
 mechanisms (`docs/crossplane_comparison_and_pattern_reuse.md`).
+**2026-07-23**: researched two more real systems (Terraform Stacks,
+Humanitec's Platform Orchestrator) and landed on a qualified yes — not
+a single Composition concept, but a Block (versioned, wired module)
+plus Blueprint (an assembled topology) plus specificity-ranked
+matching-criteria resolution, reframing `FoundationRecord`'s closed
+`layer` enum. Still exploratory — schema not committed, an explore-mode
+capture one notch less settled than a normal design doc, needs its own
+follow-up pass before buildable.
 
 ### 11. Coding agent (this project's ADK approach vs. open-source coding agents) for the foundation-layer blueprint specifically — **RESOLVED**, see `docs/foundation_blueprint_authoring_coding_agent.md`
 OpenHands, SWE-agent, and Aider were each researched directly: all

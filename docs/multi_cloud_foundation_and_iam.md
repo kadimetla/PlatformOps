@@ -51,6 +51,31 @@ table:
 Three clouds, three different answers to "can an MCP server actually
 create the foundation" — not one pattern to replicate three times.
 
+**Corrected 2026-07-24 — the GCP and Azure write-capability findings
+above are stale; the AWS finding still holds.** Verified directly
+against current vendor docs/repos (web search, not recall — see Part E
+below for the full research and its sourcing):
+- **GCP**: no longer accurate. Google now hosts a real, write-capable
+  remote GKE MCP endpoint (`https://container.googleapis.com/mcp`),
+  and a separate unofficial local `GoogleCloudPlatform/gke-mcp` repo
+  also has real write tools (`create_cluster`/`update_cluster`/
+  `delete_cluster`). "No confirmed native write path" is no longer
+  true — see Part E.
+- **Azure**: the AKS-specific finding still holds (native AKS MCP tools
+  remain read/list/monitor-only) — but the "separate Azure Resource
+  Manager MCP Server" named as the real write path is now confirmed
+  **hosted** by Microsoft (`https://mcp.management.azure.com`), not
+  just a self-run project.
+- **AWS**: unchanged, still accurate — `awslabs.eks-mcp-server`'s write
+  path is real. New detail found: AWS has *also* since started hosting
+  a managed version of this server (`https://eks-mcp.{region}.api.aws/mcp`,
+  currently in preview) — see Part E for why that doesn't simply make
+  AWS the obvious first choice.
+
+This correction is about capability and hosting, not about Part C's
+architectural conclusion below (route through Terraform) — see Part E's
+own concluding note for whether the conclusion changes.
+
 ## Part C: Split the problem — don't try to unify all of it the same way
 
 ### Foundation layer → route through Terraform, not three divergent native integrations
@@ -191,6 +216,99 @@ alongside `discovered_capabilities`
 for the current, single-source-of-truth version rather than a second
 copy here.
 
+## Part E: Hosted vs. self-hosted is a second axis, independent of write-capability — researched 2026-07-24
+Part B asked "does a write path exist." A different question, never
+asked until an explore-mode session pushed on it: **is the server
+something you run yourself, or something already running that you just
+authenticate to?** This project's entire existing integration
+(`mcp_server/external_servers.py`) is self-hosted — every server
+launched as a local stdio subprocess via `uvx <package>@latest` (AWS)
+or a standalone binary (`terraform-mcp-server`). That was never
+evaluated against vendor-hosted alternatives.
+
+### Verified hosting status, per server (web search against current vendor docs, sourced)
+| Server | Vendor-hosted remote endpoint? | Detail |
+|---|---|---|
+| GCP GKE MCP | **Yes** | `https://container.googleapis.com/mcp` (+`/read-only`, +`/delete-tools`) — OAuth 2.0 + Google Cloud IAM, **no local proxy needed**. Scope-tiered: the default `/mcp` scope excludes cluster/node-pool deletion entirely; that capability is a *separate* OAuth-scoped endpoint (`/delete-tools`). [GKE remote MCP guide](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/use-gke-mcp), [GKE MCP reference](https://docs.cloud.google.com/kubernetes-engine/docs/reference/mcp) |
+| Azure Resource Manager MCP (AKS's real write path) | **Yes** | `https://mcp.management.azure.com` — OAuth via Entra, Azure RBAC-scoped. [Microsoft MCP catalog](https://github.com/microsoft/mcp), [ARM MCP repo](https://github.com/Azure/Azure-Resource-Manager-MCP) |
+| AWS EKS MCP | Yes, with a caveat | `https://eks-mcp.{region}.api.aws/mcp` — hosted, but still requires running a local SigV4-translating proxy (`mcp-proxy-for-aws`) unless the client speaks AWS SigV4 natively, and AWS's own docs mark this **"in preview."** [AWS EKS managed MCP](https://docs.aws.amazon.com/eks/latest/userguide/eks-mcp-tool-configurations.html) |
+| AWS `ccapi-mcp-server` / `aws-iac-mcp-server` | No | Self-run only (`uvx`/Docker) |
+| Azure AKS-specific MCP / general Azure MCP Server | No | Self-hosted only — Microsoft's own catalog marks it `Local` |
+| HashiCorp `terraform-mcp-server` | No | HashiCorp's "remote" deployment docs mean *you* deploy the binary/container somewhere remote — HCP Terraform supplies APIs/tokens, not a hosted MCP endpoint. [Deploy overview](https://developer.hashicorp.com/terraform/mcp-server/deploy), [Remote deploy](https://developer.hashicorp.com/terraform/mcp-server/deploy/remote) |
+
+**GCP's hosted GKE MCP is the cleanest hosted story of the three
+clouds** — no local process at all (unlike AWS's, which still needs a
+local proxy), not flagged preview (unlike AWS's), and its capability
+tiering happens at the OAuth-scope level rather than client-side tool
+filtering. That last point is a real structural safety property this
+project's own current pattern doesn't have: `workflows/drafting/mcp_tools.py`
+filters mutating tool names out in application code — a soft cutoff a
+bug could bypass. GCP's `/delete-tools` being a *separate* OAuth scope
+means a credential can be structurally incapable of deleting a cluster,
+independent of any application-level filter.
+
+**This doesn't overturn Part C's "route through Terraform" conclusion**
+for the general multi-cloud foundation problem — three different hosted
+maturity levels/parameter surfaces is still not one pattern to unify.
+But it does mean **"start with AWS because it's most mature" is no
+longer the clean default it looked like** when this document was first
+written — on the hosted-and-mature axis specifically, GCP now has a
+real claim to being the better starting cloud for a single-cluster
+proof, independent of which cloud a real deployment eventually targets.
+
+### Self-hosting is still fully viable today for all four servers — verified launch mechanism per server
+| Server | Self-hosted launch | Matches this project's existing `uvx` pattern? |
+|---|---|---|
+| AWS `eks-mcp-server` | `uvx awslabs.eks-mcp-server@latest --allow-write ...` | **Yes** — identical shape to `ccapi-mcp-server`/`aws-iac-mcp-server` already in `mcp_server/external_servers.py` |
+| GCP `gke-mcp` (local) | **Go binary** — `go install`, run the compiled executable directly | No — not uvx/npx, a plain executable, but fits the same `command`/`args`/`env` shape `StdioServerParameters` already uses |
+| Azure `aks-mcp` | **Go binary** — GitHub release download or Docker, `--transport stdio` | Same as GCP — plain executable, same `StdioServerParameters` shape |
+| HashiCorp `terraform-mcp-server` | Standalone binary — already how this project's own code configures it today (`command="terraform-mcp-server"`) | Never was uvx, even in the existing integration |
+
+`StdioServerParameters` (`mcp_server/external_servers.py`) was never
+uvx-specific — it's a generic `command`/`args`/`env` shape, and the
+existing Terraform entry already proves it handles a plain binary.
+Self-hosting all four servers today requires zero new mechanism, just
+four config entries in the shape already there.
+
+### The plumbing for a hosted override already exists in the library this project depends on — verified by direct introspection, not assumed
+```python
+# Confirmed via `python3 -c "import langchain_mcp_adapters.client as c; ..."`
+# against the actual installed package:
+MultiServerMCPClient.__init__(
+    connections: dict[str, StdioConnection | SSEConnection
+                       | StreamableHttpConnection | WebsocketConnection]
+)
+```
+`langchain-mcp-adapters` — already a real dependency, already imported
+in `workflows/drafting/mcp_tools.py` — natively supports mixing local
+(`Stdio`) and remote (`StreamableHttp`/`SSE`) connections in the same
+client, per server. `StreamableHttpConnection`'s fields (confirmed by
+introspecting the actual class): `url: str`, `headers: dict | None`,
+`auth: httpx.Auth` — exactly the shape GCP's OAuth-scoped endpoint or
+Azure's Entra-secured one would need. The plumbing to call an
+externally configured MCP endpoint instead of a self-hosted one isn't
+something to build — it's something to configure:
+
+```python
+# mcp_server/external_servers.py, sketch — self-hosted default,
+# hosted override when configured, no change needed to
+# workflows/drafting/mcp_tools.py's connection-building logic either way
+GKE_MCP_SERVER = (
+    StreamableHttpConnection(url=hosted_url, auth=oauth_credentials)
+    if (hosted_url := os.environ.get("GKE_MCP_HOSTED_URL"))
+    else StdioServerParameters(command="./gke-mcp", args=["--transport", "stdio"])
+)
+```
+
+### Recommendation, given both findings together
+Self-host all four servers today, in the existing `StdioServerParameters`
+shape (AWS via `uvx`, GCP/Azure/Terraform via their own binaries) — no
+new mechanism needed, consistent with what's already built and tested.
+Design the connection-config layer with the hosted-override branch above
+from the start, even though nothing exercises it yet, so switching any
+one server (most plausibly GCP's, given Part E's maturity finding) to
+its hosted endpoint later is a config change, not a rewrite.
+
 ## Open questions / not yet decided
 - **Resolved in `docs/gcp_azure_verification_pass.md`**: `roles/iam.serviceAccountUser`/
   `serviceAccountTokenCreator`'s escalation risk is confirmed real and
@@ -212,6 +330,21 @@ copy here.
   above. Still open: the actual policy/constraint JSON equivalents (like
   `docs/iam_permissions_boundary_implementation.md` produced for AWS)
   haven't been drafted for GCP/Azure yet, just the mechanism they'd use.
+- **New from Part E**: the exact shape of the hosted-override config
+  knob (a plain env var per server, a `WorkspaceBundle` field, or an
+  org-level default with BU override following the same precedence
+  pattern used for skills/`IacSourceRef`) — sketched as an env var
+  above for concreteness, not decided as the real mechanism.
+- **New from Part E**: whether GCP's OAuth-scope-level capability
+  tiering (separate endpoints for read-only/mutate/delete) should
+  influence how this project's *own* dispatcher-level checks are
+  designed generally — i.e. whether "structural, credential-level
+  incapability" is a pattern worth pursuing for AWS/Azure too, not just
+  something GCP happens to offer — flagged, not designed.
+- **New from Part E**: AWS's hosted EKS MCP is explicitly "in preview"
+  per AWS's own docs — whether that maturity gap closes soon enough to
+  matter for a real deployment timeline isn't something this research
+  can answer, only monitor.
 
 ## How this relates to the existing docs
 - **Extends** `docs/foundation_app_layering_and_iam_tiers.md`,
@@ -222,6 +355,18 @@ copy here.
 - **Corrects** `docs/foundation_app_layering_and_iam_tiers.md` Part C's
   `deploy-to-eks` skill name to `deploy-to-k8s`, since the underlying
   tool was never AWS-specific.
+- **Part E, added 2026-07-24**: corrects this doc's own Part B
+  write-capability table (GCP and Azure findings were stale; AWS's
+  held) and adds a second, previously unexamined axis — hosted vs.
+  self-hosted — verified by web search against current vendor docs plus
+  direct introspection of `langchain_mcp_adapters`'s actual installed
+  API (`StdioConnection`/`SSEConnection`/`StreamableHttpConnection`/
+  `WebsocketConnection` are all real, confirmed types on
+  `MultiServerMCPClient`, not assumed from the library's marketing).
+  Feeds `docs/composable_foundation_blueprints.md`'s exploration of the
+  same single-cluster-creation flow, which reuses this doc's
+  hosted-vs-self-hosted table and self-hosted-launch-mechanism table
+  directly rather than re-deriving them.
 - Doesn't change the one required next step
   (`plan_request(envelope)`, `docs/planned_implementation.md` Phase 3).
 
@@ -239,3 +384,17 @@ copy here.
 - [Azure Kubernetes Service Tools — Azure MCP Server docs](https://learn.microsoft.com/en-us/azure/developer/azure-mcp-server/tools/azure-kubernetes)
 - [Azure/Azure-Resource-Manager-MCP — GitHub](https://github.com/Azure/Azure-Resource-Manager-MCP)
 - [Azure/aks-mcp — GitHub](https://github.com/Azure/aks-mcp)
+
+**Part E additions (2026-07-24):**
+- [GKE MCP reference — Google Cloud docs](https://docs.cloud.google.com/kubernetes-engine/docs/reference/mcp)
+- [GoogleCloudPlatform/gke-mcp — GitHub](https://github.com/GoogleCloudPlatform/gke-mcp)
+- [microsoft/mcp catalog — GitHub](https://github.com/microsoft/mcp)
+- [Azure MCP Server get started — Microsoft Learn](https://learn.microsoft.com/en-us/azure/developer/azure-mcp-server/get-started)
+- [Deploy a remote Azure MCP Server — Microsoft Learn](https://learn.microsoft.com/en-us/azure/developer/azure-mcp-server/how-to/deploy-remote-mcp-server-microsoft-foundry)
+- [Azure-Resource-Manager-MCP FAQ — GitHub](https://github.com/Azure/Azure-Resource-Manager-MCP/blob/main/docs/FAQ.md)
+- [Amazon EKS MCP tool configurations — AWS docs](https://docs.aws.amazon.com/eks/latest/userguide/eks-mcp-tool-configurations.html)
+- [Amazon EKS MCP getting started — AWS docs](https://docs.aws.amazon.com/eks/latest/userguide/eks-mcp-getting-started.html)
+- [awslabs.eks-mcp-server — PyPI](https://pypi.org/project/awslabs.eks-mcp-server/)
+- [Amazon EKS MCP Server — AWS Labs MCP docs](https://awslabs.github.io/mcp/servers/eks-mcp-server)
+- [Terraform MCP server deploy overview — HashiCorp Developer](https://developer.hashicorp.com/terraform/mcp-server/deploy)
+- [Terraform MCP server remote deploy — HashiCorp Developer](https://developer.hashicorp.com/terraform/mcp-server/deploy/remote)

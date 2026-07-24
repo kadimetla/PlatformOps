@@ -70,6 +70,19 @@ cloud account, initial `allowed_resource_types`, initial cost ceiling, and
 initial team roster — then deleted/marked complete, exactly like
 OpenClaw's own pattern.
 
+**Corrected 2026-07-24 — "collecting cloud account" here is stale.**
+`docs/multi_account_per_bu_design.md` (written after this doc) corrected
+the implicit "one BU = one account" assumption this line still carries —
+`CloudAccountBinding` makes account vending its own repeatable, purpose-
+tagged step (`docs/account_vending_machine_design.md`), separate from and
+after BU onboarding, not a single field collected once here. That doc's
+own account-model correction never propagated back to fix this
+description, an inconsistency surfaced by
+`docs/composable_foundation_blueprints.md` Part E/F (Q7): read this
+paragraph as "collecting `allowed_resource_types`, initial cost ceiling,
+and initial team roster" — cloud account is a separate, later, repeatable
+stage, not part of this one-time ritual.
+
 ### Team member roles (new, small schema)
 Not a workspace file — a small addition to `WorkspaceBundle`
 (`gateway/schemas.py`), sketched here, not yet implemented:

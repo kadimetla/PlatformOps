@@ -22,6 +22,21 @@ class RequestEnvelope(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional context info")
 
 
+class TeamMember(BaseModel):
+    """Distinguishes WHO within a BU is requesting, not just which BU --
+    docs/skills_and_workspace_design.md Part A, scope added by
+    docs/infra_discovery_and_platform_app_split.md Part C. role and
+    scope are independent axes: role is how much authority (requester/
+    approver/admin), scope is over what (foundation-tier vs. app-tier
+    resources) -- a person can be role="admin", scope="app" with zero
+    access to foundation-layer changes regardless of role."""
+
+    channel_user_id: str
+    display_name: str
+    role: str = Field(..., description="'requester' | 'approver' | 'admin'")
+    scope: str = Field(..., description="'foundation' | 'app' | 'both'")
+
+
 class WorkspaceBundle(BaseModel):
     bundle_id: str = Field(..., description="Unique configuration bundle slug, e.g. 'acme-payments'")
     aws_region: str = Field(default="us-east-1")
@@ -33,6 +48,10 @@ class WorkspaceBundle(BaseModel):
     model_overrides: Dict[str, str] = Field(
         default_factory=dict,
         description="Override default models in config/models.yaml per role",
+    )
+    members: list[TeamMember] = Field(
+        default_factory=list,
+        description="Team roster for this BU -- what a scope/approval check resolves channel_user_id against",
     )
 
 
@@ -111,6 +130,35 @@ class InfraInventoryRecord(BaseModel):
     layer: Optional[str] = Field(None, description="'foundation' | 'app' | None if unclassified")
     discovered_at: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)
     provenance: str = Field(..., description="'iac_state' | 'live_api'")
+
+
+class FoundationRecord(BaseModel):
+    """One provisioned foundation-tier resource -- openspec/changes/
+    provision-kubernetes-cluster. Deliberately the minimal slice of the
+    canonical multi-layer design (docs/foundation_app_layering_and_iam_tiers.md
+    Part D, docs/foundation_layer_decomposition.md): one record per
+    cluster, undecomposed into separate network/compute/identity layers,
+    until a second real case needs layer reuse tracked separately.
+    compute_paradigm is explicit and required, not inferred, so a future
+    VM/managed-container/serverless capability can't collide with these
+    records silently (docs/compute_paradigm_layering.md Part D)."""
+
+    foundation_id: str
+    org_id: str
+    bu_id: str
+    cloud_provider: str = Field(..., description="'aws' | 'gcp' | 'azure'")
+    compute_paradigm: str = Field(
+        default="kubernetes",
+        description="'kubernetes' | 'vm' | 'managed_containers' | 'serverless' -- this change only ever writes 'kubernetes'",
+    )
+    layer: str = Field(default="compute", description="Fixed at 'compute' for this change -- see class docstring")
+    resource_type: str = Field(..., description="e.g. 'AWS::EKS::Cluster' | 'gke_cluster' | 'azure_aks_cluster'")
+    resource_identifier: str
+    approved_plan_id: str
+    status: str = Field(default="active", description="'active' | 'decommissioned'")
+    provenance: str = Field(default="created", description="'created' | 'adopted'")
+    discovered_capabilities: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)
 
 
 class SkillPromotionPolicy(BaseModel):

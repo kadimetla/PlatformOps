@@ -208,6 +208,22 @@ resources with no Terraform representation at all (exactly what the
 live-listing pass exists to catch), there's nothing to attach that
 discovery to in the first place.
 
+**Corrected 2026-07-24 — the tool surface has since grown, still no
+write path for the case this section cares about.**
+`docs/composable_foundation_blueprints.md`'s Q5 re-checked the same
+server against HashiCorp's current tool reference (not re-reading this
+section's original claim from memory) and found `list_stacks`/
+`get_stack_details` now exist — genuinely new since this was written.
+Both are **read-only**, confirmed directly against the tool reference:
+no create/deploy/plan/apply path for a Stack exists through this server
+today. This doesn't change the conclusion below (raw provider APIs
+remain necessary for cross-project sharing discovery specifically), but
+the blanket "no Stacks capability at all" framing above is now stale —
+the two new read tools are a real capability worth knowing about for a
+different problem (verifying a Blueprint's declared wiring against a
+real Stack's component graph, `docs/composable_foundation_blueprints.md`
+Q2), just not this one.
+
 **Conclusion**: raw provider APIs (Parts D–F) remain the verified,
 necessary mechanism for cross-project sharing discovery. This doesn't
 generalize away — don't design toward an ad-hoc-Terraform-discovery

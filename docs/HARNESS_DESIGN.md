@@ -135,16 +135,30 @@ rather than repeating this one:
 - `docs/multi_cloud_foundation_and_iam.md` — extends the foundation/app/
   IAM design from AWS-only to GCP and Azure: a per-provider concept
   mapping (VPC/VPC-Network/VNet, EKS/GKE/AKS, IRSA/Workload Identity
-  Federation/Azure AD Workload Identity), the finding that GKE's own MCP
-  server is read-only (so foundation-layer creation should route through
-  the already-integrated, provider-agnostic Terraform path rather than
-  three divergent native integrations), confirmation that the Helm
-  app-layer deploy is *already* provider-agnostic (renaming
-  `deploy-to-eks` to `deploy-to-k8s`), and a `CloudIAMAdapter` pattern
-  for enforcing the same abstract IAM rules through each provider's own
-  mechanism (since corrected: GCP/Azure have no identity-attached
-  boundary object at all — the ceiling comes from org/policy-scoped
-  guardrails instead, see that doc's correction note).
+  Federation/Azure AD Workload Identity), the original finding that
+  GKE's own MCP server was read-only (so foundation-layer creation
+  should route through the already-integrated, provider-agnostic
+  Terraform path rather than three divergent native integrations —
+  **corrected 2026-07-24, Part E: no longer true, GCP now has a real
+  hosted write-capable GKE MCP endpoint, though the Terraform
+  conclusion itself still stands for the general multi-cloud case**),
+  confirmation that the Helm app-layer deploy is *already*
+  provider-agnostic (renaming `deploy-to-eks` to `deploy-to-k8s`), and a
+  `CloudIAMAdapter` pattern for enforcing the same abstract IAM rules
+  through each provider's own mechanism (since corrected: GCP/Azure
+  have no identity-attached boundary object at all — the ceiling comes
+  from org/policy-scoped guardrails instead, see that doc's correction
+  note). **Part E (2026-07-24)** adds a second axis this doc never
+  examined — hosted vs. self-hosted MCP endpoints, independent of
+  write-capability — with a verified per-server hosting table, a
+  verified self-hosted launch mechanism per server (AWS via `uvx`,
+  GCP/Azure via Go binaries, Terraform via its own binary — all fit the
+  existing `StdioServerParameters` shape unchanged), and confirmation
+  by direct introspection that `langchain_mcp_adapters.MultiServerMCPClient`
+  already supports a hosted-endpoint connection type
+  (`StreamableHttpConnection`) alongside the stdio one this project
+  uses today — recommends self-hosting all four for now with a
+  config-driven hosted-override branch designed in from the start.
 - `docs/three_layer_validation_model.md` — connects three previously-
   separate designs (existence-vs-function smoke testing, the sandbox
   tier, the dev→QA→UAT→prod promotion pipeline) into one named model,
@@ -493,6 +507,22 @@ rather than repeating this one:
   live cloud APIs. This workflow only ever reads what that sweep wrote;
   it was never the thing doing the discovering. See design.md's rename
   note for the full reasoning.
+- `openspec/changes/build-intake-workflow/design.md` — builds
+  `docs/intent_routing_and_staged_confirmation.md` Part A's Stage 1
+  concretely: a one-node `workflows/intake/` graph (`classify_workflow`)
+  resolving raw text to `workflow_hint` (`"drafting"` | `"inquiry"`),
+  Tier 2's text-prefix convention checked before any model call, Tier 3
+  (one bound `select_workflow` tool call) as fallback. Tier 1
+  (structured UI action) explicitly out of scope — no channel adapter
+  exists anywhere to produce one. Resolves the open question left in
+  the intent-routing doc: `workflow_hint`'s candidate set is literally
+  the two real workflow package names, not an abstract category. An
+  unresolvable request returns a `clarifying_question` as data, no
+  `interrupt()`/pause-resume — the same "show, don't block" shape
+  `workflows/inquiry/` already uses, applied one level upstream.
+  Dispatch (calling `plan_request()`/`inquiry_request()` from the
+  resolved hint) stays a separate, later, explicitly out-of-scope
+  concern.
 - `docs/creation_profiles_and_deterministic_discovery.md` — finds that
   `Skill`, `WorkspaceBundle`, and `IacSourceRef` each partially capture
   "how a resource was made," but none survive past plan execution —
@@ -530,6 +560,49 @@ rather than repeating this one:
   this from skill `lifecycle_state`, which looks similar but is an
   aggregate trust signal across many past requests, not a per-result
   classification.
+- `docs/composable_foundation_blueprints.md` — explore-mode capture,
+  one notch less settled than this project's usual design docs.
+  Resolves `docs/remaining_deep_dives.md` item 10 (formalize a
+  Crossplane-inspired Composition concept?) by researching two more
+  real systems (Terraform Stacks' component/deployment model,
+  Humanitec's Score/Resource-Graph/Matching-Criteria model) alongside
+  the existing Crossplane analysis, and reframes
+  `docs/foundation_layer_decomposition.md`'s closed 3-value `layer`
+  enum plus harness-side `depends_on_foundation_id` bookkeeping claim
+  as an open Block catalog assembled into per-topology Blueprints,
+  selected by specificity-ranked matching criteria (the same mechanism
+  that would resolve the still-open "cluster-per-team vs. shared
+  cluster, possibly different per environment" topology question).
+  Directly answers `docs/foundation_blueprint_authoring_coding_agent.md`
+  Part D2's open "should correspond to real module wiring" question
+  with Terraform Stacks' `publish_output`/`upstream_input` mechanism.
+  Sketch only — schema not committed, catalog/self-service presentation
+  layer flagged but not designed. **Extended same session (Part D/E)**:
+  researched three more real systems for a different question — not how
+  units wire, but along what axis a blueprint gets cut into units at all
+  (Crossplane's own published reference platform's consumer-claim
+  boundary, Google Cloud Foundation Toolkit's blast-radius-ordered
+  stages, AWS Landing Zone Accelerator's governance-domain config
+  files) — then worked out a concrete ordered stage sequence
+  (org bootstrap → org registration → BU onboarding → account vending →
+  foundation network/compute/identity → app-team deploy) for this
+  project's own org→BU→account→foundation shape, surfacing a
+  previously-unnamed gap: `docs/infra_discovery_and_platform_app_split.md`
+  Part C's scope gate denies an app-scoped requester before a
+  dedicated-per-team topology's "first cluster for my team" request can
+  even reach approval. **Extended again 2026-07-24 (Part F)**: deep-dived
+  every open question left by Parts A–E against precedent already
+  resolved elsewhere in this project — most narrow substantially (e.g.
+  Block/Blueprint's storage placement follows `docs/config_storage_backend.md`'s
+  definition-vs-instance split; Stage F's approval gap borrows
+  `SkillProposal`'s self-review-prevention shape). Re-verifying the
+  Terraform MCP server's tool surface directly (not from an earlier
+  doc's memory) found it's grown Stacks-related read tools since
+  `docs/cross_project_network_sharing.md` Part G was written — corrected
+  there in place. Also surfaced and fixed a real inconsistency in
+  `docs/skills_and_workspace_design.md`'s `BOOTSTRAP.md` description,
+  left stale by `docs/multi_account_per_bu_design.md`'s later
+  account-model correction never propagating back to it.
 - `docs/discovery_before_drafting_and_presentation_layer.md` —
   corrects an earlier persona-based framing (infra team vs. app
   developer) to the real axis: discovery must precede drafting for
