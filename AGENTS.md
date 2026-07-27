@@ -10,16 +10,14 @@ this repo — CLI-specific files (`CLAUDE.md`, etc.) add tool-specific
 detail on top, never contradict this one.
 
 ## Overview & stack
-PlatformOps uses **LangGraph** — no more Google ADK. `agents/`
-(`agents/orchestrator.py`'s `Agent`/`sub_agents` model) is superseded;
-new work goes through `workflows/` and `gateway/` instead. Neither
-exists yet on this branch — they're what this branch builds, starting
-with request intake. Python 3.11+, MCP servers for cloud reach
-(`mcp_server/external_servers.py` — currently still imports
+PlatformOps uses **LangGraph**. New work goes through `workflows/` and
+`gateway/`. Neither exists yet on this branch — they're what this
+branch builds, starting with request intake. Python 3.11+, MCP
+servers for cloud reach (`mcp_server/external_servers.py` imports
 `StdioServerParameters` from `google.adk.tools.mcp_tool.mcp_toolset`;
-migrating this to `langchain-mcp-adapters` is part of the switch, not
-yet done), Pydantic schemas (to be added under `gateway/schemas.py` as
-workflows need them), pytest.
+migrating to `langchain-mcp-adapters` is pending), Pydantic schemas
+(to be added under `gateway/schemas.py` as workflows need them),
+pytest.
 
 A more advanced exploration of this same LangGraph direction exists on
 `design/harness-architecture` — a rebuild that went much further
@@ -49,11 +47,8 @@ design reasoning needs consulting.
   should not repeat.
 
 ## Conventions
-- `agents/` — the old ADK-based agents (`orchestrator.py`,
-  `provisioning_agent.py`, `cdk_provisioning_agent.py`,
-  `terraform_provisioning_agent.py`, `security_agent.py`).
-  **Superseded — not the stack going forward.** Still on disk, not yet
-  deleted; don't extend it or route new work through it.
+- `agents/` — removed (commit `87b2db4`); superseded by
+  `workflows/`/`gateway/`.
 - `workflows/` — **does not exist yet.** Will hold LangGraph
   `StateGraph` workflows, named by what they process, not by
   framework — starting with `workflows/intake/` for request
@@ -62,10 +57,9 @@ design reasoning needs consulting.
   loading, a brokered dispatcher — add only as an actual workflow needs
   it, not preemptively.
 - `mcp_server/` — connection configs for third-party MCP servers (AWS
-  IaC, CCAPI, Terraform). Currently ADK-native
-  (`google.adk.tools.mcp_tool.mcp_toolset.StdioServerParameters`) —
-  migrating to `langchain-mcp-adapters` is part of the stack switch,
-  not yet done.
+  IaC, CCAPI, Terraform). Imports `StdioServerParameters` from
+  `google.adk.tools.mcp_tool.mcp_toolset`; migration to
+  `langchain-mcp-adapters` pending.
 - `skills/` — Agent Skills (`SKILL.md` per folder). **Known bug,
   confirmed present on this branch**: `provision-infra/SKILL.md`'s
   `allowed-tools` is a YAML list; the real schema (per
@@ -132,10 +126,7 @@ Flag it separately instead.
 ## Commands
 - Setup: `uv sync` (or `pip install -e .`)
 - Compliance check: `python spec/check_compliance.py spec/example_submission.yaml`
-- No LangGraph workflow exists yet to run — `agents/orchestrator.py`'s
-  documented `python -m agents.orchestrator` only constructs `Agent`
-  objects and exits (no `Runner`/`Session`), unverified/likely broken,
-  same as it was before this branch started.
+- No LangGraph workflow exists yet to run.
 
 ## Workflow
 1. Before implementing something non-trivial, check

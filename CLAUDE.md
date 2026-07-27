@@ -71,10 +71,8 @@ separate permissions in this repo.
 ```
 
 ## Stack
-LangGraph. No more ADK. `StateGraph`, checkpointed graphs,
-`langgraph.types.interrupt`/`Command` for human-in-the-loop. `agents/`
-(Google ADK's `Agent`/`sub_agents` model) is superseded — don't extend
-it or route new work through it.
+LangGraph. `StateGraph`, checkpointed graphs,
+`langgraph.types.interrupt`/`Command` for human-in-the-loop.
 
 ## Skills, concretely — what "Agent Skills" means here
 A Skill is a folder anchored by `SKILL.md`, loaded via **progressive
