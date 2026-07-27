@@ -17,8 +17,8 @@ from pydantic import BaseModel, Field
 
 from gateway.schemas import WorkspaceBundle
 from gateway.skill_matching import SPEC_TYPE_TO_CFN_TYPE
-from workflows.drafting.skill_loading import Skill
-from workflows.drafting.tools import propose_tool_intent
+from workflows.provision_stack.skill_loading import Skill
+from workflows.provision_stack.tools import propose_tool_intent
 
 MAX_LAYER1_RETRIES = 3
 

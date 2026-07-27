@@ -7,11 +7,11 @@ the two toolchains' native variable-declaration syntax
 SkillTemplateFillAgent (an ADK BaseAgent subclass) used to live here
 too -- removed at the migrate-to-langgraph cutover (2026-07-15, task
 7.1/7.2): nothing in the cut-over path calls it anymore, superseded by
-workflows/drafting/skill_fill.py's run_deterministic_skill_fill(), a
+workflows/provision_stack/skill_fill.py's run_deterministic_skill_fill(), a
 plain function performing the identical fill+validate logic with no
 ADK dependency. check_structured_match() itself is unchanged --
 Skill's import moved from google.adk.skills.models to the vendored
-workflows/drafting/skill_loading, per gateway/skill_matching.py's
+workflows/provision_stack/skill_loading, per gateway/skill_matching.py's
 identical swap.
 """
 from typing import Optional
@@ -24,7 +24,7 @@ import yaml
 from .schemas import WorkspaceBundle
 from .skill_matching import resolve_skill_candidates
 from .skill_usage_store import SkillUsageStore
-from workflows.drafting.skill_loading import Skill
+from workflows.provision_stack.skill_loading import Skill
 
 
 class TemplateVariable(BaseModel):
@@ -49,7 +49,7 @@ def _find_template_script(skill: Skill, toolchain: str) -> Optional[tuple[str, s
     requested toolchain ('terraform' -> .tf, anything else ->
     CloudFormation-style .yaml/.yml/.json), falling back to whatever's
     bundled if no exact match exists. Kept in lockstep with
-    workflows/drafting/skill_fill.py's identical function -- see that
+    workflows/provision_stack/skill_fill.py's identical function -- see that
     file's docstring and
     docs/skill_scripts_as_iac_templates_and_ms_agent_skills_comparison.md
     Part D for why toolchain-awareness matters here: this function's

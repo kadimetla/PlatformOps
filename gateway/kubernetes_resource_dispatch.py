@@ -5,8 +5,13 @@ what's genuinely new for this capability (the scope gate lives in
 gateway/scope_gate.py, the generate/deploy split and the three cloud
 adapters live here).
 
+Renamed from kubernetes_foundation_dispatch.py
+(docs/composable_foundation_blueprints.md Parts G/M -- "no more
+foundation/platform," matches Stack/Resource terminology verified
+against AWS/Azure/OpenStack/Pulumi/Terraform).
+
 VERIFICATION GAP, stated plainly rather than silently assumed (same
-discipline workflows/drafting/mcp_tools.py already uses for its own
+discipline workflows/provision_stack/mcp_tools.py already uses for its own
 inferred tool names): AWS's manage_eks_stacks tool name is codex
 web-verified against current AWS docs. GCP's (gke-mcp) and Azure's
 (aks-mcp) tool names below (create_cluster, az_aks_operations) were
@@ -21,19 +26,27 @@ human_approved is enforced explicitly in this module, not by
 BrokeredToolDispatcher.evaluate_intent() -- that method currently reads
 human_approved into an unused variable and only checks agent_approved
 (gateway/tool_dispatcher.py:88, a known gap scoped to the separate
-wire-dispatch-execution change, not fixed here). Foundation-tier
+wire-dispatch-execution change, not fixed here). Stack-tier
 resources have no autonomous-approval path
 (docs/foundation_app_layering_and_iam_tiers.md Part A: "always human,
 no exception"), so this module guards on human_approved itself rather
 than relying on a dispatcher behavior this change doesn't touch.
+
+stack_id resolution is a stand-in, not a considered decision --
+docs/composable_foundation_blueprints.md Part H left the actual
+Resource-to-Stack binding mechanism open (auto-create / requester-named /
+inferred-from-dependency, three options, none chosen). This module
+picks the simplest (auto-create one Stack per resource if none is
+passed in) purely to keep stack_id non-null, per Part H's "never
+dangling" rule -- not a resolution of that open question.
 """
 import uuid
 from typing import Any, Optional
 
 from pydantic import BaseModel
 
-from .foundation_store import FoundationStore
-from .schemas import FoundationRecord, PlanRecord, ToolIntent
+from .resource_store import ResourceStore
+from .schemas import PlanRecord, ResourceRecord, ToolIntent
 from .tool_dispatcher import BrokeredToolDispatcher
 
 _CLUSTER_RESOURCE_TYPES = {
@@ -47,7 +60,8 @@ class ClusterDispatchResult(BaseModel):
     status: str  # "succeeded" | "failed" | "denied"
     resource_identifier: Optional[str] = None
     error_message: Optional[str] = None
-    foundation_id: Optional[str] = None
+    resource_id: Optional[str] = None
+    stack_id: Optional[str] = None
 
 
 async def generate_cluster_template(mcp_client: Any, cloud_provider: str, cluster_name: str) -> str:
@@ -132,16 +146,20 @@ async def dispatch_and_execute_cluster(
     tool_intent: ToolIntent,
     human_approved: bool,
     dispatcher: BrokeredToolDispatcher,
-    foundation_store: FoundationStore,
+    resource_store: ResourceStore,
     mcp_client: Any,
     cloud_provider: str,
+    stack_id: Optional[str] = None,
 ) -> ClusterDispatchResult:
     """The single entry point every cloud goes through -- approval gate,
-    audit, and FoundationRecord write happen once here, never duplicated
+    audit, and ResourceRecord write happen once here, never duplicated
     per adapter. agent_approved is always True by the time this is
     called: same derivation already established for the app-tier
     equivalent (wire-dispatch-execution design.md) -- a ToolIntent only
-    exists because the drafting/generation step already produced one."""
+    exists because the provision_stack/generation step already produced
+    one. stack_id defaults to a fresh, standalone Stack if not supplied
+    by the caller -- see module docstring's note that this isn't a
+    considered resolution of Part H's open binding-mechanism question."""
     dispatcher.record_approval(
         plan_id=plan.plan_id, plan_hash=plan.plan_hash,
         agent_approved=True, human_approved=human_approved,
@@ -150,7 +168,7 @@ async def dispatch_and_execute_cluster(
     if not human_approved:
         dispatcher._log_audit(
             tool_intent.model_dump(), "DENY",
-            "Foundation-tier cluster creation requires human_approved=True (enforced here, "
+            "Stack-tier cluster creation requires human_approved=True (enforced here, "
             "not by evaluate_intent(), per this module's docstring).",
         )
         return ClusterDispatchResult(status="denied", error_message="human_approved is False")
@@ -164,10 +182,12 @@ async def dispatch_and_execute_cluster(
     except Exception as exc:  # noqa: BLE001 -- surfaced to the caller, not swallowed
         return ClusterDispatchResult(status="failed", error_message=str(exc))
 
-    foundation_id = str(uuid.uuid4())
-    foundation_store.record_foundation(
-        FoundationRecord(
-            foundation_id=foundation_id,
+    resource_id = str(uuid.uuid4())
+    resolved_stack_id = stack_id or str(uuid.uuid4())
+    resource_store.record_resource(
+        ResourceRecord(
+            resource_id=resource_id,
+            stack_id=resolved_stack_id,
             org_id=tool_intent.org_id,
             bu_id=tool_intent.bu_id,
             cloud_provider=cloud_provider,
@@ -177,5 +197,6 @@ async def dispatch_and_execute_cluster(
         )
     )
     return ClusterDispatchResult(
-        status="succeeded", resource_identifier=resource_identifier, foundation_id=foundation_id,
+        status="succeeded", resource_identifier=resource_identifier,
+        resource_id=resource_id, stack_id=resolved_stack_id,
     )

@@ -25,16 +25,18 @@ class RequestEnvelope(BaseModel):
 class TeamMember(BaseModel):
     """Distinguishes WHO within a BU is requesting, not just which BU --
     docs/skills_and_workspace_design.md Part A, scope added by
-    docs/infra_discovery_and_platform_app_split.md Part C. role and
-    scope are independent axes: role is how much authority (requester/
-    approver/admin), scope is over what (foundation-tier vs. app-tier
-    resources) -- a person can be role="admin", scope="app" with zero
-    access to foundation-layer changes regardless of role."""
+    docs/infra_discovery_and_platform_app_split.md Part C (originally
+    "foundation"; renamed "stack" per docs/composable_foundation_blueprints.md
+    Parts G/M -- "no more foundation/platform," matches Stack/Resource
+    terminology directly). role and scope are independent axes: role is
+    how much authority (requester/approver/admin), scope is over what
+    (Stack-tier vs. app-tier resources) -- a person can be role="admin",
+    scope="app" with zero access to Stack-tier changes regardless of role."""
 
     channel_user_id: str
     display_name: str
     role: str = Field(..., description="'requester' | 'approver' | 'admin'")
-    scope: str = Field(..., description="'foundation' | 'app' | 'both'")
+    scope: str = Field(..., description="'stack' | 'app' | 'both'")
 
 
 class WorkspaceBundle(BaseModel):
@@ -132,10 +134,17 @@ class InfraInventoryRecord(BaseModel):
     provenance: str = Field(..., description="'iac_state' | 'live_api'")
 
 
-class FoundationRecord(BaseModel):
-    """One provisioned foundation-tier resource -- openspec/changes/
-    provision-kubernetes-cluster. Deliberately the minimal slice of the
-    canonical multi-layer design (docs/foundation_app_layering_and_iam_tiers.md
+class ResourceRecord(BaseModel):
+    """One provisioned resource -- openspec/changes/provision-kubernetes-cluster.
+    Renamed from FoundationRecord (docs/composable_foundation_blueprints.md
+    Parts G/M): generalized past foundation/platform-tier-only naming,
+    grounded in AWS/Azure/OpenStack/Pulumi/Terraform's own vocabulary
+    ("resource" as the base unit, "Stack" as the group -- Part M). Every
+    ResourceRecord belongs to exactly one Stack via stack_id, required,
+    never null -- "a resource can be requested standalone, but can never
+    end up with no Stack reference" (Part H's rule, stated by the user
+    directly). Deliberately the minimal slice of the canonical
+    multi-layer design (docs/foundation_app_layering_and_iam_tiers.md
     Part D, docs/foundation_layer_decomposition.md): one record per
     cluster, undecomposed into separate network/compute/identity layers,
     until a second real case needs layer reuse tracked separately.
@@ -143,7 +152,8 @@ class FoundationRecord(BaseModel):
     VM/managed-container/serverless capability can't collide with these
     records silently (docs/compute_paradigm_layering.md Part D)."""
 
-    foundation_id: str
+    resource_id: str
+    stack_id: str = Field(..., description="Required, never null -- the Stack this resource belongs to (Part H)")
     org_id: str
     bu_id: str
     cloud_provider: str = Field(..., description="'aws' | 'gcp' | 'azure'")

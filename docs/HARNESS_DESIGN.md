@@ -523,6 +523,44 @@ rather than repeating this one:
   Dispatch (calling `plan_request()`/`inquiry_request()` from the
   resolved hint) stays a separate, later, explicitly out-of-scope
   concern.
+- `openspec/changes/route-intake-by-persona-scope/design.md` —
+  **superseded 2026-07-27, kept for its reasoning trail, not buildable
+  as written.** Correctly found that Tier 2's prefix match isn't intent
+  understanding (a literal `str.startswith` convention for
+  scripted/CLI callers — real chat/voice-STT text falls to Tier 3's LLM
+  call essentially always) and that pre-classification scope denial
+  can't work (scope requirements are intent-dependent — nothing to gate
+  on until `workflow_hint` is known). But its core premise — that
+  `resolve_scope`/`enforce_scope` belong inside intake's own graph —
+  was wrong: `plan_request()`/`inquiry_request()` both already take
+  `WorkspaceBundle` at their *own* boundary, never intake's. Superseded
+  by `openspec/changes/build-kubernetes-provisioning-workflow/design.md`,
+  which places resolution there instead.
+- `openspec/changes/build-kubernetes-provisioning-workflow/design.md` —
+  **design in progress, not yet buildable** (`tasks.md` not written).
+  The one consolidated flow this session's exploration converged on:
+  wires `gateway/kubernetes_resource_dispatch.py`'s
+  `dispatch_and_execute_cluster()` (real, tested, previously reachable
+  only from a hand-constructed manual test script) to a real collection
+  workflow — `resolve_scope` → `resolve_cloud_provider` → a `collect`
+  loop turning `check_structured_match()`'s already-computed but
+  discarded `missing_vars` into a real `interrupt()`-based human ask
+  (`langgraph.types.interrupt`/`Command`, confirmed installed,
+  `langgraph==1.2.9`, previously unused anywhere in this repo) → the
+  existing dispatch call. Maps directly onto
+  `docs/session_memory_design.md`'s procedural-memory framing (a
+  cloud's declared skill variables *are* procedural memory) while
+  explicitly deferring two real bugs found along the way that would
+  break if inherited as-is: `check_structured_match()`'s spec-shape
+  mismatch (the real `extract_spec_from_free_text()` output never
+  contains the flat keys the match logic checks for — confirmed against
+  `tests/test_provision_infra_skill_content.py`'s fixture, which
+  hand-adds a key the real extraction path never produces) and
+  `SkillUsageStore.record_skill_usage()` having zero production
+  callers (so no skill can ever reach `"stable"` in a live system).
+  Field lists per cloud are explicitly not decided here — blocked on
+  `provision-kubernetes-cluster/tasks.md` Task 1's live `get_tools()`
+  verification, same open precondition, not re-solved.
 - `docs/creation_profiles_and_deterministic_discovery.md` — finds that
   `Skill`, `WorkspaceBundle`, and `IacSourceRef` each partially capture
   "how a resource was made," but none survive past plan execution —
@@ -603,6 +641,49 @@ rather than repeating this one:
   `docs/skills_and_workspace_design.md`'s `BOOTSTRAP.md` description,
   left stale by `docs/multi_account_per_bu_design.md`'s later
   account-model correction never propagating back to it.
+  **Extended again 2026-07-25 (Parts G–L, a later explore-mode
+  session)**: drops `Block` entirely — the model simplifies to
+  `PlatformRecord` (renamed from `FoundationRecord`, generalized past
+  foundation-tier-only scope) plus `Blueprint`, connected by one
+  required `blueprint_id` foreign key, no catalog/wiring/matching-
+  criteria layer. Settles four naming decisions
+  (`workflows/drafting/` → `workflows/provision_infra_resource/`,
+  `FoundationRecord` → `PlatformRecord`, "foundation" → "platform"
+  terminology, a third `workflow_hint` value) that are **decided but
+  not yet applied** — `openspec/changes/provision-kubernetes-cluster`'s
+  already-built code (27/35 tasks) still uses the old names, and the
+  working tree has a broken, mid-rename `workflows/drafting/` directory
+  move. Verifies, via fresh web research, that only Azure's Resource
+  Group natively solves what Blueprint is for — AWS's and GCP's
+  closest analogs (tag-based Resource Groups, Labels) are confirmed
+  weak, non-exclusive, not real containers. Connects Blueprint to two
+  previously-unconnected existing docs
+  (`docs/infra_graph_modeling_and_db_options.md`'s `InfraRelationship`
+  edge vocabulary, `docs/creation_time_relationship_capture_and_diagrams.md`'s
+  rendering tiers) and finds blueprint-to-blueprint sharing is a derived
+  rollup of existing resource-level `shared_from`/`depends_on` edges,
+  not a new mechanism. Sketches a platform-vs-app persona visibility
+  model built on the `TeamMember.scope`/`bu_id` gate already shipped
+  this session. Still open: the Resource→Stack binding mechanism,
+  whether `ResourceRecord` merges with the already-built
+  `InfraInventoryRecord`, and visibility-walk depth.
+  **Extended again same day (Parts M–O)**: supersedes `PlatformRecord`/
+  `Blueprint`/"platform" with `ResourceRecord`/`Stack`, verified against
+  AWS CloudFormation, Azure Deployment Stacks (GA), OpenStack Heat,
+  Pulumi, and HashiCorp Terraform Stacks — not this project's own
+  coinage. Finds Azure independently deprecating a product literally
+  named "Blueprints" in favor of "Deployment Stacks," the same rename
+  converged on here. Resolves
+  `docs/creation_time_relationship_capture_and_diagrams.md`'s
+  previously-flagged-unverified claim: `terraform graph`/`pulumi stack
+  graph` are real (corrected there in place); AWS CloudFormation and
+  OpenStack Heat confirmed to have no native equivalent. Standardizes an
+  operation vocabulary (`describe_stack`/`list_resources`/
+  `describe_resource`/`graph_stack`/`generate_stack_template`/
+  `create_stack`) against real platform verbs, and finds "assembling" a
+  Stack is `describe`/`list` feeding `create` — already the shape
+  `dispatch_and_execute_cluster()`/`generate_cluster_template()`
+  implement, needing renaming/generalizing, not re-architecting.
 - `docs/discovery_before_drafting_and_presentation_layer.md` —
   corrects an earlier persona-based framing (infra team vs. app
   developer) to the real axis: discovery must precede drafting for

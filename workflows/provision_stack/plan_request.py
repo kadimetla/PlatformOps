@@ -16,7 +16,7 @@ via gateway/skill_matching.py's ADK-backed google.adk.skills imports
 (gateway/skill_matching.py is explicitly unmodified until cutover, per
 proposal.md's Impact section) -- this workflow only becomes fully
 ADK-independent once that file's two import lines are swapped to
-workflows.drafting.skill_loading at cutover (task 7).
+workflows.provision_stack.skill_loading at cutover (task 7).
 """
 import hashlib
 import uuid
@@ -31,9 +31,9 @@ from gateway.compliance_preflight import (
 from gateway.schemas import PlanRecord, RequestEnvelope, ToolIntent, WorkspaceBundle
 from gateway.skill_template_agent import check_structured_match
 from gateway.skill_usage_store import SkillUsageStore
-from workflows.drafting.graph import build_checkpointed_drafting_graph
-from workflows.drafting.model_config import get_model
-from workflows.drafting.skill_fill import SkillFillError, run_deterministic_skill_fill
+from workflows.provision_stack.graph import build_checkpointed_provision_stack_graph
+from workflows.provision_stack.model_config import get_model
+from workflows.provision_stack.skill_fill import SkillFillError, run_deterministic_skill_fill
 
 __all__ = ["ComplianceError", "plan_request"]
 
@@ -122,7 +122,7 @@ async def plan_request(
     first), then a deterministic zero-LLM draft when a structured skill
     match exists (bypasses the graph entirely, including security
     review -- matches today's behavior: a stable skill's provenance IS
-    its review), the LangGraph drafting workflow otherwise. Same
+    its review), the LangGraph provision_stack workflow otherwise. Same
     two-pass ToolIntent construction discipline as
     gateway/plan_request.py."""
     spec = await envelope_to_spec(envelope)
@@ -135,7 +135,7 @@ async def plan_request(
         plan_text = draft
     else:
         db_path = usage_store.db_path
-        async with build_checkpointed_drafting_graph(db_path) as graph:
+        async with build_checkpointed_provision_stack_graph(db_path) as graph:
             thread_id = envelope.request_id
             result = await graph.ainvoke(
                 {

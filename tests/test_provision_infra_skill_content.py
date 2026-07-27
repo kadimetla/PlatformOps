@@ -20,8 +20,8 @@ import tempfile
 from gateway.schemas import SkillPromotionPolicy, WorkspaceBundle
 from gateway.skill_matching import find_matching_skill_path, resolve_skill_candidates
 from gateway.skill_usage_store import SkillUsageStore
-from workflows.drafting.skill_fill import run_deterministic_skill_fill
-from workflows.drafting.skill_loading import load_skill_from_dir
+from workflows.provision_stack.skill_fill import run_deterministic_skill_fill
+from workflows.provision_stack.skill_loading import load_skill_from_dir
 
 SPEC = {
     "app_name": "demo-blog",

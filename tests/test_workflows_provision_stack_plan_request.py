@@ -1,4 +1,4 @@
-"""End-to-end tests for workflows/drafting/plan_request.py -- the
+"""End-to-end tests for workflows/provision_stack/plan_request.py -- the
 LangGraph-based port of gateway/plan_request.py, built in parallel per
 openspec/changes/migrate-to-langgraph/tasks.md section 5 (Test parity).
 Mirrors tests/test_plan_request_boundary.py exactly for the
@@ -16,7 +16,7 @@ import pytest
 from gateway.plan_request import ComplianceError
 from gateway.schemas import RequestEnvelope, SkillPromotionPolicy, WorkspaceBundle
 from gateway.skill_usage_store import SkillUsageStore
-from workflows.drafting.plan_request import plan_request
+from workflows.provision_stack.plan_request import plan_request
 
 TF_MODULE = """
 variable "bucket_name" {

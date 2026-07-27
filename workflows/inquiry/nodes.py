@@ -12,9 +12,9 @@ classify_resource_type is a single-shot bound-tool call, not
 create_react_agent's ReAct loop -- this is one classification decision,
 not a multi-turn tool-calling conversation, the same "the call itself
 is the structured signal" shape as record_security_decision. Reuses
-workflows.drafting.model_config.get_model() directly rather than
+workflows.provision_stack.model_config.get_model() directly rather than
 duplicating it -- generic per-role model loading, not drafting-specific
-logic, same reuse discipline workflows/drafting/plan_request.py already
+logic, same reuse discipline workflows/provision_stack/plan_request.py already
 applies to gateway/compliance_preflight.py.
 
 existence_check is fully deterministic, zero LLM calls, and runs
@@ -22,7 +22,7 @@ unconditionally so inquiry_request() always returns exactly one
 InquiryResult, whether or not classification resolved a type.
 """
 from gateway.infra_inventory_store import InfraInventoryStore
-from workflows.drafting.model_config import get_model
+from workflows.provision_stack.model_config import get_model
 from workflows.inquiry.state import InquiryResult, InquiryState
 from workflows.inquiry.tools import select_resource_type
 

@@ -1,8 +1,8 @@
 ## Why
 Nothing in this codebase can create a Kubernetes cluster today, on any
 cloud. `TeamMember`/`scope` (the field that distinguishes an
-infra/foundation-scoped requester from an app-scoped one) doesn't exist
-in `gateway/schemas.py`. `FoundationRecord` (what would represent "this
+infra/stack-scoped requester from an app-scoped one) doesn't exist
+in `gateway/schemas.py`. `ResourceRecord` (what would represent "this
 cluster exists, this plan approved it") doesn't exist either. No MCP
 server config for AWS's `eks-mcp-server`, GCP's `gke-mcp`, or Azure's
 `aks-mcp` exists in `mcp_server/external_servers.py`. This session's
@@ -15,35 +15,39 @@ person, one cluster, one cloud at a time, approval-gated, real for all
 three providers.
 
 **Naming is deliberate**: this is Kubernetes-cluster provisioning
-specifically, not "foundation provisioning" generically.
+specifically, not "Stack-tier provisioning" generically (originally
+written as "foundation provisioning" — renamed per
+`docs/composable_foundation_blueprints.md` Parts G/M, "no more
+foundation/platform," matching the `ResourceRecord`/`Stack` terminology
+verified against AWS/Azure/OpenStack/Pulumi/Terraform).
 `docs/compute_paradigm_layering.md` already names Kubernetes as one of
 **four** compute paradigms (Kubernetes, VM, managed-containers,
-serverless) — each with a different-shaped foundation chain (serverless
-doesn't even need a network layer by default). Calling this capability
-something generic like "foundation-cluster-provisioning" would repeat
-the exact conflation that doc already flagged as a recurring mistake in
-this project's own prior docs. VM/managed-container/serverless
-foundation provisioning are separate, future capabilities with lighter
+serverless) — each with a different-shaped resource-provisioning chain
+(serverless doesn't even need a network layer by default). Calling this
+capability something generic like "stack-cluster-provisioning" would
+repeat the exact conflation that doc already flagged as a recurring
+mistake in this project's own prior docs. VM/managed-container/serverless
+provisioning are separate, future capabilities with lighter
 chains — not covered here, and not assumed to share this capability's
 code path.
 
 ## What Changes
-- Add `TeamMember`/`scope` (`"foundation"` | `"app"` | `"both"`) to
+- Add `TeamMember`/`scope` (`"stack"`|`"app"`|`"both"` | `"stack"`|`"app"`|`"both"` | `"stack"`|`"app"`|`"both"`) to
   `gateway/schemas.py`, exactly as already designed in
   `docs/skills_and_workspace_design.md` and
   `docs/infra_discovery_and_platform_app_split.md` — reused, not
   redesigned here.
 - Add a gate check: a request to create a Kubernetes cluster is denied
   before skill/tool resolution runs unless the requester's `scope`
-  includes `"foundation"`.
-- Add `FoundationRecord` to `gateway/schemas.py` and a matching SQLite
+  includes `"stack"`|`"app"`|`"both"`.
+- Add `ResourceRecord` to `gateway/schemas.py` and a matching SQLite
   table, same database `BrokeredToolDispatcher` already opens (per
   `docs/config_storage_backend.md`'s established convention), including
   `compute_paradigm: str = "kubernetes"` — a field
   `docs/compute_paradigm_layering.md` Part D already designed for
   exactly this purpose, wired into a concrete schema for the first time
   here. **Scoped down from the canonical multi-layer design**: one
-  `FoundationRecord` per cluster for this change, `layer="compute"`,
+  `ResourceRecord` per cluster for this change, `layer="compute"`,
   bundling network + compute + node/cluster roles as one unit — the
   network/compute/identity decomposition from
   `docs/foundation_layer_decomposition.md` is real design but
@@ -64,11 +68,11 @@ code path.
   ones) that, for an approved `ToolIntent` targeting a Kubernetes
   cluster resource type, calls the right cloud's mutating MCP tool.
 - Add execution-outcome tracking (succeeded/failed/denied per attempt),
-  and write the resulting `FoundationRecord` on success.
+  and write the resulting `ResourceRecord` on success.
 
 **Explicitly NOT in scope**: VM, managed-container, or serverless
-foundation provisioning (separate future capabilities, per the naming
-note above); the full `Block`/`Blueprint`/matching-criteria model
+provisioning (separate future capabilities, per the naming
+note above); the full `Block`/`Stack`-matching-criteria model
 (`docs/composable_foundation_blueprints.md` — still exploratory, schema
 not committed); the ordered org→BU→account onboarding stages (Stages
 A–D from that same doc — this change assumes an org/BU/account already
@@ -85,19 +89,19 @@ Part E).
 - `kubernetes-cluster-provisioning`: an infra-scoped requester creates a
   single Kubernetes cluster (EKS, GKE, or AKS) through this system,
   gated by the existing deny-by-default approval mechanism, with a
-  `FoundationRecord` written on success — parameterized by
+  `ResourceRecord` written on success — parameterized by
   `cloud_provider`, one flow, three execution backends, one compute
   paradigm.
 
 ### Modified Capabilities
 <!-- None -- gateway/tool_dispatcher.py's evaluate_intent() and
 gateway/schemas.py's PlanRecord/ToolIntent are consumed, not changed by
-this proposal; this proposal's schema additions (TeamMember, FoundationRecord)
+this proposal; this proposal's schema additions (TeamMember, ResourceRecord)
 are new fields/tables, not changes to previously-specified requirements. -->
 
 ## Impact
-- **New code**: `gateway/schemas.py` (`TeamMember`, `FoundationRecord`),
-  a new `FoundationRecord` SQLite table, `mcp_server/external_servers.py`
+- **New code**: `gateway/schemas.py` (`TeamMember`, `ResourceRecord`),
+  a new `ResourceRecord` SQLite table, `mcp_server/external_servers.py`
   (three new server configs), a new execution module (exact location
   TBD in design.md), a new scope-gate check ahead of skill/tool
   resolution.
@@ -112,10 +116,11 @@ are new fields/tables, not changes to previously-specified requirements. -->
   responses (same pattern `tests/test_gateway.py` already uses).
   Live, real-cluster end-to-end testing has to happen wherever real
   cloud credentials exist — outside this environment.
-- **Not affected**: `workflows/drafting/` (app-tier drafting), the
-  `wire-dispatch-execution` change (a separate, app-tier proposal not
-  yet applied) — this change builds its own minimal execution path
-  scoped to foundation-tier resources rather than depending on that one
-  landing first; the two share the same conceptual shape
+- **Not affected**: `workflows/provision_stack/` (app-tier provisioning,
+  renamed from "drafting" — `docs/composable_foundation_blueprints.md`
+  Parts G/M), the `wire-dispatch-execution` change (a separate, app-tier
+  proposal not yet applied) — this change builds its own minimal
+  execution path scoped to Stack-tier resources rather than depending
+  on that one landing first; the two share the same conceptual shape
   (approve → dispatch → execute → record) and should converge into one
   shared module later, flagged in design.md, not solved here.

@@ -21,10 +21,10 @@ import pytest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, ToolCall
 
-import workflows.drafting.nodes as nodes_module
-from workflows.drafting.graph import build_drafting_graph
-from workflows.drafting.observability import LLMObservabilityLogger
-from workflows.drafting.state import DraftingState
+import workflows.provision_stack.nodes as nodes_module
+from workflows.provision_stack.graph import build_provision_stack_graph
+from workflows.provision_stack.observability import LLMObservabilityLogger
+from workflows.provision_stack.state import ProvisionStackState
 from gateway.schemas import WorkspaceBundle
 
 
@@ -89,7 +89,7 @@ def stubbed_graph(monkeypatch):
     monkeypatch.setattr(nodes_module, "get_cdk_provisioning_tools", fake_get_cdk_tools)
     monkeypatch.setattr(nodes_module, "get_terraform_provisioning_tools", fake_get_terraform_tools)
 
-    builder = build_drafting_graph(mcp_client=None)  # never touched, tools are stubbed
+    builder = build_provision_stack_graph(mcp_client=None)  # never touched, tools are stubbed
     return builder.compile()
 
 
@@ -163,7 +163,7 @@ async def test_rejected_plan_still_has_the_proposal_in_history(monkeypatch):
     monkeypatch.setattr(nodes_module, "get_cdk_provisioning_tools", fake_get_cdk_tools)
     monkeypatch.setattr(nodes_module, "get_terraform_provisioning_tools", fake_get_terraform_tools)
 
-    builder = build_drafting_graph(mcp_client=None)
+    builder = build_provision_stack_graph(mcp_client=None)
     graph = builder.compile()
 
     result = await graph.ainvoke(
@@ -176,7 +176,7 @@ async def test_rejected_plan_still_has_the_proposal_in_history(monkeypatch):
     )
     messages = result["messages"]
 
-    from workflows.drafting.plan_request import _extract_propose_tool_intent_args, _security_approved
+    from workflows.provision_stack.plan_request import _extract_propose_tool_intent_args, _security_approved
 
     assert len(_extract_propose_tool_intent_args(messages)) == 1  # the call IS in history
     assert _security_approved(messages) is False  # but harvest must not use it

@@ -5,7 +5,7 @@ Part F0). Uses list_skills_in_dir()/load_skill_from_dir() directly
 instead (Part F0b): a cheap, frontmatter-only listing pass, then one
 full load only for the single winning candidate.
 
-Sourced from workflows/drafting/skill_loading.py (vendored,
+Sourced from workflows/provision_stack/skill_loading.py (vendored,
 zero-ADK-coupling copy of google.adk.skills' real implementation) as of
 the migrate-to-langgraph cutover (2026-07-15, task 7.2) -- this file's
 own matching logic below is unchanged, only the import line moved, per
@@ -14,7 +14,7 @@ all, only the two import lines" decision.
 """
 from typing import Optional
 
-from workflows.drafting.skill_loading import Frontmatter, Skill, list_skills_in_dir, load_skill_from_dir
+from workflows.provision_stack.skill_loading import Frontmatter, Skill, list_skills_in_dir, load_skill_from_dir
 
 from .skill_usage_store import SkillUsageStore
 

@@ -1,7 +1,7 @@
 ---
-last_updated: 2026-07-24
+last_updated: 2026-07-26
 owner: platformops-agent maintainers
-scope: reframes FoundationRecord's fixed layer chain as a composable Block/Blueprint model — resolves docs/remaining_deep_dives.md item 10
+scope: reframes FoundationRecord's fixed layer chain as a composable Resource+Stack model (Block dropped, Blueprint/PlatformRecord/"platform" superseded by Resource/Stack terminology verified against AWS/Azure/GCP/OpenStack/Terraform/Pulumi) — resolves docs/remaining_deep_dives.md item 10, tracks in-flight naming decisions ahead of code
 reviewed_by: unreviewed (first draft, captured from an explore-mode session)
 ---
 
@@ -30,6 +30,45 @@ directly rather than reasoning from an earlier doc's now-stale finding.
 Resolves item 10's question with a concrete direction; doesn't resolve
 the schema, which needs its own follow-up design pass before anything
 here is buildable.
+
+**Parts G–L, added 2026-07-25 (a second, later explore-mode session):**
+drops `Block` entirely — the model simplifies to `PlatformRecord`
+(renamed from `FoundationRecord`, generalized past foundation-tier-only)
+plus `Blueprint`, connected by a single required `blueprint_id` foreign
+key, no catalog/wiring/matching-criteria layer. Settles four naming
+decisions (`workflows/provision_infra_resource/`, `PlatformRecord`,
+"platform" terminology, a third `workflow_hint` value) that are
+**decided but not yet applied to code** — the working tree currently has
+a broken, mid-rename intermediate state (Part G). Verifies, via fresh
+web research, that only Azure natively solves what Blueprint is for
+(its Resource Group); AWS and GCP don't. Connects Blueprint to two
+previously-unconnected existing docs (`InfraRelationship`'s edge
+vocabulary, the diagram-rendering-tier design) and finds
+blueprint-to-blueprint relationships are a derived rollup of existing
+resource-level edges, not a new mechanism. Sketches a persona-visibility
+model (platform vs. app) built on the same `TeamMember.scope`/`bu_id`
+gate already built and tested this session. Still not decided: the
+Resource→Stack binding mechanism, the `InfraInventoryRecord`
+merge question, and visibility-walk depth.
+
+**Parts M–O, added 2026-07-26 (same-day continuation):** supersedes
+Part G/H's `PlatformRecord`/`Blueprint`/"platform" naming with
+`ResourceRecord`/`Stack` — verified against five real platforms/tools
+(AWS CloudFormation, Azure Deployment Stacks, OpenStack Heat, Pulumi,
+HashiCorp Terraform Stacks), not this project's own coinage. Finds
+Azure independently deprecating a product literally named "Blueprints"
+in favor of "Deployment Stacks" — the same rename this conversation
+converged on, confirmed from the outside. Verifies (resolving a claim
+`docs/creation_time_relationship_capture_and_diagrams.md` had explicitly
+flagged unverified) that `terraform graph`/`pulumi stack graph` are
+real, and that CloudFormation/Heat have no native equivalent — corrected
+in that doc directly. Standardizes an operation vocabulary
+(`describe_stack`/`list_resources`/`describe_resource`/`graph_stack`/
+`generate_stack_template`/`create_stack`) against real platform verbs,
+and finds "assembling" a Stack from new and existing resources is
+`describe`/`list` feeding `create`, not a new operation — already the
+shape `dispatch_and_execute_cluster()`/`generate_cluster_template()`
+implement, needing renaming/generalizing, not re-architecting.
 
 ## Part A: The gap in today's design
 `docs/foundation_layer_decomposition.md` models the foundation as a chain —
@@ -441,34 +480,378 @@ description. **Fixed in place**, `docs/skills_and_workspace_design.md`,
 with a note pointing here. The original UX question (should they ever
 collapse for the common single-account case) stays genuinely open.
 
+## Part G: Naming settled this session (2026-07-25) — decided, implementation in progress, tree currently mid-rename
+Four renames, decided in sequence across one long explore-mode session,
+none fully applied to code yet:
+
+1. **`workflows/drafting/` → `workflows/provision_infra_resource/`.**
+   "Drafting" named the mechanism (produce a draft plan pending
+   approval); "provision" names the intent (what a requester actually
+   asks for) — the module's own docstring already leaned this way
+   (*"provisioning tool-calling nodes"*). **Tree state**: `git mv`
+   already run: the directory is at its new path. Every internal
+   import across the ~22 consuming files (`gateway/plan_request.py`'s
+   re-export, `gateway/skill_matching.py`, `gateway/compliance_preflight.py`,
+   `gateway/skill_template_agent.py`, `workflows/inquiry/`'s reuse
+   references, 6+ test files) still says `workflows.drafting` —
+   **broken imports, not yet fixed.** `DraftingState`/`build_drafting_graph`/
+   `build_checkpointed_drafting_graph` also need renaming for internal
+   consistency, not just the package path.
+2. **`workflow_hint` value `"drafting"` → `"provision_infra_resource"`**
+   in `workflows/intake/` (`WORKFLOW_CANDIDATES`, the Tier 2 prefix
+   convention, the Tier 3 classification prompt) — decided, not applied.
+3. **`FoundationRecord` → `PlatformRecord`** (superseding an
+   intermediate `ResourceRecord` name floated earlier the same
+   session — `PlatformRecord` is the setting instruction, not
+   `ResourceRecord`) — decided, not applied. Still carries the
+   `blueprint_id` requirement from Part H below.
+4. **"foundation" scope/tier terminology → "platform"** —
+   `TeamMember.scope` values (`"foundation"|"app"|"both"` →
+   `"platform"|"app"|"both"`), `requester_has_foundation_scope()` →
+   `requester_has_platform_scope()`, `gateway/kubernetes_foundation_dispatch.py`'s
+   own name, and every `docs/foundation_*.md` doc's terminology (not
+   necessarily their filenames — see the note below). Consistent with
+   existing precedent, not inventing new language:
+   `docs/personas_and_tool_blueprints.md` already names the persona
+   **"Platform/Foundation Engineer,"** not just "Foundation Engineer" —
+   "platform" was already the preferred word sitting right next to
+   "foundation."
+
+**Scope decision on doc filenames, stated explicitly so it isn't
+silently inconsistent later**: this rename applies to *terminology*
+(the words "foundation scope," "foundation tier," `TeamMember.scope`'s
+literal value) — it does **not** rename existing doc files like
+`docs/foundation_app_layering_and_iam_tiers.md`,
+`docs/foundation_layer_decomposition.md`,
+`docs/foundation_discovery_and_capability_matching.md`, or this doc's
+own filename. Per `CLAUDE.md`'s "correct in place, with a note" rule,
+those docs get a terminology note where they use "foundation" as a
+scope/tier word, not a file rename — the same discipline already
+applied to every other correction this session.
+
+## Part H: Dropping `Block` — the model simplifies to Resource + Blueprint, no catalog layer
+Superseded from Part C's original sketch: no separate `Block`
+definition table, no wiring dict, no matching-criteria resolution
+mechanism. Two things only:
+
+```
+PlatformRecord   — one provisioned thing (a VPC, a load balancer, a
+                    Kubernetes cluster, an S3 bucket...) — what
+                    FoundationRecord already represented, renamed and
+                    generalized past foundation-tier-only scope
+
+Blueprint         — the container a PlatformRecord belongs to; the
+                    shape an app is or will be deployed onto/into
+```
+
+**The rule, stated by the user directly**: a resource *can* be
+requested standalone — provisioning doesn't require pre-declaring a
+blueprint, matching how a person actually thinks ("I need a VPC," not
+"I need to declare a blueprint first"). But **a resource can never end
+up with no Blueprint reference** — no dangling resources, ever. This
+is a simpler, stronger version of `docs/foundation_layer_decomposition.md`'s
+already-named gap (*"nothing today checks that the compute module's
+inputs actually reference the network module's outputs"*) — instead of
+a wiring graph between typed Blocks, it's a single required foreign
+key every `PlatformRecord` must carry.
+
+```python
+class Blueprint(BaseModel):
+    blueprint_id: str
+    org_id: str
+    bu_id: str
+    name: str              # what an app team would recognize this as
+    status: str = "active"
+
+class PlatformRecord(BaseModel):
+    ...                     # everything already built in FoundationRecord stays
+    blueprint_id: str       # NEW, REQUIRED, never Optional/null
+```
+
+**Still genuinely open, not resolved across any of this session's later
+turns**: *how* a standalone resource request gets bound to a Blueprint
+at provisioning time. Three mechanisms named, none chosen:
+1. Auto-create one Blueprint per resource, merge later if a dependent
+   resource joins it.
+2. Requester names the Blueprint explicitly in the request.
+3. Inferred from dependency — a resource created *depending on*
+   another inherits that resource's Blueprint automatically (mirrors
+   `depends_on_foundation_id`'s existing shape); only a root resource
+   (no dependency — typically network) needs the binding decided at all.
+
+## Part I: What the cloud providers already give us — verified, not assumed, and the answer is genuinely mixed
+Researched directly (web search, current docs) before designing
+Blueprint further, since Azure/GCP/AWS might already solve this natively:
+
+| Cloud | Billing/isolation boundary | Native sub-boundary resource-grouping construct |
+|---|---|---|
+| **Azure** | Subscription | **Resource Group** — every resource belongs to exactly ONE, a real, required, exclusive lifecycle container. Not a billing boundary itself — pure organizational/deployment unit. This is Blueprint, already built into the platform. |
+| **AWS** | Account | **None this strong.** The service literally named "AWS Resource Groups" is tag-based/CFN-stack-based — a resource can belong to zero, one, or many groups, purely for cost-reporting/operational convenience, verified **not** a hard container. The closer real analog is a **CloudFormation stack** (a resource genuinely belongs to one, shared lifecycle, expressible dependencies) — worth noting `manage_eks_stacks` (already in use) is CFN-stack-shaped for exactly this reason. |
+| **GCP** | Project | **None this strong either.** Labels are GCP's tag equivalent — same weak, optional, non-exclusive shape as AWS tags. |
+
+**The finding that matters**: only Azure solves this natively. Building
+`Blueprint` as a project-level concept isn't reinventing something
+every cloud already has — it's what makes governance/audit/inventory
+*consistent* across all three clouds, since without it an Azure BU
+gets resource-group-level organization for free while an AWS or GCP BU
+gets nothing structurally equivalent.
+
+## Part J: Two hierarchy axes exist — don't conflate them
+Verified alongside Part I, since GCP's Organization→Folder→Project
+tree could easily be mistaken for the same concept as Blueprint. It
+isn't:
+
+```
+AXIS 1 — billing/governance hierarchy (ALREADY DESIGNED, don't touch)
+  AWS:    Organization → OU → Account
+  GCP:    Organization → Folder → Project
+  Azure:  Management Group → Subscription
+  → homed in OrgRegistryEntry's aws_ou_id/gcp_folder_id/
+    azure_management_group_id, and CloudAccountBinding
+    (docs/org_registry_design.md, docs/multi_account_per_bu_design.md)
+
+AXIS 2 — resource-grouping within one account/project/subscription
+  → Blueprint, the new thing this Part H/I/J sequence designs
+```
+
+GCP Folders exist for policy/IAM inheritance across a company's org
+structure — not for grouping one app's resources together. A GCP
+"parent project" is Axis 1, not Axis 2. Conflating them would mean
+trying to make Blueprint do a job `CloudAccountBinding` already does.
+
+**One real consequence for Blueprint's shape**: it is not necessarily
+1:1 with one `CloudAccountBinding`. The Shared VPC / cross-account RAM
+research (`docs/cross_project_network_sharing.md`) already established
+real resources legitimately spanning two accounts/projects — a
+Blueprint describing "the resources one app actually uses" has to be
+able to span accounts when that's the real topology, not be scoped to
+exactly one.
+
+## Part K: Blueprint-to-blueprint relationships are derived, not a new edge type
+Traced against two existing design docs neither previously connected
+to Blueprint: `docs/infra_graph_modeling_and_db_options.md` (the
+`InfraRelationship` edge schema) and
+`docs/creation_time_relationship_capture_and_diagrams.md` (when edges
+get captured, and how diagrams get rendered from them). Both design
+only, neither built — but the vocabulary already fits without
+extension:
+
+```python
+InfraRelationship  # designed, not built
+  (org_id, bu_id, subject_identifier, relationship_type,
+   object_identifier, discovered_at, provenance)
+relationship_type ∈ {contained_in, depends_on, shared_from,
+                      workload_identity_binds_to}
+```
+
+**A Blueprint's topology diagram is the already-designed Tier 1
+render** (`creation_time_relationship_capture_and_diagrams.md` Part D
+— nodes + edges → Mermaid/DOT, zero LLM, the only rendering tier
+concrete enough to build now; native toolchain graphs like
+`terraform graph` are explicitly flagged **unverified**, LLM-narrated
+diagrams explicitly rejected as lowest-confidence for exactly this
+kind of "wrong answer is expensive" claim) — just scoped to
+`WHERE blueprint_id = ?` instead of `WHERE bu_id = ?`.
+
+**Blueprint-to-blueprint sharing needs no new edge type.** If Resource
+X (in Blueprint A) has a `shared_from`/`depends_on` edge to Resource Y
+(in Blueprint B), then "Blueprint A uses Blueprint B" is a **rollup
+query over existing resource-level edges**, not a second fact to
+maintain in parallel. This is the same move already made once in this
+project — `resource_category` unifying "is this a network resource"
+across three incompatible provider type vocabularies — applied a
+level higher, to blueprints instead of resource types.
+
+## Part L: Persona-based visibility — the same `TeamMember.scope`/`bu_id` gate, driving a query instead of a single check
+`requester_has_foundation_scope()` (soon
+`requester_has_platform_scope()`, Part G) is a yes/no gate today: can
+this person create a cluster. The same fact — scope + BU membership —
+should drive what each persona *sees*, not just what they can *do*:
+
+```
+platform persona (Bob)          app persona (Alice)
+  sees: blueprints HIS bu_id       sees: blueprints HER bu_id owns
+  owns, full topology,             (full topology) UNION blueprints
+  drift/audit status,              reachable by walking
+  create/extend affordances        shared_from/depends_on edges
+                                    OUTWARD from those — read-only,
+                                    for compatibility-checking
+                                    (discovered_capabilities), no
+                                    edit affordances
+```
+
+**Why app-persona visibility can't be strict `bu_id` ownership**: if
+Alice's Payments BU owns an app-blueprint that's `shared_from` a
+Platform BU's shared-network blueprint, she needs to see enough of
+that shared blueprint (its `discovered_capabilities` — K8s version,
+ingress class) to check her app is compatible, per
+`docs/foundation_and_app_deploy_flow_example.md` step 11a — even
+though she doesn't own it and can't edit it.
+
+**Still open, not resolved**: does reachability stop at one hop, or
+walk the full chain? `docs/foundation_layer_decomposition.md`'s
+`_foundation_chain_active()` already walks the *entire* dependency
+chain for the approval-gate case (a broken root network denies a
+deploy even if the immediate layer looks active) — whether visibility
+should follow that same "walk it all" rule, or a shallower one, isn't
+decided.
+
+## Part M: `Blueprint`/`FoundationRecord`/`platform` superseded — final vocabulary, grounded in industry precedent, not invented
+Parts G–L settled on `PlatformRecord`/`Blueprint`/"platform" terminology.
+This turn's research supersedes that with vocabulary verified against
+five real platforms/tools rather than this project's own coinage:
+
+```
+Resource / ResourceRecord   — one resource (matches every tool's own word:
+                               AWS "resource," Heat "resource," Pulumi
+                               "resource")
+Stack                        — the group (matches AWS CloudFormation
+                               Stack, Azure Deployment Stack (GA),
+                               OpenStack Heat Stack, Pulumi Stack,
+                               HashiCorp's own newer Terraform Stacks)
+```
+
+`FoundationRecord` → `ResourceRecord` (not `PlatformRecord` — Part G's
+intermediate name is now superseded). `Blueprint` → `Stack`. "Platform"
+scope/tier terminology also retired — Part H's `risk_tier`/
+`approval_tier`-as-a-resource-type-attribute question (does the
+mandatory-human-approval behavior still need a name, just not a
+top-level persona/module name) remains open, now phrased against
+`Stack`/`Resource` instead of `Blueprint`/`Platform`.
+
+**Independent, striking confirmation this is the right direction, not
+just a preference**: Azure itself had a product literally named
+**"Blueprints"** — and is deprecating it (2026-07-11) *in favor of*
+**"Deployment Stacks."** The same rename this conversation converged on
+across several turns is the exact direction the platform that
+originated the word "Blueprint" as a product name is itself moving.
+
+**What CloudFormation's real mechanics validate, not just name**:
+nested stacks (a stack containing child stacks) and cross-stack
+references (`Export`/`Fn::ImportValue`, one stack's resource referenced
+by another) map exactly onto Part H's "resource can compose resources"
+and Part K's "blueprint-to-blueprint sharing is a derived rollup" —
+independently arrived at *before* this platform research, now confirmed
+as the same shape real tools already use, not a bespoke mechanism.
+
+## Part N: Inquiry and diagram-export capability, verified per platform — resolves a previously-flagged-unverified claim
+`docs/creation_time_relationship_capture_and_diagrams.md` Part D
+explicitly flagged native toolchain graph commands (`terraform graph`)
+as **"unverified... recalled from training data, not confirmed against
+current docs"** — this session's own stated discipline required closing
+that before relying on it. Verified now, directly, per platform:
+
+| Tool/Platform | Inquiry (real, verified) | Diagram/graph export (verified) |
+|---|---|---|
+| **Terraform** | `terraform show`, `terraform state list` | **`terraform graph`** — real, current, DOT format (`terraform graph \| dot -Tpng > graph.png`). Resolves the open question above: **real**, not hypothetical. |
+| **Pulumi** | `pulumi stack` | **`pulumi stack graph`** — real, DOT format, includes parent/child edges. Generated from **deployed state**, not just plan/config — reflects actual drift automatically, a stronger property than Terraform's own (which defaults to plan-type unless given an apply-time plan file). |
+| **AWS CloudFormation** | `DescribeStacks`, `DescribeStackResources`/`ListStackResources`, `DescribeStackResource` (singular) — all real, verified | **No native graph/diagram export found** — searched specifically, verified absent, not assumed absent. |
+| **OpenStack Heat** | `openstack stack show`, `openstack stack resource list` — real, verified | Heat uses dependency graphs **internally** for orchestration ordering; **no exposed CLI command to view/export that graph found** — verified absent. |
+| **Azure** | `az deployment stack show` (real, GA per Part I) | Not confirmed either way this pass — see Part M's Blueprints-deprecation finding as an adjacent, not equivalent, signal. |
+
+**What this means for how this project builds the diagram, concretely**:
+only 2 of 5 have a native graph export, and both are toolchain-specific
+(useless for a Stack managed via CFN or Heat). This **reinforces**,
+doesn't replace, `docs/creation_time_relationship_capture_and_diagrams.md`
+Part D's Tier 1 mechanical render (`InfraRelationship` edges → Mermaid/DOT,
+built from this project's own captured data) as the only mechanism that
+works uniformly regardless of toolchain. `terraform graph`/`pulumi stack
+graph` become legitimate, now-**verified** Tier 2 enhancements, usable
+only when a Stack happens to be Terraform- or Pulumi-managed — that
+doc's own table should be corrected in place to reflect this (done,
+see that doc directly, not duplicated here).
+
+## Part O: The operation vocabulary — verified verb families, and "assemble" is `describe`/`list` feeding `create`, not a new operation
+Grounded in Part N's research, standardizing this project's own
+operation names against what real platforms actually call these things,
+not inventing fresh verbs:
+
+| This project's operation | Verb family | Matches (verified, Part N) |
+|---|---|---|
+| `describe_stack(stack_id)` | Describe/Show | AWS `DescribeStacks`, Azure `az deployment stack show`, OpenStack `openstack stack show`, Pulumi `pulumi stack` |
+| `list_resources(stack_id)` | List | AWS `DescribeStackResources`/`ListStackResources`, OpenStack `openstack stack resource list` |
+| `describe_resource(stack_id, resource_id)` | Describe (singular) | AWS `DescribeStackResource` |
+| `graph_stack(stack_id)` | Graph | Tier 2 where available (verified real, Part N); Tier 1 mechanical render universally |
+| `generate_stack_template(...)` | Generate | non-mutating drafting step — **already built this session** as `generate_cluster_template()` |
+| `create_stack(template)` | Create | the actual mutating call, gated by approval — **already built this session** as `dispatch_and_execute_cluster()` |
+
+**The connecting insight**: "assembling" a new Stack from a mix of new
+and existing resources isn't a new operation to design — it's
+`describe_stack()`/`list_resources()` (the discovery-before-creation
+check, `docs/foundation_discovery_and_capability_matching.md`'s
+reuse/create-new/adopt-unmanaged branch, already designed) running
+*before* `create_stack()`, every time, never skipped. CloudFormation's
+nested-stacks/cross-stack-references precedent (Part M) is exactly this
+in production use: a new stack's template can reference an *existing*
+stack's exported resource (a `shared_from` edge, reused, not recreated)
+while also defining genuinely new resources (`contained_in` edges,
+newly created) — one `create_stack()` call, composing both.
+
+**Naming consequence for already-built code**: `gateway/kubernetes_foundation_dispatch.py`'s
+`dispatch_and_execute_cluster()` and `generate_cluster_template()`
+already implement `create_stack`/`generate_stack_template`'s shape for
+the Kubernetes-paradigm case specifically — they don't need
+re-architecting, just renaming (Part G/M) and generalizing past
+Kubernetes-only once a second compute paradigm needs the same verbs.
+
 ## Open questions / not yet decided
-- Whether `Block` needs its own table (for cross-Blueprint reuse-tracking)
-  or can ride inside `Blueprint`'s JSON blob — the one piece of Q1 Part F
-  didn't fully resolve.
-- Q3's exact matching-criteria axis weights (org/BU/purpose/cloud_provider/
-  explicit-override) — narrowed to "new mechanism needed," weights
-  themselves undesigned.
-- The catalog/self-service presentation layer's actual UI/UX (Q4 narrowed
-  the data model, not the presentation) — separate follow-up.
-- Q6's routing mechanism needs its own pass alongside the review-policy/
-  approval design specifically (which foundation-scope approver, how they're
-  selected) — the shape is borrowed from `SkillProposal`, the wiring isn't
+
+**Superseded by Part H (Block dropped entirely)** — no longer applicable:
+- ~~Whether `Block` needs its own table~~ — moot, no `Block` table exists
+  in the simplified model.
+- ~~Q3's exact matching-criteria axis weights~~ — moot, no matching
+  mechanism needed once there's no catalog of Blocks/Blueprints to
+  resolve between; Blueprint selection (Part H) is now "which Blueprint
+  does this resource attach to," not "which Blueprint template gets
+  instantiated."
+
+**Still open, carried forward:**
+- **Part H's core mechanism**: how a standalone-requested resource
+  actually gets bound to a Blueprint — auto-create / requester-named /
+  inferred-from-dependency, three options named, none chosen.
+- **Part I/G naming**: the `InfraInventoryRecord`-vs-`PlatformRecord`
+  merge question from the turn before Part G — still fully open. Two
+  concrete schema collisions block either resolution: `resource_type`
+  format (`InfraInventoryRecord`'s provider-native strings vs.
+  `FoundationRecord`'s inconsistent placeholders — `"gke_cluster"`
+  matches neither CFN-style nor GCP's real
+  `container.googleapis.com/Cluster` convention, a real bug to fix
+  regardless of the merge decision) and `layer`'s two incompatible
+  meanings (tier axis vs. network/compute/identity axis) across the two
+  schemas.
+- **Part L**: visibility depth for the app-persona blueprint query —
+  one hop or full chain walk.
+- **Part G's tree state**: the `workflows/drafting/` →
+  `workflows/provision_infra_resource/` rename is mid-flight — `git mv`
+  done, ~22 files' imports and the `Drafting*`-named identifiers not
+  yet fixed. Broken until finished.
+- The catalog/self-service presentation layer's actual UI/UX — separate
+  follow-up, now reframed by Part L as "the app-persona blueprint view"
+  specifically rather than an abstract catalog.
+- The app-triggered-but-foundation-approved routing mechanism (originally
+  Part E/F's Q6) still needs its own pass alongside review-policy design
+  — shape borrowed from `SkillProposal`'s admission flow, wiring not
   designed.
-- Whether Stage C/D should ever collapse for the common single-account
-  case — Q7 fixed the doc inconsistency but didn't resolve the underlying
-  UX question; Google's own model keeps them separate even in the common
-  case, suggestive but not conclusive here.
-- `FoundationRecord` Part D's reverse-dependency decommission check and
-  `docs/foundation_layer_decomposition.md`'s other open items are
-  unaffected by any of the above — not re-examined this session.
+- Whether Stage C/D (BU onboarding vs. account vending) should ever
+  collapse for the common single-account case — not resolved, Google's
+  own model keeps them separate even in the common case, suggestive but
+  not conclusive.
+- `docs/foundation_layer_decomposition.md` Part D's reverse-dependency
+  decommission check, and that doc's other open items, are unaffected by
+  anything in Parts G–L — not re-examined this session.
 
 ## What's real vs. designed
 | Piece | Status |
 |---|---|
 | `FoundationRecord`, closed 3-layer chain | Design only (`docs/foundation_layer_decomposition.md`) — unchanged by this doc |
-| Block/Blueprint/Matching-Criteria reframe | New, exploratory — not designed to buildable detail, sketch only |
-| Terraform Stacks / Humanitec research backing this reframe | Verified against current docs this session (see Sources) |
-| Any of this wired into `gateway/schemas.py` or the dispatcher | Not built, not proposed as a next build step by this doc |
+| `gateway/scope_gate.py`, `TeamMember.scope`, `FoundationRecord` (with `compute_paradigm`) | **Real, built and tested** this session, via `openspec/changes/provision-kubernetes-cluster` (27/35 tasks) — but named `FoundationRecord`/`requester_has_foundation_scope()`, **not yet renamed** to `PlatformRecord`/`requester_has_platform_scope()` per Part G |
+| `gateway/kubernetes_foundation_dispatch.py` | **Real, built and tested** — AWS/GCP/Azure adapters against researched-not-live-verified tool names; not yet renamed per Part G; no `blueprint_id` field yet |
+| Block/Blueprint/Matching-Criteria reframe (Parts B/C) | Superseded by Part H — Block dropped, matching-criteria dropped, replaced by a required `blueprint_id` foreign key |
+| Blueprint (Part H, simplified) | New, exploratory — sketch only, resolution mechanism (Part H) undecided |
+| `workflows/drafting/` → `workflows/provision_infra_resource/` rename | **Mid-flight, broken** — `git mv` done, imports not fixed (Part G) |
+| Terraform Stacks / Humanitec research (Parts B/C) | Verified against current docs, still accurate |
+| Azure/AWS/GCP native grouping-construct research (Part I) | Verified against current docs this session (see Sources) |
+| `InfraRelationship`/diagram-rendering tiers (Part K) | Design only, unchanged, in their own docs — this doc just connects Blueprint to them |
 
 ## How this relates to the existing docs
 - Directly resolves `docs/remaining_deep_dives.md` item 10's question
@@ -513,6 +896,24 @@ collapse for the common single-account case) stays genuinely open.
   `docs/multi_account_per_bu_design.md`'s later account-model correction
   (Q7) — the account-model fix never propagated back to the earlier doc's
   own wording until now.
+- **Parts G–L, added 2026-07-25**: settles four naming decisions
+  (`workflows/provision_infra_resource/`, `PlatformRecord`, "platform"
+  terminology, `workflow_hint`) affecting `openspec/changes/provision-kubernetes-cluster`'s
+  already-built code — that change's artifacts and shipped code are
+  **not yet updated to match**, tracked here as the source of truth
+  until they are. Drops `Block` entirely (Part H), superseding Parts B/C's
+  matching-criteria mechanism. Connects Blueprint, for the first time, to
+  `docs/infra_graph_modeling_and_db_options.md`'s `InfraRelationship`
+  schema and `docs/creation_time_relationship_capture_and_diagrams.md`'s
+  rendering tiers — neither doc previously referenced Blueprint or was
+  referenced from here. Verifies (web research, Part I) that Azure's
+  Resource Group is the only native equivalent to Blueprint across the
+  three clouds, and disambiguates Blueprint (Part J) from the
+  already-solved org/billing hierarchy (`docs/org_registry_design.md`,
+  `docs/multi_account_per_bu_design.md`) so the two don't get conflated.
+  Extends `docs/foundation_and_app_deploy_flow_example.md` step 11a's
+  capability-matching read into a general persona-visibility model
+  (Part L).
 - Doesn't change the one required next step
   (`plan_request(envelope)`, already implemented — this is foundation/
   app-layer design, unrelated to the drafting-path boundary).
@@ -539,3 +940,28 @@ collapse for the common single-account case) stays genuinely open.
 - [awslabs/landing-zone-accelerator-on-aws — GitHub](https://github.com/awslabs/landing-zone-accelerator-on-aws)
 - [Terraform MCP server reference — HashiCorp Developer](https://developer.hashicorp.com/terraform/mcp-server/reference)
 - [Terraform MCP server updates: Stacks support, new tools, and tips — HashiCorp blog](https://www.hashicorp.com/en/blog/terraform-mcp-server-updates-stacks-support-new-tools-and-tips)
+
+**Part I additions (2026-07-25, native cloud grouping constructs):**
+- [Azure Management Groups, Subscriptions & RGs Explained — RedFoxSec](https://www.redfoxsec.com/blog/azure-management-groups-subscriptions-and-resource-groups-explained)
+- [Design for subscriptions — Microsoft Learn](https://learn.microsoft.com/training/modules/design-governance/4-design-for-subscriptions)
+- [Understand and work with Cost Management scopes — Microsoft Learn](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/understand-work-scopes)
+- [Building a cost allocation strategy — AWS tagging best-practices whitepaper](https://docs.aws.amazon.com/whitepapers/latest/tagging-best-practices/building-a-cost-allocation-strategy.html)
+- [AWS Resource Groups now supports 160 more resource types — AWS What's New](https://aws.amazon.com/about-aws/whats-new/2025/04/aws-resource-groups-160-resource-types)
+- [About resource hierarchy — Resource Manager, Google Cloud Documentation](https://docs.cloud.google.com/resource-manager/docs/cloud-platform-resource-hierarchy)
+- [Using resource hierarchy for access control — IAM, Google Cloud Documentation](https://docs.cloud.google.com/iam/docs/resource-hierarchy-access-control)
+- [Create folders — Resource Manager, Google Cloud Documentation](https://cloud.google.com/resource-manager/docs/creating-managing-folders)
+
+**Parts M/N/O additions (2026-07-26, Stack terminology and inquiry/graph API verification):**
+- [Azure deployment stacks — MicrosoftDocs/azure-docs, GitHub](https://github.com/MicrosoftDocs/azure-docs/blob/main/articles/azure-resource-manager/bicep/deployment-stacks.md)
+- [ARM Deployment Stacks now GA! — Microsoft Community Hub](https://techcommunity.microsoft.com/blog/azuregovernanceandmanagementblog/arm-deployment-stacks-now-ga/4145469)
+- [Heat Orchestration Template (HOT) specification — OpenStack Heat docs](https://docs.openstack.org/heat/latest/template_guide/hot_spec.html)
+- [Stacks | Pulumi Concepts — Pulumi Docs](https://www.pulumi.com/docs/iac/concepts/stacks/)
+- [pulumi stack graph — CLI commands, Pulumi Docs](https://www.pulumi.com/docs/iac/cli/commands/pulumi_stack_graph/)
+- [Automatic Diagram Generation for Always-Accurate Diagrams — Pulumi Blog](https://www.pulumi.com/blog/automating-diagramming-in-your-ci-cd/)
+- [terraform graph command reference — Terraform, HashiCorp Developer](https://developer.hashicorp.com/terraform/cli/commands/graph)
+- [DescribeStacks — AWS CloudFormation API Reference](https://docs.aws.amazon.com/AWSCloudFormation/latest/APIReference/API_DescribeStacks.html)
+- [DescribeStackResources — AWS CloudFormation API Reference](https://docs.aws.amazon.com/AWSCloudFormation/latest/APIReference/API_DescribeStackResources.html)
+- [DescribeStackResource — AWS CloudFormation API Reference](https://docs.aws.amazon.com/AWSCloudFormation/latest/APIReference/API_DescribeStackResource.html)
+- [Refer to resource outputs in another CloudFormation stack — AWS CloudFormation docs](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/walkthrough-crossstackref.html)
+- [Google Cloud Deployment Manager documentation — Google Cloud (EOL notice)](https://docs.cloud.google.com/deployment-manager/docs)
+- [OpenStack Orchestration (heat) command-line client — OpenStack Docs](https://docs.openstack.org/ocata/cli-reference/heat.html)

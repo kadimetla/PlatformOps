@@ -50,9 +50,9 @@ async def test_drafting_prefix_skips_the_model_entirely(monkeypatch):
 
     monkeypatch.setattr(nodes_module, "get_model", fail_if_called)
 
-    result = await intake_request(_request("drafting: create a new S3 bucket"))
+    result = await intake_request(_request("provision_stack: create a new S3 bucket"))
 
-    assert result.workflow_hint == "drafting"
+    assert result.workflow_hint == "provision_stack"
     assert result.clarifying_question is None
 
 
@@ -74,12 +74,12 @@ async def test_unprefixed_text_resolves_via_tier3(monkeypatch):
     monkeypatch.setattr(
         nodes_module,
         "get_model",
-        lambda role: _fake_model_selecting(workflow_name="drafting"),
+        lambda role: _fake_model_selecting(workflow_name="provision_stack"),
     )
 
     result = await intake_request(_request("please provision a bucket for logs"))
 
-    assert result.workflow_hint == "drafting"
+    assert result.workflow_hint == "provision_stack"
     assert result.clarifying_question is None
 
 

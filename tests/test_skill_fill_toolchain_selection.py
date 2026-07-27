@@ -3,14 +3,14 @@ found in docs/skill_scripts_as_iac_templates_and_ms_agent_skills_comparison.md
 Part D: a skill shipping both a Terraform (.tf) and a CloudFormation
 (.yaml) template used to always resolve to .tf regardless of the
 request's toolchain. Covers both copies of the fix
-(workflows/drafting/skill_fill.py and gateway/skill_template_agent.py --
+(workflows/provision_stack/skill_fill.py and gateway/skill_template_agent.py --
 the two must stay in lockstep since check_structured_match()'s
 missing_vars check has to agree with whichever template
 run_deterministic_skill_fill() actually fills).
 """
 from gateway.skill_template_agent import _find_template_script as gw_find_template_script
-from workflows.drafting.skill_loading import Frontmatter, Resources, Script, Skill
-from workflows.drafting.skill_fill import _find_template_script as drafting_find_template_script
+from workflows.provision_stack.skill_loading import Frontmatter, Resources, Script, Skill
+from workflows.provision_stack.skill_fill import _find_template_script as drafting_find_template_script
 
 TF_SOURCE = """
 variable "bucket_name" {

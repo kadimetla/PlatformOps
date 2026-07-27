@@ -22,7 +22,7 @@ class IntakeRequest(BaseModel):
 
 
 class IntakeResult(BaseModel):
-    workflow_hint: Optional[str] = None  # "drafting" | "inquiry"
+    workflow_hint: Optional[str] = None  # "provision_stack" | "inquiry"
     clarifying_question: Optional[str] = None
 
 

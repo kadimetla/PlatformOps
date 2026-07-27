@@ -1,7 +1,7 @@
 """Tests workflows/inquiry/'s existence-check graph end-to-end (package
 renamed from workflows/discovery/ on 2026-07-17). Fixture rows are
 written directly to InfraInventoryStore -- no discovery-sweep
-dependency, matching workflows/drafting/'s own tests writing fixture
+dependency, matching workflows/provision_stack/'s own tests writing fixture
 skills to disk directly. Covers
 openspec/changes/build-discovery-workflow/specs/inquiry-existence-check/spec.md's
 scenarios.

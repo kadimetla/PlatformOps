@@ -93,7 +93,7 @@ class LLMObservabilityLogger(CustomLogger):
 def register_llm_observability(db_path: str) -> LLMObservabilityLogger:
     """Registers one LLMObservabilityLogger instance as a litellm
     global callback. Idempotent-ish: called once at graph-build time
-    (workflows/drafting/graph.py), not per-node."""
+    (workflows/provision_stack/graph.py), not per-node."""
     logger = LLMObservabilityLogger(db_path)
     litellm.callbacks = [logger]
     return logger

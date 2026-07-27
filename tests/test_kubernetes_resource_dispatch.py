@@ -2,18 +2,20 @@
 Uses a fake MCP client (no real eks-mcp-server/gke-mcp/aks-mcp
 connection -- none available in this environment, see tasks.md task 1)
 matching the shape MultiServerMCPClient.get_tools()/tool.ainvoke()
-already expose.
+already expose. FoundationRecord/FoundationStore renamed to
+ResourceRecord/ResourceStore (docs/composable_foundation_blueprints.md
+Parts G/M).
 """
 import uuid
 
 import pytest
 
 from gateway.config_engine import ConfigLoader
-from gateway.foundation_store import FoundationStore
-from gateway.kubernetes_foundation_dispatch import (
+from gateway.kubernetes_resource_dispatch import (
     dispatch_and_execute_cluster,
     generate_cluster_template,
 )
+from gateway.resource_store import ResourceStore
 from gateway.schemas import PlanRecord, ToolIntent
 from gateway.tool_dispatcher import BrokeredToolDispatcher
 
@@ -94,9 +96,9 @@ def _intent(plan: PlanRecord, resource_type: str) -> ToolIntent:
 
 
 @pytest.mark.anyio
-async def test_denied_without_human_approval_never_calls_mcp_or_writes_foundation(tmp_path):
+async def test_denied_without_human_approval_never_calls_mcp_or_writes_resource(tmp_path):
     dispatcher = _dispatcher(tmp_path)
-    store = FoundationStore(str(tmp_path / "foundation.sqlite"))
+    store = ResourceStore(str(tmp_path / "resources.sqlite"))
     plan = _plan()
     intent = _intent(plan, "AWS::EKS::Cluster")
     fake_tool = _FakeTool("manage_eks_stacks", result="ok")
@@ -104,68 +106,88 @@ async def test_denied_without_human_approval_never_calls_mcp_or_writes_foundatio
 
     result = await dispatch_and_execute_cluster(
         plan, intent, human_approved=False, dispatcher=dispatcher,
-        foundation_store=store, mcp_client=mcp_client, cloud_provider="aws",
+        resource_store=store, mcp_client=mcp_client, cloud_provider="aws",
     )
 
     assert result.status == "denied"
-    assert result.foundation_id is None
+    assert result.resource_id is None
     assert fake_tool.calls == []  # no MCP call was ever attempted
 
 
 @pytest.mark.anyio
-async def test_aws_success_writes_foundation_record(tmp_path):
+async def test_aws_success_writes_resource_record(tmp_path):
     dispatcher = _dispatcher(tmp_path)
-    store = FoundationStore(str(tmp_path / "foundation.sqlite"))
+    store = ResourceStore(str(tmp_path / "resources.sqlite"))
     plan = _plan(plan_id="plan-aws", plan_hash="hash-aws")
     intent = _intent(plan, "AWS::EKS::Cluster")
     mcp_client = _FakeMCPClient({"eks": [_FakeTool("manage_eks_stacks", result="ok")]})
 
     result = await dispatch_and_execute_cluster(
         plan, intent, human_approved=True, dispatcher=dispatcher,
-        foundation_store=store, mcp_client=mcp_client, cloud_provider="aws",
+        resource_store=store, mcp_client=mcp_client, cloud_provider="aws",
     )
 
     assert result.status == "succeeded"
     assert result.resource_identifier == "payments-cluster"
-    record = store.get_foundation(result.foundation_id)
+    assert result.stack_id is not None  # auto-assigned, see module docstring
+    record = store.get_resource(result.resource_id)
     assert record.cloud_provider == "aws"
     assert record.compute_paradigm == "kubernetes"
+    assert record.stack_id == result.stack_id
 
 
 @pytest.mark.anyio
-async def test_gcp_success_writes_foundation_record(tmp_path):
+async def test_gcp_success_writes_resource_record(tmp_path):
     dispatcher = _dispatcher(tmp_path)
-    store = FoundationStore(str(tmp_path / "foundation.sqlite"))
+    store = ResourceStore(str(tmp_path / "resources.sqlite"))
     plan = _plan(plan_id="plan-gcp", plan_hash="hash-gcp")
     intent = _intent(plan, "gke_cluster")
     mcp_client = _FakeMCPClient({"gke": [_FakeTool("create_cluster", result="ok")]})
 
     result = await dispatch_and_execute_cluster(
         plan, intent, human_approved=True, dispatcher=dispatcher,
-        foundation_store=store, mcp_client=mcp_client, cloud_provider="gcp",
+        resource_store=store, mcp_client=mcp_client, cloud_provider="gcp",
     )
 
     assert result.status == "succeeded"
-    record = store.get_foundation(result.foundation_id)
+    record = store.get_resource(result.resource_id)
     assert record.cloud_provider == "gcp"
 
 
 @pytest.mark.anyio
-async def test_azure_success_writes_foundation_record(tmp_path):
+async def test_azure_success_writes_resource_record(tmp_path):
     dispatcher = _dispatcher(tmp_path)
-    store = FoundationStore(str(tmp_path / "foundation.sqlite"))
+    store = ResourceStore(str(tmp_path / "resources.sqlite"))
     plan = _plan(plan_id="plan-azure", plan_hash="hash-azure")
     intent = _intent(plan, "azure_aks_cluster")
     mcp_client = _FakeMCPClient({"aks": [_FakeTool("az_aks_operations", result="ok")]})
 
     result = await dispatch_and_execute_cluster(
         plan, intent, human_approved=True, dispatcher=dispatcher,
-        foundation_store=store, mcp_client=mcp_client, cloud_provider="azure",
+        resource_store=store, mcp_client=mcp_client, cloud_provider="azure",
     )
 
     assert result.status == "succeeded"
-    record = store.get_foundation(result.foundation_id)
+    record = store.get_resource(result.resource_id)
     assert record.cloud_provider == "azure"
+
+
+@pytest.mark.anyio
+async def test_explicit_stack_id_is_reused_not_overridden(tmp_path):
+    dispatcher = _dispatcher(tmp_path)
+    store = ResourceStore(str(tmp_path / "resources.sqlite"))
+    plan = _plan(plan_id="plan-stack", plan_hash="hash-stack")
+    intent = _intent(plan, "AWS::EKS::Cluster")
+    mcp_client = _FakeMCPClient({"eks": [_FakeTool("manage_eks_stacks", result="ok")]})
+
+    result = await dispatch_and_execute_cluster(
+        plan, intent, human_approved=True, dispatcher=dispatcher,
+        resource_store=store, mcp_client=mcp_client, cloud_provider="aws",
+        stack_id="payments-shared-stack",
+    )
+
+    assert result.stack_id == "payments-shared-stack"
+    assert store.get_resource(result.resource_id).stack_id == "payments-shared-stack"
 
 
 @pytest.mark.anyio
@@ -182,9 +204,9 @@ async def test_generation_is_non_mutating_and_callable_without_an_approval_recor
 
 
 @pytest.mark.anyio
-async def test_failed_execution_does_not_write_a_foundation_record(tmp_path):
+async def test_failed_execution_does_not_write_a_resource_record(tmp_path):
     dispatcher = _dispatcher(tmp_path)
-    store = FoundationStore(str(tmp_path / "foundation.sqlite"))
+    store = ResourceStore(str(tmp_path / "resources.sqlite"))
     plan = _plan(plan_id="plan-fail", plan_hash="hash-fail")
     intent = _intent(plan, "AWS::EKS::Cluster")
     mcp_client = _FakeMCPClient({
@@ -193,8 +215,8 @@ async def test_failed_execution_does_not_write_a_foundation_record(tmp_path):
 
     result = await dispatch_and_execute_cluster(
         plan, intent, human_approved=True, dispatcher=dispatcher,
-        foundation_store=store, mcp_client=mcp_client, cloud_provider="aws",
+        resource_store=store, mcp_client=mcp_client, cloud_provider="aws",
     )
 
     assert result.status == "failed"
-    assert result.foundation_id is None
+    assert result.resource_id is None

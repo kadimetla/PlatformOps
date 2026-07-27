@@ -16,8 +16,11 @@ from langchain_core.tools import tool
 # question ("assumed yes [workflow_hint equals] the WORKFLOW_REGISTRY
 # keys, not confirmed"). Plain tuple, extended by hand as new workflows
 # are built -- no registry before a third workflow exists to need one
-# (design.md's Decisions).
-WORKFLOW_CANDIDATES = ("drafting", "inquiry")
+# (design.md's Decisions). "drafting" renamed to "provision_stack"
+# (docs/composable_foundation_blueprints.md Parts G/M) -- matches
+# workflows/provision_stack/, and the create_stack/generate_stack_template
+# verbs settled in that doc's Part O.
+WORKFLOW_CANDIDATES = ("provision_stack", "inquiry")
 
 
 @tool

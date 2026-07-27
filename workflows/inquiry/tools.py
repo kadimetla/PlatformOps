@@ -1,5 +1,5 @@
 """select_resource_type -- classify_resource_type's structured signal
-tool, mirroring workflows/drafting/security_tools.py's
+tool, mirroring workflows/provision_stack/security_tools.py's
 record_security_decision pattern: a real bound tool whose CALL is the
 meaningful event, harvested from the model response directly (no
 ToolNode execution loop here -- classify_resource_type calls the model

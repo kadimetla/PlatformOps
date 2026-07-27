@@ -8,13 +8,13 @@ reviewed_by: unreviewed (first draft)
 # Creation-Time Relationship Capture, and What It Takes to Draw a Diagram
 
 ## Status
-Design only. Nothing here is built. One claim below (native
-toolchain-provided dependency graphs, e.g. `terraform graph`) is
-explicitly flagged **unverified** — recalled from training data, not
-confirmed against current docs the way this project's research
-discipline requires (`docs/cross_project_network_sharing.md`,
-`docs/iac_based_discovery.md`). It must not be treated as fact until
-checked.
+Design only. Nothing here is built. The native-toolchain-graph claim
+(`terraform graph` etc.) originally flagged **unverified** below —
+recalled from training data, not confirmed — was checked directly on
+2026-07-26 (`docs/composable_foundation_blueprints.md` Part N): real
+for Terraform and Pulumi, confirmed absent for CloudFormation and
+OpenStack Heat. See Part D's corrected table row and the Open Questions
+section for what's still open (MCP-server reachability specifically).
 
 ## Part A: Three profile-shaped concepts that should converge, and don't yet
 
@@ -84,7 +84,7 @@ same provenance split already established for `InfraInventoryRecord`.
 | Approach | What it is | Confidence |
 |---|---|---|
 | **Mechanical graph render** | `InfraInventoryRecord` nodes + `InfraRelationship` edges → Mermaid/DOT syntax via plain code, zero LLM | High — a graph-to-text serializer, deterministic, same "start with the plain table" reasoning `docs/infra_graph_modeling_and_db_options.md` already used to reject a graph DB before the first plain table exists |
-| **Native toolchain graph** | `terraform graph` (Terraform CLI subcommand emitting a DOT-format dependency graph) and a possible CDK/CloudFormation equivalent | **Unverified.** Recalled, not researched — needs the same current-docs check `docs/iac_based_discovery.md`/`docs/cross_project_network_sharing.md` applied to every other MCP-server capability claim in this project, before it's treated as available or goes into any implementation-facing doc |
+| **Native toolchain graph** | `terraform graph` (Terraform CLI subcommand emitting a DOT-format dependency graph) and a possible CDK/CloudFormation equivalent | **Corrected 2026-07-26 — verified real for 2 of the toolchains this project uses, verified absent for a third.** `terraform graph` is real and current: DOT format, `terraform graph \| dot -Tpng > graph.png` (`docs/composable_foundation_blueprints.md` Part N). `pulumi stack graph` is also real — DOT format, parent/child edges, and generated from **deployed state** rather than plan/config, so it reflects actual drift automatically, a stronger property than `terraform graph`'s own default. **AWS CloudFormation has no native graph/diagram export** — searched specifically, confirmed absent, not assumed. OpenStack Heat uses dependency graphs internally for orchestration but exposes no CLI command to view/export one — also confirmed absent. Net: this tier is real and buildable for Terraform-/Pulumi-managed Stacks specifically, and definitively unavailable for CloudFormation-/Heat-managed ones — the Tier 1 mechanical render below remains the only mechanism that works uniformly regardless of toolchain. |
 | **LLM-narrated diagram** | Ask the model to describe/render a diagram from the spec | Lowest confidence — hallucination risk on exactly the kind of claim (topology, security boundaries) where being wrong is expensive, same caution already applied elsewhere in this project to unbounded LLM output for infra-affecting decisions |
 
 Only the first tier is concrete enough to design toward now.
@@ -114,10 +114,16 @@ attempted.
   edge") is simpler — not designed here. Precedent exists for the
   mapping-table shape: `gateway/infra_inventory_store.py`'s
   `PROVIDER_TYPE_TO_CATEGORY`.
-- Whether `terraform graph` (or a CDK/CloudFormation equivalent) is
-  real, current, and usable via `terraform-mcp-server` — genuinely
-  unresolved, flagged explicitly rather than assumed. Blocks Part D's
-  second tier from being anything more than a hypothesis.
+- **Resolved 2026-07-26** — `terraform graph` and `pulumi stack graph`
+  are both real, current, DOT-format tools, verified directly (not
+  recalled); AWS CloudFormation and OpenStack Heat confirmed to have no
+  native equivalent. See Part D's corrected table row and
+  `docs/composable_foundation_blueprints.md` Part N for the full
+  per-platform verification. Still open: whether `terraform graph` is
+  reachable *via `terraform-mcp-server` specifically* (the MCP server
+  this project actually integrates) rather than just the raw Terraform
+  CLI — not checked this pass, a narrower question than the one just
+  resolved.
 - DFD generation's data-classification/direction problem — not
   designed, not scoped into this change; named so it doesn't get
   silently folded into "diagram generation" as if it were the same
@@ -136,7 +142,7 @@ attempted.
 | `InfraRelationship` (discovery-time population) | Designed only (`docs/infra_graph_modeling_and_db_options.md`) |
 | `InfraRelationship` populated at creation time, from `ToolIntent.payload` | Designed only, this doc |
 | Mechanical graph → Mermaid/DOT render | Designed only, this doc |
-| Native toolchain graph command (`terraform graph` etc.) | **Unverified claim** — not yet researched |
+| Native toolchain graph command (`terraform graph`, `pulumi stack graph`) | **Verified real** (2026-07-26) as CLI tools; not yet confirmed reachable via `terraform-mcp-server` specifically. Confirmed **absent** for CloudFormation and OpenStack Heat. |
 | DFD generation | Not designed — named as a separate, harder problem |
 
 ## How this relates to the existing docs

@@ -13,7 +13,7 @@ docs before relying on them:
   - https://awslabs.github.io/mcp/servers/ccapi-mcp-server
   - https://developer.hashicorp.com/terraform/mcp-server
 
-Kubernetes foundation-layer servers (openspec/changes/provision-kubernetes-cluster) --
+Kubernetes cluster (Stack-tier) servers (openspec/changes/provision-kubernetes-cluster) --
 self-hosted, all confirmed via docs/multi_cloud_foundation_and_iam.md Part E
 (2026-07-24 research, not assumed):
   - AWS eks-mcp-server: uvx-launchable, same pattern as the AWS servers
@@ -47,7 +47,7 @@ on an env var, e.g.
         if (hosted_url := os.environ.get("GKE_MCP_HOSTED_URL"))
         else StdioServerParameters(command="./gke-mcp", args=["--transport", "stdio"])
     )
-without any change to how workflows/drafting/mcp_tools.py-style
+without any change to how workflows/provision_stack/mcp_tools.py-style
 connection-building code consumes the result -- not built this change.
 """
 import os
@@ -59,7 +59,7 @@ class StdioServerParameters:
     """Plain, framework-independent stdio server config -- replaces
     ADK's google.adk.tools.mcp_tool.mcp_toolset.StdioServerParameters
     at the migrate-to-langgraph cutover (task 7.2): the only real
-    consumer left is workflows/drafting/mcp_tools.py's
+    consumer left is workflows/provision_stack/mcp_tools.py's
     _to_stdio_connection(), which just reads .command/.args/.env --
     duck-typed, no ADK class needed to satisfy it."""
 
@@ -105,7 +105,7 @@ TERRAFORM_MCP_SERVER = StdioServerParameters(
 GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID", "")
 AZURE_SUBSCRIPTION_ID = os.environ.get("AZURE_SUBSCRIPTION_ID", "")
 
-# Kubernetes foundation-layer path, AWS: uvx-launchable, same pattern as
+# Kubernetes cluster (Stack-tier) path, AWS: uvx-launchable, same pattern as
 # AWS_IAC_MCP_SERVER/CCAPI_MCP_SERVER above. --allow-write is required for
 # any mutating manage_eks_stacks call -- see module docstring.
 EKS_MCP_SERVER = StdioServerParameters(
@@ -114,7 +114,7 @@ EKS_MCP_SERVER = StdioServerParameters(
     env={"AWS_PROFILE": AWS_PROFILE, "AWS_DEFAULT_REGION": AWS_REGION},
 )
 
-# Kubernetes foundation-layer path, GCP: a Go binary, NOT uvx -- see module
+# Kubernetes cluster (Stack-tier) path, GCP: a Go binary, NOT uvx -- see module
 # docstring. GKE_MCP_BINARY_PATH lets an operator point at wherever `go
 # install`/the release download actually placed the executable, instead of
 # assuming a fixed path.
@@ -124,7 +124,7 @@ GKE_MCP_SERVER = StdioServerParameters(
     env={"GOOGLE_CLOUD_PROJECT": GCP_PROJECT_ID},
 )
 
-# Kubernetes foundation-layer path, Azure: a Go binary, NOT uvx -- see
+# Kubernetes cluster (Stack-tier) path, Azure: a Go binary, NOT uvx -- see
 # module docstring.
 AKS_MCP_SERVER = StdioServerParameters(
     command=os.environ.get("AKS_MCP_BINARY_PATH", "aks-mcp"),

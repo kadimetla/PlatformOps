@@ -111,7 +111,7 @@ async def test_structured_match_drafts_via_deterministic_zero_llm_path(
 ):
     # Renamed 2026-07-15 (migrate-to-langgraph cutover, task 7.3): this
     # tests gateway.plan_request's public behavior, now a re-export of
-    # workflows/drafting/plan_request.py -- the ADK SkillTemplateFillAgent
+    # workflows/provision_stack/plan_request.py -- the ADK SkillTemplateFillAgent
     # class this test was originally named after no longer exists.
     monkeypatch.chdir(tmp_path)
     _write_skill("workspaces/payments/skills", "s3-skill", TF_MODULE)

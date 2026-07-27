@@ -7,11 +7,11 @@ decision (unlike workflows/inquiry/'s classify_resource_type ->
 existence_check sequence, there's nothing after classification for this
 graph to do).
 
-Reuses workflows.drafting.model_config.get_model() directly rather than
+Reuses workflows.provision_stack.model_config.get_model() directly rather than
 duplicating it, same reuse discipline workflows/inquiry/nodes.py already
 applies.
 """
-from workflows.drafting.model_config import get_model
+from workflows.provision_stack.model_config import get_model
 from workflows.intake.state import IntakeResult, IntakeState
 from workflows.intake.tools import WORKFLOW_CANDIDATES, select_workflow
 
@@ -38,7 +38,7 @@ async def classify_workflow(state: IntakeState) -> dict:
             (
                 "system",
                 "Classify the user's request into exactly one of these workflows: "
-                f"{WORKFLOW_CANDIDATES}. \"drafting\" means the request describes "
+                f"{WORKFLOW_CANDIDATES}. \"provision_stack\" means the request describes "
                 "creating, modifying, or provisioning infrastructure. \"inquiry\" "
                 "means the request asks whether something already exists, read-only. "
                 "Call select_workflow exactly once, with workflow_name set to one of "

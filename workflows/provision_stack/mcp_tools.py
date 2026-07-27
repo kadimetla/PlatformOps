@@ -1,4 +1,4 @@
-"""MCP tool binding for the drafting workflow, via langchain-mcp-adapters
+"""MCP tool binding for the provision_stack workflow, via langchain-mcp-adapters
 instead of ADK's MCPToolset(StdioServerParameters(...)). Reuses the
 exact command/args/env values from mcp_server/external_servers.py --
 see openspec/changes/migrate-to-langgraph/design.md's "MCP tools bind

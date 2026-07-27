@@ -1,7 +1,7 @@
 """Compliance preflight and spec-shape validation -- extracted from
 gateway/plan_request.py at cutover (openspec/changes/migrate-to-langgraph/
 tasks.md task 6.1) so both gateway/plan_request.py (a thin re-export
-after cutover) and workflows/drafting/plan_request.py (the real
+after cutover) and workflows/provision_stack/plan_request.py (the real
 implementation) can import these without a circular import between
 them. Framework-independent -- no ADK, no LangGraph, touches neither.
 """

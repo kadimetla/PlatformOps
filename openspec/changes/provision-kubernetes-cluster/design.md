@@ -5,14 +5,16 @@ exploration passes: `docs/composable_foundation_blueprints.md` Part E
 gap), `docs/multi_cloud_foundation_and_iam.md` Part E (verified
 hosted-vs-self-hosted status and self-hosted launch mechanism for all
 three clouds), and `docs/compute_paradigm_layering.md` (Kubernetes as
-one of four compute paradigms, each with a different-shaped foundation
-chain). A second opinion (codex, web-verified) produced a concrete
-14-step approval-gated flow for the AWS path specifically. This design
-turns that into one buildable, provider-parameterized flow — for the
-Kubernetes paradigm specifically, not a generic "foundation" capability.
+one of four compute paradigms, each with a different-shaped
+resource-provisioning chain). A second opinion (codex, web-verified)
+produced a concrete 14-step approval-gated flow for the AWS path
+specifically. This design turns that into one buildable,
+provider-parameterized flow — for the Kubernetes paradigm specifically,
+not a generic "Stack-tier" capability (originally "foundation" --
+renamed per `docs/composable_foundation_blueprints.md` Parts G/M).
 
 Nothing this design touches exists in code today: `TeamMember`/`scope`,
-`FoundationRecord`, and all three clouds' cluster-creation MCP configs
+`ResourceRecord`, and all three clouds' cluster-creation MCP configs
 are all currently absent from `gateway/schemas.py` /
 `mcp_server/external_servers.py`.
 
@@ -28,19 +30,22 @@ are all currently absent from `gateway/schemas.py` /
 - Real tests against mocked MCP responses for all three clouds, in this
   environment.
 - Record *which* compute paradigm this is on the schema itself
-  (`FoundationRecord.compute_paradigm`), not only in doc prose, so a
+  (`ResourceRecord.compute_paradigm`), not only in doc prose, so a
   future VM/managed-container/serverless capability can't accidentally
   collide with or silently reuse this one's records.
 
 **Non-Goals:**
-- VM, managed-container, or serverless foundation provisioning — three
+- VM, managed-container, or serverless provisioning — three
   separate, future capabilities per `docs/compute_paradigm_layering.md`
   Part C's finding that each has a genuinely different (often lighter)
-  foundation chain, not a variant of this one.
-- The `Block`/`Blueprint`/matching-criteria model — not needed for one
-  requester creating one cluster with no topology choice to make yet.
+  resource-provisioning chain, not a variant of this one.
+- The `Block`/matching-criteria model (`Blueprint` itself was renamed
+  `Stack` and partially adopted -- see `stack_id` above -- but the
+  catalog/matching-criteria machinery around it stays out of scope) —
+  not needed for one requester creating one cluster with no topology
+  choice to make yet.
 - Network/compute/identity layer decomposition
-  (`docs/foundation_layer_decomposition.md`) — one `FoundationRecord`
+  (`docs/foundation_layer_decomposition.md`) — one `ResourceRecord`
   per cluster, undecomposed, until a second real case needs the
   layers tracked separately.
 - Org/BU/account onboarding (Stages A–D,
@@ -63,7 +68,7 @@ are all currently absent from `gateway/schemas.py` /
 **`TeamMember`/`scope` reused exactly as already designed, not
 redesigned.** `docs/skills_and_workspace_design.md` and
 `docs/infra_discovery_and_platform_app_split.md` already specify this
-field in full (`role: str`, `scope: "foundation"|"app"|"both"`). This
+field in full (`role: str`, `scope: "stack"|"app"|"both"`). This
 change implements it as written — the design work is already done.
 
 **The scope gate runs before skill/tool resolution, structurally, not
@@ -74,12 +79,26 @@ drafting agent or MCP client is even constructed — a code-level gate,
 consistent with this project's "deterministic checks stay deterministic"
 rule (`AGENTS.md`).
 
-**`FoundationRecord` carries `compute_paradigm` explicitly, not just
-`layer`.** One `FoundationRecord` per cluster, not the full layered
-chain, and self-describing about which of the four paradigms it is:
+**`ResourceRecord` carries `compute_paradigm` explicitly, not just
+`layer` — and, per a later same-session rename
+(`docs/composable_foundation_blueprints.md` Parts G/H/M), a required
+`stack_id`.** One `ResourceRecord` per cluster, not the full layered
+chain, self-describing about which of the four paradigms it is, and
+never dangling (Part H's rule: a resource can be requested standalone,
+but can never end up with no Stack reference):
 ```python
-class FoundationRecord(BaseModel):
-    foundation_id: str
+class ResourceRecord(BaseModel):
+    resource_id: str
+    stack_id: str                # required, never null -- Part H's
+                                  # "never dangling" rule. Binding
+                                  # mechanism (auto-create / requester-
+                                  # named / inferred-from-dependency)
+                                  # still undesigned -- see Open
+                                  # Questions below and gateway/
+                                  # kubernetes_resource_dispatch.py's
+                                  # own docstring, which picks
+                                  # auto-create as a stand-in, not a
+                                  # considered resolution
     org_id: str
     bu_id: str
     cloud_provider: str          # "aws" | "gcp" | "azure"
@@ -108,7 +127,7 @@ Deliberately the minimal slice of the canonical schema
 already specified in one of those two docs; nothing is invented, fields
 not needed yet (`depends_on_foundation_id`, `cloud_account_binding_id`)
 are simply not included this round. A future VM/managed-container/
-serverless capability queries `FoundationRecord` filtered by
+serverless capability queries `ResourceRecord` filtered by
 `compute_paradigm` rather than needing its own table.
 
 **Generate/deploy split, reused from codex's verified AWS flow, applied
@@ -118,22 +137,22 @@ equivalent dry-run/plan-shaped call, exact tool name pending Migration
 Plan step 0) is non-mutating — allowed to run without approval, but
 still recorded. The actual create call is always a `ToolIntent`, always
 gated by `evaluate_intent()`. This is the same split
-`workflows/drafting/`'s `propose_tool_intent` pattern already uses for
+`workflows/provision_stack/`'s `propose_tool_intent` pattern already uses for
 app-tier resources, applied one level up.
 
 **One execution module, provider-parameterized — not three separate
-ones.** `gateway/kubernetes_foundation_dispatch.py`,
+ones.** `gateway/kubernetes_resource_dispatch.py`,
 `dispatch_and_execute_cluster(plan, tool_intent, human_approved,
 dispatcher, mcp_client, cloud_provider) -> ClusterDispatchResult`.
 Internally branches to one of three small adapter functions
 (`_execute_aws_eks`, `_execute_gcp_gke`, `_execute_azure_aks`) that each
 know their own cloud's tool name and payload shape — the approval gate,
-audit recording, and `FoundationRecord` write happen once, in the shared
+audit recording, and `ResourceRecord` write happen once, in the shared
 function, not duplicated per cloud. Named distinctly from
 `wire-dispatch-execution`'s (not-yet-built) `gateway/dispatch_execution.py`
 deliberately — this module is scoped to the Kubernetes paradigm only,
 always requires `human_approved=True` (no app-tier autonomous path
-exists for foundation resources, matching
+exists for Stack-tier resources, matching
 `docs/foundation_app_layering_and_iam_tiers.md` Part A's "always human,
 no exception" rule), and doesn't share the app-tier module's
 partial-failure-across-multiple-intents concern since a cluster-creation
@@ -146,7 +165,7 @@ and Azure's (`aks-mcp`) exact tool names/parameters were confirmed to
 *exist* (Part E research) but not confirmed field-by-field against a
 live `get_tools()` call — Migration Plan step 0 is a hard blocker before
 writing the GCP/Azure adapter functions for real, same discipline
-`workflows/drafting/mcp_tools.py` already states for its own inferred
+`workflows/provision_stack/mcp_tools.py` already states for its own inferred
 tool names.
 
 ## Risks / Trade-offs
@@ -164,7 +183,7 @@ tool names.
   step 0 is sequenced first and treated as a hard gate, same as
   `wire-dispatch-execution`'s equivalent step; GCP/Azure adapter tasks
   are explicitly ordered after it, not in parallel.
-- [Risk] One `FoundationRecord` per cluster (network+compute+roles
+- [Risk] One `ResourceRecord` per cluster (network+compute+roles
   bundled) will need re-decomposing the day a second cluster needs to
   share an existing VPC → [Mitigation] accepted deliberately, matches
   this project's stated principle of not building the registry before a
@@ -178,7 +197,7 @@ tool names.
   accidentally reuse this change's Kubernetes-specific adapter shape by
   copy-paste rather than genuinely redesigning for its own (lighter)
   chain → [Mitigation] `compute_paradigm` being a required, explicit
-  field on every `FoundationRecord` at least makes the mismatch visible
+  field on every `ResourceRecord` at least makes the mismatch visible
   at read time, even if it doesn't prevent the write-time mistake.
 
 ## Migration Plan
@@ -189,15 +208,15 @@ tool names.
    GCP/Azure adapters wait on this step specifically.
 1. Add `TeamMember`/`scope` to `gateway/schemas.py` and the scope-gate
    check — independent of any cloud, testable alone.
-2. Add `FoundationRecord` (including `compute_paradigm`) + its table —
+2. Add `ResourceRecord` (including `compute_paradigm`) + its table —
    independent of any cloud, testable alone.
 3. Add the three MCP server configs to `mcp_server/external_servers.py`.
-4. Build `gateway/kubernetes_foundation_dispatch.py`'s shared
+4. Build `gateway/kubernetes_resource_dispatch.py`'s shared
    `dispatch_and_execute_cluster()` plus the AWS adapter (highest
    confidence tool names).
 5. Build the GCP and Azure adapters, once step 0's live verification for
    each is done.
-6. Tests: scope gate, `FoundationRecord` writes (including
+6. Tests: scope gate, `ResourceRecord` writes (including
    `compute_paradigm="kubernetes"`), generate/deploy split, approval
    gate, all three adapters against mocked MCP responses.
 7. Manual, real-credential checklist (not automated here) for actually
@@ -208,7 +227,7 @@ No cutover step — additive, new capability, nothing existing changes
 behavior.
 
 ## Open Questions
-- Whether `gateway/kubernetes_foundation_dispatch.py` and (once built)
+- Whether `gateway/kubernetes_resource_dispatch.py` and (once built)
   `gateway/dispatch_execution.py` (`wire-dispatch-execution`) should
   converge into one module — flagged in Risks, not designed here.
 - Exact GCP/Azure tool parameter shapes — genuinely unknown until
@@ -217,7 +236,15 @@ behavior.
   (K8s version, node count) or left empty until a later discovery sweep
   — not decided, low-stakes either way for this first slice.
 - Whether a future VM/managed-container/serverless capability should
-  literally share `gateway/schemas.py`'s `FoundationRecord` (filtered by
+  literally share `gateway/schemas.py`'s `ResourceRecord` (filtered by
   `compute_paradigm`) or eventually want its own record type once the
   fields diverge enough — not decided, `docs/compute_paradigm_layering.md`
   leaves this open too.
+- **Added same session, still open**: `stack_id`'s real binding
+  mechanism. `docs/composable_foundation_blueprints.md` Part H named
+  three options (auto-create one Stack per resource / requester-named /
+  inferred-from-dependency) and chose none. The shipped code
+  (`gateway/kubernetes_resource_dispatch.py`) defaults to auto-creating
+  a fresh, standalone `stack_id` when the caller doesn't supply one —
+  explicitly flagged in that module's own docstring as a stand-in to
+  keep the field non-null, not a considered resolution of this question.

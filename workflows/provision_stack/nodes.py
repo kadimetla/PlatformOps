@@ -1,4 +1,4 @@
-"""Node functions for the drafting workflow's StateGraph -- mirrors
+"""Node functions for the provision_stack workflow's StateGraph -- mirrors
 agents/orchestrator.py's routing shape (task 3.1) plus security_agent
 as a separate graph node (task 3.2), reusing langgraph.prebuilt's
 create_react_agent for the tool-calling loop rather than hand-rolling
@@ -17,14 +17,14 @@ not an oversight -- flagged for confirmation as part of this apply run.
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 
-from workflows.drafting.mcp_tools import get_cdk_provisioning_tools, get_terraform_provisioning_tools
-from workflows.drafting.model_config import get_model
-from workflows.drafting.security_tools import record_security_decision
-from workflows.drafting.state import DraftingState
-from workflows.drafting.tools import propose_tool_intent
+from workflows.provision_stack.mcp_tools import get_cdk_provisioning_tools, get_terraform_provisioning_tools
+from workflows.provision_stack.model_config import get_model
+from workflows.provision_stack.security_tools import record_security_decision
+from workflows.provision_stack.state import ProvisionStackState
+from workflows.provision_stack.tools import propose_tool_intent
 
 
-def route_toolchain(state: DraftingState) -> dict:
+def route_toolchain(state: ProvisionStackState) -> dict:
     """Deterministic toolchain routing -- see module docstring."""
     toolchain = state["spec"].get("toolchain", "cdk")
     if toolchain not in ("cdk", "terraform"):
@@ -32,12 +32,12 @@ def route_toolchain(state: DraftingState) -> dict:
     return {"toolchain": toolchain}
 
 
-def toolchain_edge(state: DraftingState) -> str:
+def toolchain_edge(state: ProvisionStackState) -> str:
     """Conditional-edge selector reading the state route_toolchain wrote."""
     return state["toolchain"]
 
 
-async def cdk_provisioning_node(state: DraftingState, client: MultiServerMCPClient) -> dict:
+async def cdk_provisioning_node(state: ProvisionStackState, client: MultiServerMCPClient) -> dict:
     """Mirrors cdk_provisioning_agent: aws-iac-mcp-server (read-only) +
     ccapi-mcp-server minus mutating tools (mcp_tools.py) +
     propose_tool_intent -- never a direct create/update/delete call."""
@@ -58,7 +58,7 @@ async def cdk_provisioning_node(state: DraftingState, client: MultiServerMCPClie
     return {"messages": result["messages"]}
 
 
-async def terraform_provisioning_node(state: DraftingState, client: MultiServerMCPClient) -> dict:
+async def terraform_provisioning_node(state: ProvisionStackState, client: MultiServerMCPClient) -> dict:
     """Mirrors terraform_provisioning_agent: terraform-mcp-server minus
     create_run (mcp_tools.py) + propose_tool_intent."""
     tools = await get_terraform_provisioning_tools(client)
@@ -77,7 +77,7 @@ async def terraform_provisioning_node(state: DraftingState, client: MultiServerM
     return {"messages": result["messages"]}
 
 
-async def security_review_node(state: DraftingState) -> dict:
+async def security_review_node(state: ProvisionStackState) -> dict:
     """Mirrors security_agent: reviews every propose_tool_intent call
     made so far, tools=[] except record_security_decision (task 3.2 --
     a separate graph node, not a sub-agent; see security_tools.py's

@@ -8,7 +8,7 @@ design.md). Fixed two-node sequence, not a router:
 See design.md's "Two nodes in a fixed sequence, not a router" decision
 -- capability-match and cross-project branches are deferred, not built
 as unused router destinations. store is injected via functools.partial,
-not carried in graph state, mirroring workflows/drafting/graph.py's own
+not carried in graph state, mirroring workflows/provision_stack/graph.py's own
 mcp_client injection.
 """
 import functools
