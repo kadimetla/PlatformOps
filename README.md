@@ -193,15 +193,11 @@ confirm it prints `FAIL` with the right reason — this is your evidence the
 guardrail actually works, worth capturing for the demo video.
 
 ### 9. Run the agent
-```bash
-export $(cat .env | xargs)   # or use direnv / your preferred env loader
-python -m agents.orchestrator
-```
-State your tool preference in the request (e.g., "using CDK, deploy..." or
-"using Terraform, deploy..."). Watch for the plain-English Vibe Diff summary
-before anything is created — if a provisioning sub-agent tries to skip
-straight to execution without it, stop and check the `provision-infra` and
-`security-review-checklist` skill instructions before proceeding.
+**Currently unavailable.** The old ADK-based `agents/` orchestrator has
+been removed — this project now builds on LangGraph instead (see
+`AGENTS.md`'s stack section) — and the LangGraph replacement doesn't
+exist yet on this branch. This section will document the real run
+command once a working end-to-end workflow lands.
 
 ### 10. Tear down immediately after recording the demo
 ```bash
@@ -213,9 +209,9 @@ finish disabling first — the script prints a reminder to re-run for this).
 Finally, check the Billing console once more before walking away.
 
 ## Project layout
-- `agents/` — ADK orchestrator, the provisioning router, its two sub-agents
-  (`cdk_provisioning_agent`, `terraform_provisioning_agent`), and
-  `security_agent`
+- `workflows/`, `gateway/` — the LangGraph-based routing/provisioning
+  layer (see `AGENTS.md`'s stack section). Neither exists yet on this
+  branch; this replaces the old ADK `agents/` orchestrator, now removed.
 - `skills/` — Agent Skills (procedure/decision logic, not cloud access)
 - `mcp_server/external_servers.py` — connection configs for the third-party
   MCP servers this project routes to (no longer hosts our own AWS server)
@@ -225,7 +221,7 @@ Finally, check the Billing console once more before walking away.
 
 ## Roadmap: multi-cloud and other IaC tools
 This MVP covers AWS via two tool paths. Extending it means adding a new
-provisioning sub-agent per cloud/tool combination, following the same
+provisioning path per cloud/tool combination, following the same
 pattern (`provision-infra` skill routes to it; `security-review-checklist`
 gets a path-specific check block). Real, currently-maintained MCP servers to
 integrate next:
