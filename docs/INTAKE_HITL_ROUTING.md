@@ -86,6 +86,8 @@ LLM call.
 | HITL clarification | Not implemented | Intake returns clarification questions as data and ends; caller re-invokes, capped at 2 rounds (corrected — C1; was "intake interrupts") |
 | Mutation approval | Not implemented in intake | Intake can mark approval required, but cannot approve or execute mutation |
 | Compliance check | Existing deterministic CLI in `spec/check_compliance.py` | Dispatcher can route compliance requests to a wrapper around the deterministic checker |
+| Cloud execution identity | Not implemented — designed from a clean slate, no prior credential model assumed | Narrow, temporary identity chosen by policy per `(org_bu, intent)` — AssumeRole/managed identity/service-account impersonation — selected only after plan + deterministic checks + human approval, never by the classifier (see Cloud Roles and Access Flow) |
+| Actor / grants (WHO, distinct from scope's WHERE) | Not implemented — no auth/session layer exists anywhere on this branch | `actor.grants` (per-workspace capability, resolved at login — see [ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md)); `resolve_route` computes `effective_access = min(grant, ceiling)` in addition to `POLICY[(org_bu, intent)]`. (Corrected — an earlier row here described a single flat `persona` field, superseded by that doc's capability ladder.) |
 
 ## Problem
 PlatformOps needs to accept free-form user requests and route them to
