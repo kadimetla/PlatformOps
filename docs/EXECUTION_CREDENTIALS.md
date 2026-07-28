@@ -95,7 +95,7 @@ resolve execution_identity from registry        (local data, no call)
   AWS:   sts:AssumeRole(
              RoleArn=<from registry>,
              RoleSessionName="platformops-<request-id>",
-             Tags={actor, project, workspace})
+             Tags={actor, project, workspace, request_id})
          -> AccessKeyId/SecretAccessKey/SessionToken + Expiration
   Azure: acquire ARM token AS the workspace's MI/SP
          (RBAC evaluated by ARM at request time, not baked into token)
@@ -152,9 +152,12 @@ store, surviving the run. Therefore:
 
 - Tokens live only in the executor's process memory — closed over by
   the execute node's constructor, never a state key.
-- Graph state and logs carry **evidence only**: execution identity
-  used, token expiration, cloud account/project/subscription, request
-  id, approval id, plan digest. Never the token.
+- Short-lived credentials never appear in: the intake result, LangGraph
+  state, logs, approval records, or any persistent DB. Approval records
+  deserve the explicit mention — they're durable and human-reviewed.
+- All of those carry **evidence only**: execution identity used, token
+  expiration, cloud account/project/subscription, request id, approval
+  id, plan digest. Never the token.
 
 This also weighs on the capability-shaped provision graph (explored
 2026-07-28, not yet captured in a doc): the same closure-over-state
