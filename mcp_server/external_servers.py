@@ -39,11 +39,11 @@ CCAPI_MCP_SERVER = StdioServerParameters(
 
 # Terraform path: HashiCorp's official server. Requires an HCP Terraform (or
 # Terraform Enterprise) account and API token — see README.md setup.
-# VERIFY the exact `command`/`args` against HashiCorp's current install docs
-# before running; this project has not yet executed this integration.
+# Verified against HashiCorp's current docs (docs/TERRAFORM_MCP_SERVER.md);
+# this project has not yet executed this integration.
 TERRAFORM_MCP_SERVER = StdioServerParameters(
     command="terraform-mcp-server",
-    args=["-transport=stdio"],
+    args=["stdio"],
     env={
         "TFE_TOKEN": os.environ.get("TFE_TOKEN", ""),
         "TFE_ADDRESS": os.environ.get("TFE_ADDRESS", "https://app.terraform.io"),
