@@ -91,6 +91,30 @@ new-project flow, step 4):
 | Delegation to runtime | Trust policy naming the runtime principal + `sts:TagSession` (required for session tags) + ExternalId condition | Runtime allowed to acquire tokens *as* that MI/SP | `roles/iam.serviceAccountTokenCreator` granted to the runtime **on that specific service account only** — per-SA scoping *is* the narrowing mechanism; a project-wide TokenCreator grant would collapse it | Team token scoped to the project/workspaces |
 | Cloud-side extras | — | — | — | **Dynamic provider credentials**: the workspace federates into the cloud itself; PlatformOps never holds cloud tokens on this path — it creates a run (`create_run`/`action_run`, verified in TERRAFORM_MCP_SERVER.md) and monitors it |
 
+### Delegation is standing; only the token request is ad hoc
+Two independent things attach to every execution identity, and both
+must exist (they are the table's Permissions and Delegation columns,
+stated as a rule):
+
+```
+permissions policy  = what the execution identity CAN DO
+delegation/trust    = who may USE the execution identity
+
+identity without delegation        -> PlatformOps cannot use it
+delegation without narrow perms    -> usable but useless
+broad permissions + broad delegation -> the dangerous case bootstrap
+                                        exists to prevent
+```
+
+Nothing about *who may use which identity* is decided at execution
+time. Bootstrap configures the delegation once (trust policy /
+TokenCreator grant / identity-use assignment); execution time merely
+exercises it — `sts:AssumeRole` / `generateAccessToken` / a token
+request that the provider grants *only because the standing
+configuration already allows it*, and that fails outright if bootstrap
+never ran. That failure is the cloud-side enforcement of "bootstrap
+must precede provisioning."
+
 ### AWS is cross-account by design
 The runtime identity lives in PlatformOps's own account; workspace
 execution roles live in each target workload account:
