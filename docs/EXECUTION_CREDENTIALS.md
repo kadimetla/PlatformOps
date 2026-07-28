@@ -25,6 +25,23 @@ exception: already verified in
 | Registry (`gateway/policy/project_registry.yaml`) | Designed only, shared with ACCESS_POLICY_AND_IAM_DISCOVERY.md |
 | Provision workflow the executor plugs into | Designed only (capability-shaped graph, below) |
 
+## Identity timeline — which identity is active at each phase
+The whole access design in one table. Alice proves identity to
+PlatformOps; PlatformOps proves authority to the cloud; the cloud's
+audit trail links the action back to Alice through session
+tags/evidence. She never logs into a cloud provider through
+PlatformOps, and the cloud never sees her as a caller.
+
+| Phase | Active identity | Cloud credential exists? |
+|---|---|---|
+| Bootstrap | admin/bootstrap identity | Yes — the one privileged setup moment |
+| Login | user identity (to IdP) + discovery identity (to clouds, read-only) | Read-only introspection only |
+| Request/intake | user session grants only | No — purely local |
+| Planning | workflow auth context | No mutation credential |
+| Approval | approver identity | No |
+| Execution | runtime identity → workspace execution identity → short-lived token | Yes — the only mutation-capable moment, expiring |
+| Audit | — | Cloud shows the execution identity + human/session tags |
+
 ## Core principle
 It is not enough that the *user* has access. The PlatformOps backend
 itself must be independently allowed to obtain a temporary credential
@@ -73,6 +90,23 @@ new-project flow, step 4):
 | Its permissions | Permissions policy: allow-listed actions, tag/region conditions | Role assignment at resource-group/subscription scope | Limited IAM roles on the target project | Workspace settings; `ENABLE_TF_OPERATIONS` on the executor path only |
 | Delegation to runtime | Trust policy naming the runtime principal + `sts:TagSession` (required for session tags) + ExternalId condition | Runtime allowed to acquire tokens *as* that MI/SP | `roles/iam.serviceAccountTokenCreator` granted to the runtime **on that specific service account only** — per-SA scoping *is* the narrowing mechanism; a project-wide TokenCreator grant would collapse it | Team token scoped to the project/workspaces |
 | Cloud-side extras | — | — | — | **Dynamic provider credentials**: the workspace federates into the cloud itself; PlatformOps never holds cloud tokens on this path — it creates a run (`create_run`/`action_run`, verified in TERRAFORM_MCP_SERVER.md) and monitors it |
+
+### AWS is cross-account by design
+The runtime identity lives in PlatformOps's own account; workspace
+execution roles live in each target workload account:
+
+```
+arn:aws:iam::999999999999:role/platformops-runtime          (PlatformOps account)
+  -> sts:AssumeRole ->
+arn:aws:iam::123456789012:role/platformops-invoices-dev-provisioner   (workload account)
+```
+
+The workload role's trust policy names the runtime principal and
+should carry ExternalId and session-tag conditions — the cross-account
+boundary is exactly where the ExternalId condition earns its keep
+(confused-deputy protection). The Layer 1 table implies this shape;
+stated explicitly here so the trust-policy design assumes two accounts,
+not one.
 
 ### The Azure asymmetry — real, not a detail
 AWS and GCP have true just-in-time *identity switching*: the runtime
