@@ -438,7 +438,7 @@ class ExecutionRequest(BaseModel):
     approval_records: list[ApprovalRecord]
 ```
 
-### Digest Binding — one mechanism covers four kinds of drift
+### Digest Binding — one mechanism covers five kinds of drift
 ```python
 approval_digest = hash(plan + policy_snapshot + execution_identity
                         + allow_list_version)
@@ -452,6 +452,15 @@ drift are all caught by the *same* digest-mismatch check instead of
 needing a separate live-recompute rule per kind of drift. Any mismatch
 means: stop, no partial credit, a fresh plan and a fresh approval
 cycle from zero.
+
+**Extended by [PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md)** with a
+fifth input, `current_state_fingerprint` — the four kinds above are
+all drift in PlatformOps's *own* state; existing-stack changes (as
+opposed to new-stack creation, which has nothing to drift from) can
+also drift because someone else changed the live infrastructure while
+approval sat paused. That doc covers the mechanism (Terraform state
+serial/lineage vs. a CCAPI snapshot hash) and why it matters more for
+changes to existing stacks specifically.
 
 ### The fork that matters: CCAPI is per-resource, Terraform is per-run
 Kept explicit rather than hidden behind a generic "execute tool" call,
