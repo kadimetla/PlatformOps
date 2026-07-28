@@ -53,6 +53,9 @@ whose row caps at `apply_limited` can never mint an `apply_full`
 workspace); workspace addition by the project's template. No row at
 level N = nothing creatable at level N+1 — the same `POLICY`-presence
 fail-closed rule intake uses, applied recursively to creation itself.
+The full chain, ending where routing begins: no org row → no BU can be
+created → no project can be bootstrapped → no workspace can be added →
+normal provisioning cannot route.
 
 **MVP split — git is the approval gate for the rare levels:**
 
