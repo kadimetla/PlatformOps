@@ -87,7 +87,7 @@ LLM call.
 | Mutation approval | Not implemented in intake | Intake can mark approval required, but cannot approve or execute mutation |
 | Compliance check | Existing deterministic CLI in `spec/check_compliance.py` | Dispatcher can route compliance requests to a wrapper around the deterministic checker |
 | Cloud execution identity | Not implemented — designed from a clean slate, no prior credential model assumed | Narrow, temporary identity chosen by policy per `(org_bu, intent)` — AssumeRole/managed identity/service-account impersonation — selected only after plan + deterministic checks + human approval, never by the classifier (see Cloud Roles and Access Flow) |
-| Actor / grants (WHO, distinct from scope's WHERE) | Not implemented — no auth/session layer exists anywhere on this branch | `actor.grants` (per-workspace capability, resolved at login — see [ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md)); `resolve_route` computes `effective_access = min(grant, ceiling)` in addition to `POLICY[(org_bu, intent)]`. (Corrected — an earlier row here described a single flat `persona` field, superseded by that doc's capability ladder.) |
+| Actor / grants (WHO, distinct from scope's WHERE) | Not implemented — no auth/session layer exists anywhere on this branch | `actor.execution_grants` (per-workspace capability, resolved at login — see [ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md)); `resolve_route` computes `effective_access = min(grant, ceiling)` in addition to `POLICY[(org_bu, intent)]`. A separate `actor.approval_grants` set is consulted only at the approval gate — see [EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md). (Corrected — an earlier row here described a single flat `persona` field, superseded by that doc's capability ladder; further corrected to split `actor.grants` into `execution_grants`/`approval_grants`.) |
 
 ## Problem
 PlatformOps needs to accept free-form user requests and route them to
@@ -413,12 +413,21 @@ POLICY[("aiq:it", "provision")] =
 ### Login-Time Provider Discovery
 Provider discovery can happen at login when PlatformOps needs the
 provider's access system, rather than IdP group names, to be the
-source of `actor.grants`. In that model, IdP claims identify the user
-and their groups, but they do not independently grant PlatformOps
-capabilities. Provider discovery is authoritative for `actor.grants`;
-IdP claims feed principal resolution and group-based discovery only.
+source of `actor.execution_grants`. In that model, IdP claims identify
+the user and their groups, but they do not independently grant
+PlatformOps capabilities. Provider discovery is authoritative for
+`actor.execution_grants`; IdP claims feed principal resolution and
+group-based discovery only. (Approval authority is the deliberate
+exception — `actor.approval_grants` comes directly from PlatformOps
+policy/IdP groups, no provider call at all; see
+[ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md)'s
+"Two Grant Sets" and [EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md)'s
+approval-gate section.)
 
-The login flow becomes:
+The login flow becomes (fuller, verified version — including the
+per-provider API calls and the GCP inheritance caveat — lives in
+[ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md);
+kept here in condensed form since this section predates that doc):
 
 ```text
 authenticate with corporate IdP
@@ -427,7 +436,7 @@ authenticate with corporate IdP
   -> fetch direct user assignments and group-derived assignments
   -> expand opaque provider role ids into names/definitions
   -> normalize provider roles into PlatformOps grants
-  -> store actor.grants in the session
+  -> store actor.execution_grants in the session
 ```
 
 The identity-source assumption is explicit: this remains clean only

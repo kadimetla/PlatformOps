@@ -24,6 +24,7 @@ exception: already verified in
 | Per-workspace execution identities (Layer 1) | Not implemented — created by the bootstrap path (see ACCESS_POLICY_AND_IAM_DISCOVERY.md) |
 | Registry (`gateway/policy/project_registry.yaml`) | Designed only, shared with ACCESS_POLICY_AND_IAM_DISCOVERY.md |
 | Provision workflow the executor plugs into | Designed only (capability-shaped graph, below) |
+| Approval gate (self-looping interrupt node, `approval_groups` policy, staleness rechecking) | Designed only |
 
 ## Identity timeline — which identity is active at each phase
 The whole access design in one table. Alice proves identity to
@@ -200,7 +201,169 @@ Steps 1–2 are the resume-time re-validation: the approval
 `interrupt()` can sit paused for hours or days, and "it was valid when
 asked" is not "it is valid now." Fail closed on any downgrade. Step 4
 is what couples "human approved" to "what actually executes" — without
-the digest check they are only loosely related.
+the digest check they are only loosely related. Step 2's mechanics —
+what approver authority even is, and how it's rechecked — are designed
+fully below.
+
+## The Approval Gate
+Two distinct time scopes, easy to conflate: **setup time** defines who
+may approve what; **request time** is one specific paused workflow run
+asking one specific question. Bootstrap never blocks on an approval
+gate itself — it configures the rules a later gate enforces.
+
+```
+SETUP TIME (org/BU bootstrap; see BOOTSTRAP_WORKFLOW.md)
+  admin writes an approval_groups policy row, e.g.:
+    aiq-it-prod-approvers:
+      org_bu: aiq:it
+      workspaces: ["prod"]
+      max_capability: apply_limited
+  IdP has a matching group; people are added to it by normal company
+  access management — no cloud provider token involved, this is pure
+  PlatformOps governance config
+
+REQUEST TIME (one workflow run)
+  intake resolves effective_access, approval_required=true
+  workflow builds a plan -> plan_digest, vibe_diff
+  graph reaches approval_gate -> pauses, emits a payload
+  an approver resumes it -> graph revalidates -> records -> continues
+  or waits for another approver, per required_approvals
+```
+
+### Authority is PlatformOps-native, not cloud-grounded
+Decided: approval authority is `actor.approval_grants`, resolved at
+login from PlatformOps's own `approval_groups` policy keyed by IdP
+group name — **not** discovered from any cloud provider's IAM (see
+[ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md)'s
+"Two Grant Sets"). Approving a change is a governance act, not a
+provider API capability: a prod approver needs standing PlatformOps
+approval authority on that scope, not AWS prod write access — often
+exactly the opposite of what they hold.
+
+### The graph: a self-looping interrupt node
+`required_approvals` means the gate collects approvals rather than
+pausing once:
+
+```python
+def approval_gate(state) -> Command:
+    decision: ApprovalDecision = interrupt(build_payload(state))
+
+    if decision.approver_id == state["requester"].user_id:
+        return Command(goto="approval_gate")          # self-approval: reject, ask again
+    if decision.approver_id in {a.approver_id for a in state["approvals"]}:
+        return Command(goto="approval_gate")          # same approver can't count twice
+    if not approver_currently_authorized(               # LIVE recheck — see Staleness below
+            decision.approver_id, state["scope"], state["capability_required"]):
+        return Command(goto="approval_gate")           # unauthorized: reject, ask again
+    if decision.verdict == "reject":
+        return Command(goto="rejected_end")            # any rejection hard-stops (MVP choice)
+
+    record_approval_evidence(state, decision)           # persistent store, NOT just state — below
+    state["approvals"].append(evidence_only(decision))
+    if len(state["approvals"]) >= effective_required_approvals(state):  # see Staleness below
+        return Command(goto="execute")
+    return Command(goto="approval_gate")                # wait for the next approver
+```
+
+Each loop re-emits a fresh payload showing progress ("1 of 2
+approvals collected") — visible audit trail as the run proceeds.
+**Rejection is a deliberate MVP simplification**: any single rejection
+hard-stops immediately rather than waiting to see if remaining
+approvers could still reach quorum — simpler, auditable, matches this
+project's fail-closed instinct. A vote-policy alternative (reject just
+decrements the pool) is a later option, not designed now.
+
+### Payload
+```python
+class ApprovalRequest(BaseModel):
+    request_id: str
+    scope: Scope                       # org_bu/project/workspace
+    intent: str
+    capability_required: Capability    # e.g. apply_limited
+    plan_digest: str
+    vibe_diff: str                     # human-readable plan summary — reused
+                                       # from design/harness-architecture's
+                                       # PlanRecord.vibe_diff precedent, not
+                                       # invented here; raw HCL/CFN isn't the
+                                       # review surface, only linked by digest
+    requester: ActorRef
+    approvals_so_far: list[ApprovalRecord]
+    required_approvals: int
+    approval_expires_at: datetime | None = None   # nullable now; MVP leaves
+                                                   # unset (plan-digest
+                                                   # freshness does most of the
+                                                   # work); prod/bootstrap can
+                                                   # set a TTL later with no
+                                                   # schema change
+```
+
+### Approval records are persisted independently of graph state
+The checkpointer is for *resume mechanics*, not the audit database.
+Relying on it as the only store means graph storage becomes your audit
+database by accident. Each recorded approval also writes a durable
+`ApprovalRecord` (evidence only, same no-credentials rule as
+everywhere else in this doc):
+
+```
+request_id, approver_id, verdict, timestamp, plan_digest,
+scope, capability_required
+```
+
+### Staleness — approval permission changes mid-flight
+Approval authority can change two ways while a request sits paused:
+an IdP group membership change, or a PlatformOps `approval_groups`
+policy change (different required count, different group name). A
+session's cached `approval_grants` may be stale until next
+login/refresh — normal for session systems, but **not acceptable to
+trust blindly at the single highest-stakes moment in the whole
+design**. The rule: authority is rechecked live at resume time, not
+carried forward from when the request was created.
+
+```
+Monday:    Alice requests prod deploy. Bob has approval authority.
+           Workflow pauses.
+Tuesday:   Bob is removed from aiq-it-prod-approvers.
+Wednesday: Bob clicks approve. Gate reloads Bob's CURRENT authority
+           (fresh, not session-cached) -> no longer authorized ->
+           approval rejected -> graph keeps waiting for a valid
+           approver.
+```
+
+A required-approvals *count* change while paused needs its own
+fail-closed rule, since "what was required when the plan was created"
+and "what's required now" can differ:
+
+```
+effective_required_approvals = max(original_required_approvals,
+                                    current_required_approvals)
+
+policy became stricter  -> the stricter (current) count applies,
+                           even retroactively to an in-flight request
+policy became looser    -> keep the ORIGINAL stricter count; a
+                           relaxation never retroactively un-strictens
+                           an already-paused request
+policy removed access   -> reject / fail closed, full stop
+```
+
+Both `original_required_approvals` (kept for audit — what was true at
+plan time) and the live-recomputed current value are stored; the
+`max()` is what actually gates progression.
+
+```python
+def approver_currently_authorized(approver_id, scope, capability) -> bool:
+    policy = load_policy()                    # fresh read, not session cache
+    approver = load_actor(approver_id)         # fresh read, not session cache
+    grants = resolve_approval_grants(actor=approver, policy=policy)
+    return can_approve(grants, scope, capability)
+```
+
+**Tiered by stakes, not uniform**: for MVP, ordinary approvals may ride
+the same session-refresh cadence execution grants already use
+(`ACCESS_POLICY_AND_IAM_DISCOVERY.md`'s "mid-session revocation takes
+effect at next login/refresh"). Prod and bootstrap approvals — the
+`required_approvals: 2` tier — deserve the fully live reload sketched
+above; the cost of one extra fresh lookup is trivial next to the blast
+radius it's checking.
 
 ## Nothing secret in graph state — a LangGraph-specific rule with teeth
 The approval gate uses `interrupt()` + a checkpointer, and **the
@@ -255,9 +418,10 @@ not to."
 ## Open Questions
 | Question | Current state |
 |---|---|
-| Approver authority model — does approving `invoices/prod` require the approver to hold capability on that workspace? Can a requester self-approve? | Open. The capability ladder describes *doers*, not *approvers*; separation-of-duties (approver ≠ requester, approver has standing on the target scope) is the expected answer but nothing expresses it yet. |
+| Approver authority model | **Resolved** — see "The Approval Gate" above: PlatformOps-native `approval_grants`, separate from execution grants; self-approval and duplicate-approval both blocked in the graph node. |
 | Capability-shaped graph: conditional edges reading state (Option A) vs. builder wiring only reachable nodes (Option B) vs. capability closed over in router functions (middle path, current lean)? | Open — deliberately undecided until the provision workflow is actually built. |
 | Token TTL policy — long enough for the longest expected apply, short enough to be worthless if leaked? | Undecided; provider defaults (e.g. 1h) as the starting point. |
+| `approval_groups` policy file location — own file next to `org_bu_policy.yaml`, or a section within it? | Undecided; leaning own file, same allow-list-vs-template separation reasoning as `BOOTSTRAP_WORKFLOW.md`'s allow-list decision, not yet settled. |
 
 ## Verify before build
 Stable mechanisms, but exact shapes not freshly verified this session

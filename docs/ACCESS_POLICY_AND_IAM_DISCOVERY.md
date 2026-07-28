@@ -90,13 +90,13 @@ entirely — "technically impossible," not "told not to."
 
 ## The `effective_access` Invariant
 ```
-WHO:   actor.grants[best match for (org_bu, project, workspace)]
+WHO:   actor.execution_grants[best match for (org_bu, project, workspace)]
          -> capability this user is entitled to (discovery, this doc)
 WHAT:  org_bu_policy.ceiling[(org_bu, project, workspace, intent)]
          -> PlatformOps's own governance cap, independent of any user
 WHERE: resolved separately by intake (INTAKE_HITL_ROUTING.md)
 
-effective_access = min(actor.grants[...], org_bu_policy.ceiling[...])
+effective_access = min(actor.execution_grants[...], org_bu_policy.ceiling[...])
 ```
 
 If a provider over-grants, PlatformOps's ceiling still caps behavior.
@@ -116,7 +116,7 @@ THIS:
     -> PlatformOps's OWN standing, read-only discovery identity
        (one per cloud) asks the provider "what does user X have" —
        the user presents no cloud credential and is not involved
-    -> normalized into actor.grants, cached in the session
+    -> normalized into actor.execution_grants, cached in the session
 ```
 
 The discovery APIs themselves confirm this is the intended shape: all
@@ -170,19 +170,33 @@ stores passwords; MFA/SSO happen at the IdP.
 8. provider-side expansion               (resolve opaque refs / walk
                                           inheritance — see per-provider)
 9. normalize -> capability ladder        (mapping table WE maintain)
-10. actor.grants built, stored in the session
+10. actor.execution_grants built, stored in the session
+11. actor.approval_grants ALSO resolved — same claims, different
+    source: PlatformOps-native policy/IdP groups directly, NO
+    provider call at all (see "Two Grant Sets" below)
     │
     ▼
-EVERY intake request this session: pure local read of actor.grants —
-zero live provider calls per request
+EVERY intake or approval-gate check this session: pure local read of
+actor.execution_grants / actor.approval_grants — zero live provider
+calls per request
 ```
 
-**Precedence rule — one authoritative source of grants.** IdP group
-claims may well be named grant-like (`aiq-it-invoices-dev-operator`).
-They feed principal resolution and the group-based discovery queries
-below — they are **never a second, parallel source of `actor.grants`**.
-Provider discovery is authoritative; without this rule the two sources
-eventually disagree and nothing says which wins.
+**Precedence rule, per grant set — each has exactly one authoritative
+source, and the two sources differ on purpose:**
+
+| Grant set | Authoritative source | IdP group claims' role |
+|---|---|---|
+| `actor.execution_grants` | Provider discovery (this doc's Login Flow, steps 6–9) | Feed principal resolution + group-based discovery queries only — **never** a second, parallel source of execution grants |
+| `actor.approval_grants` | PlatformOps's own policy config (`gateway/policy/approvers.yaml` or equivalent), keyed by IdP group name directly | Are the direct, sole source — no provider round-trip |
+
+Without stating each set's one authoritative source explicitly, the
+two would eventually disagree and nothing would say which wins. See
+[EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md)'s approval-gate
+section for why approval authority is deliberately PlatformOps-native
+rather than cloud-grounded: approving a change is a governance act,
+not a provider API capability, and a prod approver does not need prod
+write access — they need standing PlatformOps approval authority on
+that scope.
 
 Session refresh rides the OIDC token-refresh mechanism — nothing new
 to build. Mid-session revocation takes effect at next login/refresh,
@@ -356,17 +370,38 @@ pre-apply drift-check tool (below), since it reports what the
   "actor": {
     "user_id": "00uabc123",
     "email": "adi@example.com",
-    "grants": [
+    "execution_grants": [
       { "org_bu": "aiq:it", "project": "invoices", "workspace": "dev",
         "provider": "aws", "capability": "apply_limited" },
       { "org_bu": "aiq:it", "project": "invoices", "workspace": "prod",
         "provider": "aws", "capability": "describe" }
-    ]
+    ],
+    "approval_grants": [
+      { "org_bu": "aiq:it", "project": "invoices", "workspace": "prod",
+        "max_capability": "apply_limited" }
+    ],
+    "resolved_at": "2026-07-28T10:00:00Z"
   }
 }
 ```
-Intake reads only this. Worked example (request-time flow itself lives
-in [INTAKE_HITL_ROUTING.md](INTAKE_HITL_ROUTING.md)):
+`execution_grants` are what `resolve_route` and the executor consult.
+`approval_grants` are what the approval gate consults (see
+[EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md)) — a prod
+approver here holds no `aws` execution grant on prod at all, only
+approval standing. `resolved_at` is what any staleness/TTL policy
+keys off — three tiers, increasingly strict, all already designed
+elsewhere in this doc set rather than one uniform rule: **(1)** simple
+MVP — changes apply at next login/session refresh (this doc's
+accepted tradeoff, above); **(2)** stricter — refresh the specific
+actor's grants at the approval gate or immediately before execution
+([EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md)'s live
+`approver_currently_authorized` reload and pre-flight step 1); **(3)**
+strictest — short session TTL plus forced refresh on high-risk
+actions specifically, not designed further here. Ordinary intake
+reads stay fast and local (tier 1); the approval gate and execution
+resume are where tier 2 already applies. Intake reads only
+`execution_grants`. Worked example (request-time flow itself lives in
+[INTAKE_HITL_ROUTING.md](INTAKE_HITL_ROUTING.md)):
 
 ```
 user: "deploy invoices to prod"
