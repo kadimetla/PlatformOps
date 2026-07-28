@@ -364,6 +364,116 @@ Rules:
 - setting `approval_required = true` is not an approval
 - provision workflows may produce plans before approval, but may not mutate without allow-list match and recorded approval
 
+## Cloud Roles and Access Flow
+The intake model carries scope and intent, but it must not select or
+grant cloud permissions by itself. Cloud access is resolved later by
+deterministic policy and used only after a downstream workflow has
+produced a concrete plan, deterministic checks have passed, and a
+human has approved the exact mutating action.
+
+The shared provider model:
+
+| Concept | AWS | Azure | GCP |
+|---|---|---|---|
+| Execution identity | IAM role assumed through STS | service principal or managed identity | service account or workload identity federation |
+| Permission bundle | IAM permissions policy plus optional boundary/conditions | Azure role definition | IAM role |
+| Scope binding | account, resource ARN, tag condition, region condition | management group, subscription, resource group, or resource | organization, folder, project, or resource |
+| Grant mechanism | role trust policy permits assumption; permissions policy permits actions | role assignment = principal + role definition + scope | allow policy binding = principal + role + resource |
+
+The PlatformOps flow:
+
+```text
+user request
+  -> intake resolves scope + intent
+  -> deterministic POLICY[(scope.org_bu, intent)] lookup
+  -> route to known workflow or fail closed
+  -> workflow extracts target-specific structure and builds plan
+  -> deterministic resource/action checks
+  -> human approval for exact mutating plan
+  -> executor uses narrow cloud identity
+  -> execution evidence is recorded
+```
+
+The policy entry, not the classifier, chooses whether a team may reach
+a workflow and which cloud execution identity is even eligible:
+
+```text
+POLICY[("aiq:it", "provision")] =
+  route: workflows.provision
+  cloud: aws
+  execution_identity: arn:aws:iam::<account>:role/platformops-aiq-it-provisioner
+  approval_required: true
+  allowed_resource_types:
+    - AWS::S3::Bucket
+    - AWS::CloudFront::Distribution
+```
+
+For AWS, the executor should assume a narrow role and use temporary
+credentials for the provider action:
+
+```text
+PlatformOps runtime identity
+  -> STS AssumeRole
+  -> temporary credentials
+  -> Terraform/CDK/CCAPI operation
+```
+
+The target role needs a trust policy for who may assume it and a
+permissions policy for what it may do. Conditions should carry the
+same boundary concepts as PlatformOps scope where the provider
+supports them: region, tags, resource ARN patterns, external ID, or
+session tags. Long-lived access keys do not belong in this path.
+
+For Azure, the executor should use a service principal or managed
+identity with an Azure RBAC role assignment:
+
+```text
+security principal + role definition + scope
+```
+
+Prefer the smallest practical scope: resource group or resource before
+subscription, subscription before management group. A user's request
+may name a subscription or resource group as a desired target, but
+policy must verify that target against `scope.org_bu` before any
+workflow can use it.
+
+For GCP, the executor should use a service account or workload identity
+federation with IAM allow-policy bindings:
+
+```text
+principal + role + resource
+```
+
+Prefer project/resource-level bindings before folder or organization
+bindings. The project/workspace target should be validated against the
+requester's allowed scope before the workflow receives any executable
+identity.
+
+Do not allow this path:
+
+```text
+raw_text says "deploy to finance prod"
+  -> classifier chooses finance prod
+  -> executor uses finance prod credentials
+```
+
+Use this path instead:
+
+```text
+raw_text says "deploy to finance prod"
+  -> intake records requested target
+  -> policy verifies requester can target finance/prod
+  -> workflow builds plan
+  -> deterministic checks validate resource/action allow-lists
+  -> human approves exact plan
+  -> executor assumes/uses scoped cloud identity
+```
+
+This section intentionally leaves exact Azure/GCP role names and AWS
+policy actions out of intake. They belong in provider-specific
+provisioning design and must be verified against current provider docs
+before implementation.
+
 ## Open Questions
 All four recommendations below survive the 2026-07-27 corrections
 unchanged. One new open question — one HCP organization per BU vs. BU
