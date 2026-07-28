@@ -478,6 +478,9 @@ Roles and Access Flow" section — that section keeps the request-time
 flow (intake → `POLICY` lookup → workflow → deterministic checks →
 human approval → executor); this doc owns everything upstream
 (login-time discovery) plus the credential model those steps assume.
+The execution-time half of that credential model — how the executor
+actually obtains short-lived tokens — is
+[EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md).
 Its capability ladder replaces the coarser viewer/operator persona
 sketch explored earlier in this session (briefly captured in that
 doc's Real-vs-Designed table, now corrected there in place). Reuses

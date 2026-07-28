@@ -410,6 +410,70 @@ POLICY[("aiq:it", "provision")] =
     - AWS::CloudFront::Distribution
 ```
 
+### Login-Time Provider Discovery
+Provider discovery can happen at login when PlatformOps needs the
+provider's access system, rather than IdP group names, to be the
+source of `actor.grants`. In that model, IdP claims identify the user
+and their groups, but they do not independently grant PlatformOps
+capabilities. Provider discovery is authoritative for `actor.grants`;
+IdP claims feed principal resolution and group-based discovery only.
+
+The login flow becomes:
+
+```text
+authenticate with corporate IdP
+  -> read user claims: subject, email, provider object id when present, groups
+  -> resolve provider principal ids for the selected provider
+  -> fetch direct user assignments and group-derived assignments
+  -> expand opaque provider role ids into names/definitions
+  -> normalize provider roles into PlatformOps grants
+  -> store actor.grants in the session
+```
+
+The identity-source assumption is explicit: this remains clean only
+when the corporate IdP is also the identity source federated into the
+provider. Azure is simplest when Entra ID is the login IdP, because the
+user object id is already present in the login token. AWS needs IAM
+Identity Center to be SCIM-synced from the corporate IdP, or a login
+time Identity Store lookup by email/group. GCP is simple when the
+corporate email/group is exactly the principal used in IAM bindings;
+it becomes a separate lookup problem if GCP uses an unsynced identity
+source.
+
+Group-derived access must be part of discovery because production
+access is usually assigned to groups:
+
+| Provider | Direct assignment lookup | Group-derived access handling |
+|---|---|---|
+| AWS IAM Identity Center | `ListAccountAssignmentsForPrincipal` with `PrincipalType=USER` | also query assignments for each synced Identity Store group with `PrincipalType=GROUP` |
+| Azure RBAC | `principalId eq '{objectId}'` finds exact-principal assignments | use `assignedTo('{objectId}')` for user/service-principal lookup when group-transitive assignments must be included |
+| GCP | match IAM bindings for `user:<email>` on known resources | also match IAM bindings for each `group:<group-email>` claim on known resources |
+
+AWS has one extra expansion step before normalization: IAM Identity
+Center account assignments return `PermissionSetArn`, not the readable
+permission-set name. The normalizer must call
+`DescribePermissionSet(InstanceArn, PermissionSetArn)` before mapping
+names like `PlatformOpsDevOperator` to capabilities.
+
+Azure role assignments similarly carry `roleDefinitionId`; the
+normalizer must resolve that role definition before mapping built-in
+or custom role names/actions to capabilities. For Azure RBAC, Microsoft
+documents `assignedTo('{objectId}')` as transitive for groups, while
+`principalId eq '{objectId}'` targets the exact principal id.
+
+GCP has no equally clean universal "list everything this user can
+access" shape for this design. The MVP should inspect only
+PlatformOps-known projects/workspaces, read IAM policies for those
+resources, and match both user and group principals from the login
+claims.
+
+The delegated-user-token alternative is intentionally rejected for the
+MVP. Asking users to connect AWS/Azure/GCP accounts and letting
+PlatformOps act with user-delegated provider tokens creates harder
+token custody, provider-specific OAuth/device-flow work, a weaker audit
+story, credential-collection risk, and inconsistent execution paths
+across clouds.
+
 For AWS, the executor should assume a narrow role and use temporary
 credentials for the provider action:
 
