@@ -192,10 +192,21 @@ bootstrap_create_project (admin CLI/form entry; no LLM anywhere)
   │                      policies name only the runtime principal
   │                      + ExternalId
   ▼ APPROVAL GATE        interrupt; required_approvals from policy
-  ▼ execute              with the BOOTSTRAP identity
-  ▼ verify_created       read back; compare to plan
+  ▼ execute              the SAME executor sub-graph normal provisioning
+  │                      uses (EXECUTION_CREDENTIALS.md's Executor Node:
+  │                      dispatch_by_toolchain -> acquire_credentials ->
+  │                      invoke -> poll_status -> terminal_check ->
+  │                      verify_created -> record_evidence) — only the
+  │                      ExecutionRequest.execution_identity differs
+  │                      (the BOOTSTRAP identity, not a workspace's) and
+  │                      the toolchain targets the disjoint bootstrap
+  │                      allow-list (Decision 1), not app resources
+  ▼ verify_created       read back; compare to plan (part of the reused
+  │                      sub-graph, not a separate step — shown here for
+  │                      continuity with the Level 2 graph narrative)
   ▼ write_registry       LAST; state: active, routable: true
-  ▼ END                  evidence: plan digest, approvals, ARNs created
+  ▼ END                  evidence: plan digest, approval digest,
+                         approvals, ARNs created
 ```
 
 ## Registry row — canonical field set
