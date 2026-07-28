@@ -219,7 +219,11 @@ projects:
 Same file as
 [ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md)'s
 `gateway/policy/project_registry.yaml` — one registry, read by both
-the policy layer (ceilings) and the executor (identities). Prod
+the policy layer (ceilings) and the executor (identities). (Corrected
+by [BOOTSTRAP_WORKFLOW.md](BOOTSTRAP_WORKFLOW.md): the canonical row
+splits `target_scope` into separate `account_id`/`region` fields — the
+executor needs them separately — and adds `state`/`routable` lifecycle
+fields; the example above predates that refinement.) Prod
 restraint is enforced in the identity itself: `invoices-prod-reader`
 *lacks* mutation permissions — "technically impossible," not "told
 not to."
