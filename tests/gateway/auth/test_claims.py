@@ -10,7 +10,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from gateway.oidc import parse_id_token
+from gateway.auth.claims import parse_id_token
 
 ISSUER = "https://idp.example.com"
 AUDIENCE = "platformops"

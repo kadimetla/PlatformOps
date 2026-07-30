@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
-from gateway.schemas import ApprovalGrant, Capability, Actor, ExecutionGrant, Scope
+from gateway.auth.schemas import ApprovalGrant, Capability, Actor, ExecutionGrant
+from gateway.schemas import Scope
 
 
 def test_capability_order_matches_the_ladder():

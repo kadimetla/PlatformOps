@@ -219,6 +219,17 @@ Corporate IdP
 | AWS | Identity Store UUID already known via SCIM sync — or one lookup (`identitystore` GetUserId/ListUsers by email) at login | Without SCIM, that lookup is mandatory — an extra call the first draft of this design hadn't accounted for |
 | GCP | Free — corporate email **is** the GCP principal email | Unsynced GCP identity source = its own separate integration project, not a lookup fix |
 
+**Corrected by [IDP_SELECTION.md](IDP_SELECTION.md)**: the recommended
+IdP is **Authentik**, chosen specifically because its SCIM 2.0
+provisioning covers groups, not just users — matching this table's
+"SCIM sync" path directly, restoring the free AWS principal-ID
+resolution assumed here. (Earlier note recommended Keycloak, which has
+no native SCIM support — verified, tracked as a future Keycloak
+feature, community workarounds only today; that would have made the
+live `identitystore:GetUserId`/`ListUsers` lookup AWS's real default
+path rather than the free SCIM one. Keycloak remains the documented
+alternative if ecosystem maturity outweighs the SCIM fit.)
+
 ## Group Membership — Part of Discovery on All Three Clouds
 Most real-org access is granted to **groups**, not individual users.
 Discovery keyed only on the user silently returns a fraction of their

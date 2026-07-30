@@ -1,3 +1,16 @@
+## Post-implementation note: file locations moved
+Everything below was built at `gateway/schemas.py` (all models) and
+`gateway/oidc.py`, as this design describes. A follow-up restructuring
+(security-boundary code separated from agent workflow code, per the
+`gateway/auth/` decision) moved `Capability`/`ExecutionGrant`/
+`ApprovalGrant`/`Actor` to `gateway/auth/schemas.py` and
+`gateway/oidc.py` to `gateway/auth/claims.py`. `Scope` and the intake
+models stayed in `gateway/schemas.py` — shared/intake-general, not
+auth-specific. Behavior, tests, and requirements are unchanged; only
+file location moved. This note is the correction; the rest of this
+document is left as originally written, describing the design as it
+was proposed and implemented at the time.
+
 ## Context
 `docs/ACCESS_POLICY_AND_IAM_DISCOVERY.md`'s Login Flow and
 `docs/EXECUTION_CREDENTIALS.md`'s `CloudAccessAdapter` Protocol both

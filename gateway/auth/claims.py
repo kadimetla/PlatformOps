@@ -1,6 +1,7 @@
-"""OIDC ID-token claims parsing. No JWKS fetch here -- the caller
-supplies one; see openspec/changes/build-login-schemas/design.md for
-why (keeps this module's tests offline, no real IdP anywhere).
+"""OIDC ID-token claims parsing -- security-boundary code, deterministic,
+no LangGraph. No JWKS fetch here -- the caller supplies one; see
+openspec/changes/build-login-schemas/design.md for why (keeps this
+module's tests offline, no real IdP anywhere).
 """
 import jwt
 from pydantic import BaseModel
