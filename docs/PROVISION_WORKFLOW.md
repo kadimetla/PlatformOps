@@ -1,11 +1,17 @@
 ## Status
 Designed only. No provision workflow, diff builder, or auth code
 exists on this branch. Covers what's specific to the `provision`
-intent's planning logic — diffing, drift, and action-level policy —
-distinct from [EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md),
-which owns credential acquisition and stays that doc's exclusive
-concern. CCAPI's lack of a native plan/dry-run primitive is stated as
-believed-true, not verified this session — see Verify before build.
+intent's planning logic — diffing, drift, action-level policy, IaC
+generation, and toolchain selection —
+[EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md) still owns the
+general credential-acquisition mechanics (Layers 0/1/2, the approval
+gate, the executor sub-graph); this doc's "OpenTofu Local Runner"
+section is the one exception, since that toolchain's two-phase
+credential acquisition is inseparable from its planning mechanics.
+CCAPI's lack of a native plan/dry-run primitive is stated as
+believed-true, not verified this session. OpenTofu-specific claims
+(S3 backend `use_lockfile`, saved-plan `apply` behavior) verified
+against current docs 2026-07-30 — see Sources/Verify before build.
 
 ## Real vs. Designed
 | Area | Status |
@@ -17,6 +23,9 @@ believed-true, not verified this session — see Verify before build.
 | Terraform `get_plan_json_output` | Real tool, verified in `TERRAFORM_MCP_SERVER.md` — the diff engine CCAPI lacks |
 | Template library (`skills/provision-infra/templates/`) | Not implemented — directory doesn't exist |
 | `skills/provision-infra/SKILL.md`'s Path A step 1 ("draft the CDK app") | Real, current, and now contradicted by this doc's template-first design — flagged, not yet updated |
+| `skills/provision-infra/SKILL.md`'s Path C (`opentofu_local`) | Not implemented — the file only has Paths A/B today; this toolchain has no skill entry yet |
+| `opentofu_local` runner (state backend, runner directory, two-phase credential acquisition) | Designed only, verified against current OpenTofu docs 2026-07-30 |
+| `template_version` in `approval_digest` | Designed only — sixth input, extends Gap 2's five-input formula, corrected there in place |
 
 ## Same Access Flow for New and Existing Stacks
 No separate grant model needed for "create a new stack" vs. "update an
@@ -126,23 +135,24 @@ describe_current        -> as designed above (empty for new, real
 build_plan               -> diff, as designed above
 ```
 
-### Correcting the Terraform execution model to match what's already real
-An easy mistake worth naming explicitly: "acquire a short-lived AWS
-credential, inject it into the Terraform process env, run `terraform
-apply` locally" is the right model for the **CDK/CCAPI path** (Layer 2
-in `EXECUTION_CREDENTIALS.md`), but it is **not** this project's
-Terraform path. `skills/provision-infra/SKILL.md`'s real Path B, the
-README's setup (an HCP Terraform account + `TFE_TOKEN` requirement),
-and `EXECUTION_CREDENTIALS.md`'s own Layer 1 table all already commit
-to **HCP Terraform managed runs**, not local CLI execution:
+### Three toolchains, three credential footprints
+`Toolchain` has three values, not two — `ccapi` | `hcp_terraform` |
+`opentofu_local`. `hcp_terraform` and `opentofu_local` are genuinely
+different systems, not the same Terraform-language stack running in
+two places: `hcp_terraform` is HashiCorp's own managed platform
+running HashiCorp Terraform; `opentofu_local` runs the OpenTofu
+binary — the open-source fork — directly, as a PlatformOps-owned
+process. Decided this session: both exist as toolchain options,
+selected per project/workspace in the registry, not one replacing the
+other.
 
 ```
-NOT THIS (CCAPI's model, wrong for Terraform here):
+NOT THIS (CCAPI's model, wrong for hcp_terraform):
   PlatformOps runtime -> sts:AssumeRole(workspace execution role)
     -> temporary AWS credentials -> inject into local `terraform`
     process env -> `terraform apply`
 
-THIS (the real, already-decided model):
+hcp_terraform (the real, already-decided model for that toolchain):
   PlatformOps acquires only an HCP Terraform API/team token (not an
   AWS credential) -> create_run(workspace_id, plan) [verified tool,
   TERRAFORM_MCP_SERVER.md] -> poll get_plan_details/
@@ -150,16 +160,186 @@ THIS (the real, already-decided model):
   get_apply_details/get_apply_logs until terminal
   -- AWS credentials for the actual apply come from HCP's own dynamic
   provider credentials, configured once at Layer 1 bootstrap time.
-  PlatformOps's process never holds an AWS credential for this path
-  at all.
+  PlatformOps's process never holds an AWS credential for this
+  toolchain at all.
+
+opentofu_local (a genuinely different footprint — see below):
+  PlatformOps runs `tofu` itself, taking on four things HCP would
+  otherwise handle: cloud credentials, state backend + locking,
+  runner isolation, execution audit. This DOES need PlatformOps to
+  hold real cloud credentials, same shape as CCAPI's — but at TWO
+  separate points, not one (see "Two Credential Acquisitions" below).
+
+ccapi:
+  unchanged — PlatformOps holds a real cloud credential directly,
+  same as opentofu_local's shape, one acquisition at execution time.
 ```
 
-This changes what "Layer 2 JIT acquisition" means per toolchain: CCAPI
-acquires an AWS credential directly; Terraform acquires only an HCP
-API token, and the AWS-level handoff happens entirely inside HCP's own
-infrastructure. Both still follow the same rule — nothing acquired
-until after approval, nothing in graph state — just via different
-concrete tokens.
+Both `hcp_terraform` and `opentofu_local` still follow the same rule —
+nothing acquired until after approval, nothing in graph state — just
+via different concrete tokens and, for `opentofu_local`, a different
+*number* of acquisitions.
+
+## OpenTofu Local Runner (Third Toolchain)
+Chosen as the recommended MVP build order for AWS specifically (see
+"Recommended Build Order," below) — real technical claims below
+verified against current OpenTofu docs (2026-07-30).
+
+### Runner boundary — one isolated directory per request
+Never run from the repo root; the directory is disposable, one per
+request, and doubles as `ExecutionRequest.artifact_path` (in the
+schema since `EXECUTION_CREDENTIALS.md`, defined by the render step
+already designed above):
+
+```
+provision_artifacts/<request_id>/
+  main.tf / variables.tf / outputs.tf   -- from template rendering
+  backend.tf                            -- opentofu_local only
+  terraform.tfvars.json
+  plan.bin / plan.json                  -- opentofu_local only,
+                                        -- populated by build_plan
+```
+CCAPI and `hcp_terraform` populate the same directory's IaC files but
+never `backend.tf`/`plan.bin`/`plan.json` — CCAPI has no state file of
+its own, and `hcp_terraform`'s plan artifacts live in HCP, not on
+PlatformOps's disk.
+
+### State backend — remote, locked, never local
+Local state is not acceptable for real provisioning. S3 backend with
+native S3 locking, verified current syntax (OpenTofu 1.12.x+ — pin
+this version constraint, `use_lockfile` is a newer feature, not
+universally available on older releases):
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket       = "platformops-tofu-state"
+    key          = "aiq/it/invoices/dev/tofu.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
+  }
+}
+```
+The `key` is built directly from `Scope` — `org:bu/project/workspace`
+— giving state isolation the exact same shape as everything else in
+this design; a stack's state path is derivable from its scope, not a
+separate naming decision. DynamoDB-table locking remains a fully
+supported alternative (`dynamodb_table`), not deprecated — a
+per-workspace choice, not designed further here. Bucket versioning is
+recommended (OpenTofu's own docs: state recovery from accidental
+deletion) — an `infra`-level bootstrap concern, not per-request.
+
+### Two credential acquisitions, not one — a real consequence of running locally
+This is the concrete cost of not delegating to HCP: a local `tofu
+plan` refreshes real provider state as part of building the plan, so
+it needs live cloud read access — a requirement that simply doesn't
+exist for `hcp_terraform`, where HCP does that read internally.
+
+```
+PLAN PHASE:
+  acquire a short-lived, READ/plan-capable credential
+  tofu init -input=false
+  tofu validate -no-color
+  tofu plan -input=false -lock-timeout=5m -out=plan.bin
+  tofu show -json plan.bin > plan.json
+  DISCARD the credential — do not hold it across the approval pause,
+  in state OR in process memory (stricter than the existing
+  never-in-state rule: a long-running executor process could
+  otherwise keep a live Python reference alive across a multi-day
+  pause even though it was never checkpointed)
+
+  ... approval gate, no credential alive anywhere during the wait ...
+
+APPLY PHASE (after approval, after full resume revalidation):
+  acquire a FRESH, apply-capable credential
+  tofu apply -input=false -no-color plan.bin
+  DISCARD immediately after
+```
+Verified: a saved plan file applies without interactive prompting —
+`tofu apply plan.bin` treats the plan file itself as the approval,
+and `-auto-approve` is explicitly ignored in that mode; this is *why*
+it's the right primitive to use only after PlatformOps's own approval
+gate has already run, not a redundant second confirmation.
+
+The credential tier for each phase follows the same rule
+`INQUIRY_WORKFLOW.md` already established —
+`acquired_capability = min(actor's grant, what THIS operation needs)`
+— applied across two phases of one workflow instead of across two
+different workflows:
+
+```
+requester has describe:      plan credential = read-only; no apply phase reached
+requester has plan:          plan credential = read-only/plan-tier; no apply phase
+requester has apply_limited: plan credential = read-only/plan-tier (NOT
+                              apply-tier, even though the requester
+                              could go higher) -> after approval,
+                              apply credential = apply-tier
+```
+For MVP, one `apply_limited` role may serve both phases in dev if a
+separate planner identity doesn't exist yet; prod should use a
+strictly read-only/plan-tier identity for the plan phase regardless of
+what the requester's own grant allows — same per-request-not-per-actor
+discipline as the inquiry design.
+
+### Deterministic checks, extended for a local plan.json
+In addition to the existing action-verb allow-list (Gap 3, below):
+```
+resource types allowed
+action verbs allowed (create/update/delete)
+delete explicitly allowed if present
+names/tags/prefixes valid
+workspace scope matches the backend key (catches a
+  misconfigured/copy-pasted backend block before it touches the
+  wrong state file)
+no credential-like strings in rendered files or tool output
+provider/account/region matches the registry entry
+```
+
+### Approval digest gains a sixth input: template version
+**Corrects `EXECUTION_CREDENTIALS.md`'s formula again, in place, not
+silently.** Gap 2 above extended the original four-input formula to
+five with `current_state_fingerprint`. This adds a sixth:
+```
+approval_digest = hash(
+    plan_json,
+    current_state_fingerprint,
+    policy_snapshot,
+    allow_list_version,
+    execution_identity,
+    template_version,
+)
+```
+Binding the template's own version means a template-library change
+between plan and apply (someone merges an updated `static_site`
+template mid-approval) is caught even in the edge case where the
+rendered `plan.json` happens to look unchanged — provenance, not just
+content, is part of what approval attaches to.
+
+### Failure taxonomy — toolchain-specific examples, same three classes
+No new classes, matching `EXECUTION_CREDENTIALS.md`'s existing
+retryable / needs_new_approval / hard_fail_closed taxonomy exactly:
+```
+retryable:          tofu lock timeout, transient provider API errors
+                     before any mutation happened
+needs_new_approval:  state changed, plan changed, policy changed,
+                     partial apply left an unknown created-state
+hard_fail_closed:    cannot acquire a credential, a forbidden action
+                     in the plan, a credential-shaped leak detected
+                     in tool output
+```
+
+### Recommended Build Order
+Not a design decision, a sequencing note for whoever implements this
+next (matching the incremental-slice approach already used for the
+intake classification build): AWS first, `opentofu_local` only,
+`ccapi`/`hcp_terraform`/Azure/GCP deferred until this toolchain's
+executor abstraction is proven —
+```
+opentofu_local runner + S3 remote state + S3 lockfile locking +
+sts:AssumeRole + one reviewed static_site template + plan.json
+checks + manual approval gate + apply saved plan
+```
 
 ## Gap 1: Terraform Has a Diff Engine; CCAPI Doesn't
 Terraform's `plan` *is* a diff against real state —
@@ -295,6 +475,15 @@ allow-list.
   changes force AWS/Azure/GCP resource replacement) — needed for the
   CCAPI diff builder's "replacement vs update decisions" item, not
   designed here.
+- OpenTofu version constraint: the S3 backend's `use_lockfile`
+  argument is confirmed current for OpenTofu 1.12.x+, but the docs
+  don't state which release introduced it — pin an explicit minimum
+  version before relying on it rather than assuming it's available on
+  whatever version ships by default.
+
+## Sources
+- [OpenTofu: S3 backend](https://opentofu.org/docs/language/settings/backends/s3/) — `use_lockfile` syntax, DynamoDB-still-supported confirmation, bucket versioning recommendation
+- [OpenTofu: `apply` command](https://opentofu.org/docs/cli/commands/apply/) — saved-plan-file behavior (no interactive prompt, `-auto-approve` ignored)
 
 ## How this relates to the existing docs
 Sits between [INTAKE_HITL_ROUTING.md](INTAKE_HITL_ROUTING.md) (routes
@@ -307,18 +496,22 @@ Corrects `EXECUTION_CREDENTIALS.md`'s `approval_digest` formula in
 place (noted there, not silently changed). Reuses
 [TERRAFORM_MCP_SERVER.md](TERRAFORM_MCP_SERVER.md)'s verified
 `create_run`/`action_run`/`get_plan_json_output`/`get_plan_details`/
-`get_apply_details` tools rather than re-verifying them — and, in "IaC
-Generation," corrects a Terraform-execution-model conflation
-(local-CLI-with-AssumeRole vs. HCP managed runs) back to what
-`EXECUTION_CREDENTIALS.md`'s own Layer 1 table and the real
-`skills/provision-infra/SKILL.md` Path B already established; that
-doc's Layer 2 table was already correct, this is a clarification, not
-a correction to it. Flags `skills/provision-infra/SKILL.md`'s Path A
-step 1 (free-form IaC drafting) as needing an update, not yet made,
-once `workflows/provision/` exists. Shares the executor sub-graph and
-failure taxonomy with
+`get_apply_details` tools rather than re-verifying them. "IaC
+Generation" clarifies (not corrects — `EXECUTION_CREDENTIALS.md`'s
+Layer 1/2 tables were already accurate for `hcp_terraform`) that
+`hcp_terraform` and `opentofu_local` are two distinct toolchains with
+different credential footprints, decided this session to coexist
+rather than one replacing the other — adds `opentofu_local` as a third
+`Toolchain` value there, corrected in place. Flags
+`skills/provision-infra/SKILL.md`'s Path A step 1 (free-form IaC
+drafting) as needing an update, and now also flags that file as
+missing a Path C for `opentofu_local` — neither applied yet, both
+pending `workflows/provision/`'s actual build. Shares the executor
+sub-graph and failure taxonomy with
 [EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md) unchanged — this
-doc only adds a fifth input to the digest, an action dimension to the
-allow-list, and the template-first IaC generation model, nothing about
-execution mechanics itself. Indexed from
+doc adds a sixth input to the digest (`template_version`, extending
+Gap 2's fifth), an action dimension to the allow-list, the
+template-first IaC generation model, and the `opentofu_local`
+toolchain's two-phase credential acquisition, nothing about the shared
+execution mechanics themselves. Indexed from
 [HARNESS_DESIGN.md](HARNESS_DESIGN.md).

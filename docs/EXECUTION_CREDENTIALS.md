@@ -167,6 +167,15 @@ inject into the Terraform/CDK/CCAPI process environment
   -- NEVER into graph state (see below)
 ```
 
+This diagram shows one acquisition, which is accurate for
+`ccapi`/`hcp_terraform`/Azure/GCP as written — but not for the
+`opentofu_local` toolchain (`PROVISION_WORKFLOW.md`): running `tofu`
+locally means a plan-phase acquisition (read-only, discarded before
+the approval pause) and a separate apply-phase acquisition (after
+resume, apply-tier), not one acquisition at a single execution moment.
+That doc's "Two credential acquisitions, not one" covers the mechanism
+and why it doesn't apply to the toolchains above.
+
 The AWS session tags matter beyond hygiene: tagging the assumed
 session with `actor` means CloudTrail shows **which human's request
 drove each API call**, even though that human never held any
@@ -433,7 +442,13 @@ class ExecutionRequest(BaseModel):
                                       # see Digest Binding below
     execution_identity: ExecutionIdentityRef
     provider: CloudProvider
-    toolchain: Toolchain              # ccapi | terraform
+    toolchain: Toolchain              # ccapi | hcp_terraform | opentofu_local
+                                      # -- see PROVISION_WORKFLOW.md's
+                                      # "Three toolchains" for why hcp_terraform
+                                      # and opentofu_local have different
+                                      # credential footprints, and why
+                                      # opentofu_local needs TWO acquisitions
+                                      # (plan phase, apply phase), not one
     artifact_path: str
     approval_records: list[ApprovalRecord]
 ```
@@ -460,7 +475,12 @@ opposed to new-stack creation, which has nothing to drift from) can
 also drift because someone else changed the live infrastructure while
 approval sat paused. That doc covers the mechanism (Terraform state
 serial/lineage vs. a CCAPI snapshot hash) and why it matters more for
-changes to existing stacks specifically.
+changes to existing stacks specifically. **Extended again** with a
+sixth input, `template_version` — binds approval to the template
+library's own version, catching a template-library change between
+plan and apply even in the rare case where the rendered `plan.json`
+happens to look unchanged. Full six-input formula and rationale live
+in that doc's "OpenTofu Local Runner" section — not repeated here.
 
 ### The fork that matters: CCAPI is per-resource, Terraform is per-run
 Kept explicit rather than hidden behind a generic "execute tool" call,
