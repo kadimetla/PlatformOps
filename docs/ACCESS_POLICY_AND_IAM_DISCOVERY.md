@@ -242,6 +242,13 @@ real access. Per provider:
   each of the user's groups.
 
 ## Per-Provider Discovery Mechanics
+These mechanics implement two methods of
+[EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md)'s
+`CloudAccessAdapter` Protocol (`resolve_principal`,
+`resolve_execution_grants`) — that doc also covers the recommended
+build strategy: contract-test all three providers early against static
+fixtures built from the verified shapes below, go deep (real mutation)
+on AWS only.
 
 ### AWS — verified against current AWS docs
 Precondition: **IAM Identity Center**. Plain IAM roles/users have no

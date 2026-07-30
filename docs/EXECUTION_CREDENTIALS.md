@@ -26,6 +26,8 @@ exception: already verified in
 | Provision workflow the executor plugs into | Designed only (capability-shaped graph, below) |
 | Approval gate (self-looping interrupt node, `approval_groups` policy, staleness rechecking) | Designed only |
 | Executor sub-graph (dispatch/acquire/invoke/poll/verify/record, `ExecutionRequest`, digest binding, failure taxonomy) | Designed only |
+| `CloudAccessAdapter` Protocol + AWS/Azure/GCP implementations | Designed only — recommended build order: contract + all-three fixtures first, real depth AWS-only |
+| Contract-test fixtures (AWS/Azure/GCP, built from already-verified API response shapes) | Not implemented — buildable now, no live provider account needed |
 
 ## Identity timeline — which identity is active at each phase
 The whole access design in one table. Alice proves identity to
@@ -183,6 +185,131 @@ credential — this is the audit story that makes the whole
 no-user-credentials model
 ([ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md)'s
 core decision) defensible.
+
+## CloudAccessAdapter — A Shared Contract, Build Strategy
+Decided this session: validate all three providers early, go deep on
+one. Not "AWS only" — that risks the shared abstraction being
+accidentally AWS-shaped and only discovered wrong once Azure/GCP are
+attempted later. Not "all three fully" either — that means solving
+identity federation, credential acquisition, state-backend
+conventions, IAM/RBAC semantics, allow-lists, env injection, and
+failure modes for three clouds simultaneously, burying the actual
+PlatformOps workflow under provider setup noise.
+
+```python
+class CloudAccessAdapter(Protocol):
+    def resolve_principal(
+        self, claims: OIDCClaims
+    ) -> ProviderPrincipal: ...                          # ACCESS_POLICY_AND_IAM_DISCOVERY.md
+
+    def resolve_execution_grants(
+        self, principal: ProviderPrincipal, groups: list[str],
+        registry: ProjectRegistry,
+    ) -> list[ExecutionGrant]: ...                        # ACCESS_POLICY_AND_IAM_DISCOVERY.md
+
+    def acquire_plan_credentials(
+        self, identity: ExecutionIdentityRef, request: CredentialRequest,
+    ) -> CredentialLease: ...                             # this doc / PROVISION_WORKFLOW.md
+
+    def acquire_apply_credentials(
+        self, identity: ExecutionIdentityRef, request: CredentialRequest,
+    ) -> CredentialLease: ...                             # this doc / PROVISION_WORKFLOW.md
+
+    def describe_current(
+        self, scope: Scope, identity: ExecutionIdentityRef,
+    ) -> CurrentStateSnapshot: ...                        # PROVISION_WORKFLOW.md
+```
+`registry: ProjectRegistry` is passed in, not loaded by the adapter
+itself — dependency injection, not a hidden lookup, matching this
+project's general discipline of explicit inputs over implicit global
+state. `OIDCClaims`, `ProviderPrincipal`, `ProjectRegistry`,
+`ExecutionIdentityRef`, `CredentialRequest`, `CredentialLease`,
+`CurrentStateSnapshot` are forward-referenced type names, not yet
+added to `gateway/schemas.py` — `ExecutionGrant` likewise, though it's
+been used informally elsewhere in this doc set already. Concrete
+Pydantic definitions are implementation work, not decided here.
+
+Concretely, three implementations of one Protocol:
+```
+AwsAccessAdapter:    Identity Store / IAM Identity Center / STS AssumeRole
+AzureAccessAdapter:  Entra object id / RBAC assignedTo() / managed
+                     identity or SP token
+GcpAccessAdapter:    principal email/groups / IAM policy scan / service
+                     account impersonation
+```
+
+**One adapter per cloud provider (AWS/Azure/GCP), not per toolchain.**
+The Protocol is a shared *calling convention* — method signatures — not
+shared *behavior*. Every provider-specific asymmetry already designed
+stays exactly as different as it needs to be inside each
+implementation: AWS's `ListAccountAssignmentsForPrincipal` →
+`DescribePermissionSet` two-call resolution, Azure's `assignedTo()`
+requirement (not `principalId eq`, for group-transitivity), GCP's
+inheritance walk (no equivalent name-resolution step, a structurally
+different problem). A shared interface is not a claim that the
+internals converge — stated explicitly so it doesn't get read that way
+later.
+
+**Which toolchain calls which methods differs, and that's expected —
+by phase:**
+```
+opentofu_local:
+  login:     resolve_principal, resolve_execution_grants
+  plan:      acquire_plan_credentials     (discarded before approval)
+  apply:     acquire_apply_credentials    (fresh after resume)
+  describe:  describe_current
+
+ccapi:
+  login:     resolve_principal, resolve_execution_grants
+  execute:   acquire_apply_credentials    (one call, no separate plan
+                                          phase needing its own credential)
+  describe:  describe_current
+
+hcp_terraform:
+  login:      resolve_principal, resolve_execution_grants
+  execution:  NO cloud credential acquisition by PlatformOps —
+             HCP's dynamic provider credentials replace that role
+             entirely; the adapter's credential methods are simply
+             never called for this toolchain
+```
+Discovery (`resolve_principal`/`resolve_execution_grants`) is
+toolchain-independent — every toolchain uses it identically at login;
+only the execution-time methods vary by toolchain.
+
+### Build order: contract depth vs. execution depth, two different axes
+```
+VALIDATE EARLY, ACROSS ALL THREE (cheap — no live mutation, no live
+Azure/GCP account needed):
+  - grant normalization: permission-set/role/binding -> capability,
+    per provider (already verified shapes exist to build fixtures
+    from — see ACCESS_POLICY_AND_IAM_DISCOVERY.md's Sources)
+  - group-derived grants: AWS group PrincipalType calls, Azure
+    assignedTo() transitivity, GCP group bindings
+  - registry field shape per provider (account_id/region/role_arn;
+    tenant_id/subscription_id/resource_group/client_id;
+    project_id/region/service_account_email)
+  - credential-acquisition METHOD SIGNATURES (not live calls)
+  - OpenTofu env-injection shape per provider (AWS_*; ARM_*;
+    GOOGLE_*/impersonation config)
+  - all via CONTRACT TESTS against STATIC FIXTURES built from the
+    already-verified real API response shapes -- no live provider
+    account required for any of the three
+
+GO DEEP, AWS ONLY (matches PROVISION_WORKFLOW.md's Recommended Build
+Order, unchanged by this):
+  - real mutation (opentofu_local + AWS apply)
+  - full failure handling (all three taxonomy classes, exercised for
+    real)
+  - the actual S3 state backend
+  - end-to-end apply, verify, evidence
+```
+
+Live smoke tests come after contract tests pass, staged by risk:
+AWS gets a real dev-stack apply; Azure/GCP get read-only
+describe/plan-only smoke tests only — no live Azure/GCP apply until
+the AWS path has proven the model out. This surfaces gaps in the
+shared adapter contract early and cheaply, without turning the first
+build into three parallel platform projects.
 
 ## Execution-time checks — the full pre-flight sequence
 Immediately before provisioning, in order:
@@ -687,7 +814,13 @@ resolves WHO (login-time discovery, capability grants, the registry);
 [INTAKE_HITL_ROUTING.md](INTAKE_HITL_ROUTING.md) resolves WHERE/WHAT
 (routing, `effective_access` at request time); this doc is the only
 place cloud credentials actually appear, and only ever short-lived,
-after approval. Reuses
+after approval. `CloudAccessAdapter` unifies both docs' provider-facing
+methods into one Protocol, defined here since this doc already covers
+Layer 0–2 generically across providers/toolchains — its
+`resolve_principal`/`resolve_execution_grants` methods are
+`ACCESS_POLICY_AND_IAM_DISCOVERY.md`'s territory implemented, its
+`acquire_*_credentials`/`describe_current` methods are
+`PROVISION_WORKFLOW.md`'s. Reuses
 [TERRAFORM_MCP_SERVER.md](TERRAFORM_MCP_SERVER.md)'s verified tool
 inventory (`create_run`, `action_run`, `get_token_permissions`).
 Indexed from [HARNESS_DESIGN.md](HARNESS_DESIGN.md).

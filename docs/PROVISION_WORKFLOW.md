@@ -231,9 +231,14 @@ recommended (OpenTofu's own docs: state recovery from accidental
 deletion) — an `infra`-level bootstrap concern, not per-request.
 
 ### Two credential acquisitions, not one — a real consequence of running locally
-This is the concrete cost of not delegating to HCP: a local `tofu
-plan` refreshes real provider state as part of building the plan, so
-it needs live cloud read access — a requirement that simply doesn't
+This is `opentofu_local`'s specific call pattern against
+[EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md)'s
+`CloudAccessAdapter` Protocol — both `acquire_plan_credentials` and
+`acquire_apply_credentials` get called, unlike `ccapi` (one call) or
+`hcp_terraform` (neither, for execution). The concrete cost of not
+delegating to HCP: a local `tofu plan` refreshes real provider state
+as part of building the plan, so it needs live cloud read access — a
+requirement that simply doesn't
 exist for `hcp_terraform`, where HCP does that read internally.
 
 ```
