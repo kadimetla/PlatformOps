@@ -11,6 +11,7 @@ dependencies = [
     "langgraph",
     "langchain-core",
     "pydantic",
+    "pyjwt",
 ]
 # Note: boto3 is no longer a direct dependency — provisioning now routes
 # through external MCP servers (awslabs.aws-iac-mcp-server, awslabs.ccapi-mcp-server,
@@ -19,4 +20,4 @@ dependencies = [
 # `uvx`) is required at runtime; see README.md setup.
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "cryptography"]

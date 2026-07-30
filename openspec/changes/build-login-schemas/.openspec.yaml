@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-07-30
+goal: Add gateway/schemas.py's Capability ladder and session-grant models, plus
+  gateway/oidc.py's claims parsing, per docs/ACCESS_POLICY_AND_IAM_DISCOVERY.md
+  and docs/EXECUTION_CREDENTIALS.md's CloudAccessAdapter contract
