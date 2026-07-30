@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-07-28
+goal: Ship workflows/intake/ and gateway/schemas.py per
+  docs/INTAKE_HITL_ROUTING.md, corrected in place against
+  design/harness-architecture prior art on 2026-07-27/28
