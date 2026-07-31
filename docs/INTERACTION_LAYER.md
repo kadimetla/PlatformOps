@@ -9,7 +9,13 @@ device-code login pairing are this project's own decisions, not
 external claims. AG-UI's concrete event taxonomy and CopilotKit
 Runtime's proxy architecture verified 2026-07-31 — deeper than the
 2026-07-30 pass, which only verified AG-UI's top-level framing, not
-its actual event vocabulary.
+its actual event vocabulary. **Corrected again, same day**: the first
+2026-07-31 pass checked only `/concepts/events` and concluded AG-UI
+has no native HITL mechanism. Checking `/concepts/interrupts` directly
+shows that's wrong — see the dedicated section below. Also introduces
+`HITLEvent`, the concretization of this doc's previously-unnamed
+"future `EventEnvelope[T]`," now with a real home (`gateway/events.py`)
+and a real target wire shape (AG-UI's interrupt mechanism).
 
 ## Real vs. Designed
 | Area | Status |
@@ -17,7 +23,8 @@ its actual event vocabulary.
 | Event envelope (any) | Not implemented |
 | TUI (any renderer) | Not implemented — no `rich`/`textual`/`prompt_toolkit` installed |
 | Login entry point | Not implemented — was undecided in `build-login-schemas`, resolved here to device-code |
-| AG-UI/CopilotKit web path | Not implemented, not started — documented future path only; event taxonomy and Runtime proxy pattern verified 2026-07-31, no code |
+| AG-UI/CopilotKit web path | Not implemented, not started — documented future path only; event taxonomy, Runtime proxy pattern, and interrupt-based HITL mapping verified 2026-07-31, no code |
+| `HITLEvent` / `gateway/events.py` | Designed only, added 2026-07-31 — concretizes this doc's "future `EventEnvelope[T]`"; no file exists yet |
 | A2UI rich widgets | Not implemented, not started — documented future path only |
 
 ## Core Decision: TUI First, Web UI Later — Same Event Stream, Two Renderers
@@ -129,19 +136,175 @@ above. Verified 2026-07-31 against `docs.ag-ui.com/concepts/events`:
 | Tool call | `ToolCallStart`/`Args`/`End`/`Result` | `plan.started`/`plan.summary` (a plan is structurally a tool call) |
 | State | `StateSnapshot`, `StateDelta` (JSON Patch), `MessagesSnapshot` | `execution.progress` |
 | Reasoning | `ReasoningStart`/`ReasoningMessage*`/`ReasoningEnd` | not used yet |
-| Special | `Raw`, `Custom` | `clarification.required`, `approval.required` |
+| Special | `Raw`, `Custom` | telemetry-shaped events without a closer native fit (`plan.summary`, `execution.progress` if not modeled as `StateDelta`, `evidence.recorded`, `policy.warning`) |
 
-**The one finding that actually changes something**: AG-UI has **no
-native event type for human-in-the-loop approval or clarification**.
-There is no `ApprovalRequired` or `InputRequested` event in the
-protocol — every HITL pause this project's design already relies on
-(`ClarificationQuestion`, `ApprovalRequest`) would have to ride on
-AG-UI's `Custom` event, not a first-class one. This doesn't block
-anything (`Custom` is explicitly designed as the extension point), but
-it means the web-adapter layer (`PlatformOpsEvent` → AG-UI, described
-above) carries real translation weight for exactly the two event kinds
-this project's HITL design depends on most — worth knowing before
-that adapter gets built, not after.
+**Corrected below — do not use this row for HITL.** An earlier pass of
+this doc mapped `clarification.required`/`approval.required` to
+`Custom` here. That was based on `/concepts/events` alone and missed a
+dedicated mechanism; see "AG-UI Interrupts" immediately below for the
+corrected mapping.
+
+## AG-UI Interrupts — the Real HITL Mechanism (Corrects the Row Above)
+Verified 2026-07-31 against `docs.ag-ui.com/concepts/interrupts`,
+which `/concepts/events` doesn't surface — that page only lists
+event *categories*, and files the interrupt-carrying extension under a
+"Draft Events" heading without linking the dedicated page. AG-UI has a
+**structured, first-class pause/resume primitive**, not just `Custom`:
+
+```typescript
+// RunFinished.outcome, a discriminated union
+type RunFinishedOutcome =
+  | { type: "success" }
+  | { type: "interrupt"; interrupts: Interrupt[] }
+
+type Interrupt = {
+  id: string
+  reason: string
+  message?: string
+  toolCallId?: string
+  responseSchema?: JsonSchema
+  expiresAt?: string
+  metadata?: Record<string, any>
+}
+```
+Resuming is a new run: `RunAgentInput.resume: Array<{ interruptId,
+status: "resolved" | "cancelled", payload?: any }>` — every open
+interrupt must be addressed, partial resumes aren't supported.
+
+**`HITLEvent` → `Interrupt` mapping:**
+
+| `HITLEvent` field | `Interrupt` field |
+|---|---|
+| `event_id` | `id` |
+| `kind` (`approval.required`/`clarification.required`) | `reason` |
+| `payload` (`ApprovalRequest`/`IntakeDecision`) | `metadata`, optionally schema-validated via `responseSchema` |
+| `expires_at` (echoes `ApprovalRequest.approval_expires_at`) | `expiresAt` |
+| `HITLResponse` (verdict/value/selected_choice) | `resume[].payload`, keyed by `resume[].interruptId` |
+
+Example, approval:
+```json
+{
+  "id": "hitl-approval-123",
+  "reason": "approval.required",
+  "message": "Approval required for invoices/dev apply.",
+  "responseSchema": {
+    "type": "object",
+    "properties": {
+      "verdict": { "enum": ["approve", "reject"] },
+      "approval_digest": { "type": "string" }
+    },
+    "required": ["verdict", "approval_digest"]
+  },
+  "metadata": {
+    "request_id": "req-123",
+    "scope": { "org": "aiq", "bu": "it", "project": "invoices", "workspace": "dev" },
+    "vibe_diff": "Create S3 bucket and CloudFront distribution",
+    "required_approvals": 1,
+    "approvals_so_far": []
+  }
+}
+```
+Resume: `{"resume": [{"interruptId": "hitl-approval-123", "status": "resolved", "payload": {"verdict": "approve", "approval_digest": "sha256:..."}}]}`
+
+Example, clarification:
+```json
+{
+  "id": "hitl-clarify-456",
+  "reason": "clarification.required",
+  "message": "Which workflow should handle this?",
+  "responseSchema": {
+    "type": "object",
+    "properties": { "selected_choice": { "enum": ["provision", "inquiry", "compliance_check"] } },
+    "required": ["selected_choice"]
+  },
+  "metadata": { "request_id": "req-456", "field": "intent", "clarification_round": 1 }
+}
+```
+Resume: `{"resume": [{"interruptId": "hitl-clarify-456", "status": "resolved", "payload": {"selected_choice": "provision"}}]}`
+
+**`resume_mode` (`reinvoke`/`checkpoint_resume`) stays internal to
+PlatformOps.** AG-UI never sees it — externally, clarification and
+approval look identical ("run finished with an interrupt" / "new run
+resumes it"). The adapter alone decides whether a resume re-invokes
+intake or resumes a LangGraph checkpoint; the protocol doesn't need to
+know which.
+
+**Stability caveat, not papered over**: `/concepts/events` files this
+under "Draft Events"; `/concepts/interrupts` itself carries no
+draft/stable marker either way — the source docs disagree with
+themselves on maturity. Re-verify before building the adapter against
+this; it's the right shape today, not a guaranteed-stable one.
+
+## `HITLEvent` — the Concretization of the Envelope Above
+Home: `gateway/events.py` (new file — `gateway/` currently holds only
+`schemas.py` and `auth/`, confirmed no event-envelope file exists yet).
+Wraps existing models rather than redeclaring their fields, per this
+doc's "thin layer" rule above:
+
+```python
+class HITLEvent(BaseModel):
+    event_id: str
+    request_id: str
+    kind: HITLEventKind          # CLARIFICATION_REQUIRED | APPROVAL_REQUIRED
+    status: HITLStatus           # PENDING/ANSWERED/APPROVED/REJECTED/EXPIRED/CANCELLED
+    actor: ActorRef | None = None
+    payload: IntakeDecision | ApprovalRequest   # the real models, not a re-declared shape
+    resume_mode: Literal["reinvoke", "checkpoint_resume"]
+    created_at: datetime
+    expires_at: datetime | None = None           # mirrors ApprovalRequest.approval_expires_at when set
+```
+Deliberate departures from an earlier draft of this shape:
+- `payload` is `IntakeDecision | ApprovalRequest` directly — no
+  separate `ClarificationPayload`/`ApprovalPayload` redeclaring fields
+  those models already have (`gateway/schemas.py:58-67`,
+  `docs/EXECUTION_CREDENTIALS.md:423-446`).
+- `clarification_round` isn't a field here — it already lives on
+  `IntakeRequest` (`gateway/schemas.py:55`, cap of 2 per
+  `docs/INTAKE_HITL_ROUTING.md:17,86,260`); `HITLEvent` reads it off
+  the wrapped `IntakeDecision`, doesn't own a second copy.
+- `ActorRef` is a **new, minimal type** (`user_id`, `email`) — not the
+  existing `Actor` (`gateway/auth/schemas.py:93-103`), which carries
+  `execution_grants`/`approval_grants` and has no business being
+  serialized into a wire event.
+- Duplicate-approval/self-approval/digest-match checks are **not**
+  this model's job — those are already enforced in-graph
+  (`docs/EXECUTION_CREDENTIALS.md:393-398,782`). `HITLEvent` surfaces
+  the resulting `status`; it doesn't re-implement the checks.
+
+Supporting types:
+```python
+class HITLEventKind(str, Enum):
+    CLARIFICATION_REQUIRED = "clarification.required"
+    APPROVAL_REQUIRED = "approval.required"
+
+class HITLStatus(str, Enum):
+    PENDING = "pending"
+    ANSWERED = "answered"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+class ActorRef(BaseModel):
+    user_id: str
+    email: str
+
+class HITLResponse(BaseModel):
+    event_id: str
+    request_id: str
+    responder: ActorRef
+    verdict: HITLVerdict         # ANSWER/APPROVE/REJECT/CANCEL
+    value: str | None = None
+    selected_choice: str | None = None
+    approval_digest: str | None = None
+    responded_at: datetime
+
+class HITLVerdict(str, Enum):
+    ANSWER = "answer"
+    APPROVE = "approve"
+    REJECT = "reject"
+    CANCEL = "cancel"
+```
 
 ## CopilotKit Runtime — the Proxy Layer, Verified
 Verified 2026-07-31 against `docs.copilotkit.ai/backend/copilot-runtime`.
@@ -164,7 +327,8 @@ it's actually built.
 
 ## Sources
 - [AG-UI: Introduction](https://docs.ag-ui.com/introduction) — bidirectional, transport-agnostic ("builds on HTTP, WebSockets"), origin via CopilotKit's LangGraph/CrewAI partnership
-- [AG-UI: Events concept](https://docs.ag-ui.com/concepts/events) — full event taxonomy (lifecycle/text-message/tool-call/state/reasoning/special); confirms no native approval/HITL event type
+- [AG-UI: Events concept](https://docs.ag-ui.com/concepts/events) — full event taxonomy (lifecycle/text-message/tool-call/state/reasoning/special); files interrupt-carrying extensions under "Draft Events," easy to miss — see the dedicated interrupts source below, which corrects the "no native HITL event" reading of this page alone
+- [AG-UI: Interrupts concept](https://docs.ag-ui.com/concepts/interrupts) — the actual native HITL mechanism (`RunFinished` interrupt outcome, `resume` array); no draft/stable marker on the page itself, contradicting the "Draft Events" label on the events-overview page
 - [A2UI](https://a2ui.org/) — declarative, not executable; created by Google with CopilotKit contributions
 - [A2UI on GitHub](https://github.com/a2ui-project/a2ui) — Apache 2.0, active development
 - [CopilotKit: AG-UI introduction](https://docs.copilotkit.ai/ag-ui/introduction) — AG-UI vs. MCP layering (agent-to-UI vs. agent-to-tools)
@@ -180,5 +344,10 @@ plan/`vibe_diff`, and
 `ApprovalRequest`/`ExecutionRecord` as event payloads without changing
 any of them. Corrects `openspec/changes/build-login-schemas`'s open
 "redirect vs. device-code" question in place — device-code, per this
-doc's TUI-first decision. Indexed from
+doc's TUI-first decision. `HITLEvent` wraps `IntakeDecision`
+(`INTAKE_HITL_ROUTING.md`) and `ApprovalRequest`
+(`EXECUTION_CREDENTIALS.md`) directly rather than redeclaring their
+fields, and its `ActorRef` is a new minimal type distinct from
+`AUTH_BOUNDARY.md`/`gateway/auth/schemas.py`'s `Actor` (which carries
+grants and shouldn't be serialized into a wire event). Indexed from
 [HARNESS_DESIGN.md](HARNESS_DESIGN.md).
