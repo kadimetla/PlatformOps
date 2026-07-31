@@ -6,7 +6,10 @@ execution behavior, none address how a human actually talks to
 PlatformOps. AG-UI and A2UI claims verified against their own current
 docs 2026-07-30 (see Sources); the TUI library choice and the
 device-code login pairing are this project's own decisions, not
-external claims.
+external claims. AG-UI's concrete event taxonomy and CopilotKit
+Runtime's proxy architecture verified 2026-07-31 — deeper than the
+2026-07-30 pass, which only verified AG-UI's top-level framing, not
+its actual event vocabulary.
 
 ## Real vs. Designed
 | Area | Status |
@@ -14,7 +17,7 @@ external claims.
 | Event envelope (any) | Not implemented |
 | TUI (any renderer) | Not implemented — no `rich`/`textual`/`prompt_toolkit` installed |
 | Login entry point | Not implemented — was undecided in `build-login-schemas`, resolved here to device-code |
-| AG-UI/CopilotKit web path | Not implemented, not started — documented future path only |
+| AG-UI/CopilotKit web path | Not implemented, not started — documented future path only; event taxonomy and Runtime proxy pattern verified 2026-07-31, no code |
 | A2UI rich widgets | Not implemented, not started — documented future path only |
 
 ## Core Decision: TUI First, Web UI Later — Same Event Stream, Two Renderers
@@ -113,10 +116,59 @@ originated from CopilotKit's partnership with LangGraph and CrewAI —
 this project's actual stack (`AGENTS.md`: "LangGraph... no more ADK")
 is one of AG-UI's founding integration targets.
 
+## AG-UI's Concrete Event Taxonomy — Verified, Not Just the Framing
+The 2026-07-30 pass verified AG-UI's top-level pitch (transport-
+agnostic, LangGraph-originated). It did not enumerate the protocol's
+actual event types, which matters for the event-envelope mapping table
+above. Verified 2026-07-31 against `docs.ag-ui.com/concepts/events`:
+
+| AG-UI category | Concrete events | Maps to this doc's table |
+|---|---|---|
+| Lifecycle | `RunStarted`/`RunFinished`/`RunError`, `StepStarted`/`StepFinished` | `intake.started`, `execution.completed` |
+| Text message | `TextMessageStart`/`Content`/`End` | not used yet — PlatformOps has no freeform chat surface |
+| Tool call | `ToolCallStart`/`Args`/`End`/`Result` | `plan.started`/`plan.summary` (a plan is structurally a tool call) |
+| State | `StateSnapshot`, `StateDelta` (JSON Patch), `MessagesSnapshot` | `execution.progress` |
+| Reasoning | `ReasoningStart`/`ReasoningMessage*`/`ReasoningEnd` | not used yet |
+| Special | `Raw`, `Custom` | `clarification.required`, `approval.required` |
+
+**The one finding that actually changes something**: AG-UI has **no
+native event type for human-in-the-loop approval or clarification**.
+There is no `ApprovalRequired` or `InputRequested` event in the
+protocol — every HITL pause this project's design already relies on
+(`ClarificationQuestion`, `ApprovalRequest`) would have to ride on
+AG-UI's `Custom` event, not a first-class one. This doesn't block
+anything (`Custom` is explicitly designed as the extension point), but
+it means the web-adapter layer (`PlatformOpsEvent` → AG-UI, described
+above) carries real translation weight for exactly the two event kinds
+this project's HITL design depends on most — worth knowing before
+that adapter gets built, not after.
+
+## CopilotKit Runtime — the Proxy Layer, Verified
+Verified 2026-07-31 against `docs.copilotkit.ai/backend/copilot-runtime`.
+The Runtime is a server-side intermediary — auth, AG-UI middleware
+(logging/guardrails), and routing across registered agents — sitting
+between the React frontend and whatever backend actually runs the
+agent. It can proxy to an external AG-UI-compatible agent via
+`HttpAgent({ url: ... })`, which matches this doc's "thin AG-UI-
+compatible server" framing above.
+
+**One caveat not previously captured**: CopilotKit's own docs mark
+direct `HttpAgent` connections as "intended for development and
+prototyping," **not recommended for production** — the documented
+production path is `selfManagedAgents` configuration instead. Doesn't
+change this doc's recommendation (nothing here is being built yet, and
+the distinction is a Runtime-side detail two build-outs away — TUI,
+then a first pass at a web adapter), but the future web-path work
+should target `selfManagedAgents`, not the `HttpAgent` example, once
+it's actually built.
+
 ## Sources
 - [AG-UI: Introduction](https://docs.ag-ui.com/introduction) — bidirectional, transport-agnostic ("builds on HTTP, WebSockets"), origin via CopilotKit's LangGraph/CrewAI partnership
+- [AG-UI: Events concept](https://docs.ag-ui.com/concepts/events) — full event taxonomy (lifecycle/text-message/tool-call/state/reasoning/special); confirms no native approval/HITL event type
 - [A2UI](https://a2ui.org/) — declarative, not executable; created by Google with CopilotKit contributions
 - [A2UI on GitHub](https://github.com/a2ui-project/a2ui) — Apache 2.0, active development
+- [CopilotKit: AG-UI introduction](https://docs.copilotkit.ai/ag-ui/introduction) — AG-UI vs. MCP layering (agent-to-UI vs. agent-to-tools)
+- [CopilotKit: Copilot Runtime](https://docs.copilotkit.ai/backend/copilot-runtime) — Runtime's auth/middleware/routing role; `HttpAgent` proxy pattern; dev-only vs. `selfManagedAgents` for production
 
 ## How this relates to the existing docs
 First doc to address the interaction layer — every other doc in this
