@@ -116,11 +116,19 @@ domain work, deterministic checks, and approval-gated mutation.
 ## Design
 Add the smallest useful foundation:
 
+**Corrected 2026-07-31**: `policy.py` below conflicts with
+`ACCESS_POLICY_AND_IAM_DISCOVERY.md`'s `gateway/policy/` (a directory
+of YAML registry files — `org_bu_policy.yaml`, `project_registry.yaml`,
+`access_templates.yaml`). A file and a directory can't share one name
+under `gateway/`. Resolved as a package, not a bare file: `policy/`
+holds both the evaluation code (`__init__.py` or a submodule) and the
+YAML data side by side — reconciles both docs rather than picking one.
+
 ```text
 gateway/
   schemas.py
   dispatcher.py
-  policy.py
+  policy/
 
 workflows/
   intake/

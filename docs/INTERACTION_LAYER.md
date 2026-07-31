@@ -14,8 +14,12 @@ its actual event vocabulary. **Corrected again, same day**: the first
 has no native HITL mechanism. Checking `/concepts/interrupts` directly
 shows that's wrong — see the dedicated section below. Also introduces
 `HITLEvent`, the concretization of this doc's previously-unnamed
-"future `EventEnvelope[T]`," now with a real home (`gateway/events.py`)
-and a real target wire shape (AG-UI's interrupt mechanism).
+"future `EventEnvelope[T]`," now with a real target wire shape (AG-UI's
+interrupt mechanism). **Corrected once more**: `HITLEvent`'s home moved
+from `gateway/events.py` to `interaction/events.py` — `gateway/` is the
+request/auth/policy boundary (`AUTH_BOUNDARY.md`), not a UI-rendering
+concern; a third top-level package (`interaction/`) keeps that boundary
+intact instead of overloading `gateway/`.
 
 ## Real vs. Designed
 | Area | Status |
@@ -24,7 +28,7 @@ and a real target wire shape (AG-UI's interrupt mechanism).
 | TUI (any renderer) | Not implemented — no `rich`/`textual`/`prompt_toolkit` installed |
 | Login entry point | Not implemented — was undecided in `build-login-schemas`, resolved here to device-code |
 | AG-UI/CopilotKit web path | Not implemented, not started — documented future path only; event taxonomy, Runtime proxy pattern, and interrupt-based HITL mapping verified 2026-07-31, no code |
-| `HITLEvent` / `gateway/events.py` | Designed only, added 2026-07-31 — concretizes this doc's "future `EventEnvelope[T]`"; no file exists yet |
+| `HITLEvent` / `interaction/events.py` | Designed only, added 2026-07-31, relocated out of `gateway/` same day — concretizes this doc's "future `EventEnvelope[T]`"; no file, no `interaction/` package exists yet |
 | A2UI rich widgets | Not implemented, not started — documented future path only |
 
 ## Core Decision: TUI First, Web UI Later — Same Event Stream, Two Renderers
@@ -248,10 +252,50 @@ redeclaring their fields: one seam absorbs external churn instead of
 every consumer depending on the external shape directly.
 
 ## `HITLEvent` — the Concretization of the Envelope Above
-Home: `gateway/events.py` (new file — `gateway/` currently holds only
-`schemas.py` and `auth/`, confirmed no event-envelope file exists yet).
-Wraps existing models rather than redeclaring their fields, per this
-doc's "thin layer" rule above:
+**Corrected — home is `interaction/events.py`, not `gateway/events.py`.**
+`gateway/` is the request/auth/policy boundary — `AUTH_BOUNDARY.md:2-8`
+draws it as `gateway/auth/` vs. `gateway/schemas.py` vs. `workflows/`,
+none of which is a UI concern. `HITLEvent` doesn't fit any of those
+three: it's consumed by the TUI renderer and (later) the AG-UI web
+adapter, neither of which is "who is asking" or "what request entered
+the system." Putting it in `gateway/` would mean gateway either grows a
+UI-rendering dependency or forces the TUI/web adapter to import from a
+package named for something else entirely. A third top-level package
+makes the boundary explicit instead of overloading `gateway/`:
+
+```text
+gateway/            # who is asking? what request/policy applies?
+  schemas.py
+  dispatcher.py
+  policy/            # package, not policy.py — see correction below
+  auth/
+
+workflows/           # what should happen? plan/result/evidence
+  intake/
+  inquiry/
+  provision/
+  bootstrap/
+
+interaction/         # how do humans see/respond to workflow events?
+  events.py          # PlatformOpsEvent, HITLEvent, HITLResponse, ActorRef
+  tui/               # created only once the TUI is actually built
+  web/               # created only once the web adapter is actually built
+```
+`tui/` and `web/` aren't created empty — same discipline this doc
+already applies to Textual and the web path itself (don't build the
+registry/adapter/tier before something real needs it). Start with
+`interaction/events.py` alone.
+
+**`PlatformOpsEvent` is the generic envelope; `HITLEvent` is a sibling,
+not something nested inside it.** Progress/telemetry events
+(`execution.progress`, `plan.summary`, `evidence.recorded`) are shaped
+fine by a generic `kind` + `payload: dict` envelope. HITL pauses need
+real typing — `payload: IntakeDecision | ApprovalRequest`, not `dict`
+— so `HITLEvent` stays its own model rather than being squeezed through
+`PlatformOpsEvent`'s generic shape.
+
+`HITLEvent` wraps existing models rather than redeclaring their
+fields, per this doc's "thin layer" rule above:
 
 ```python
 class HITLEvent(BaseModel):
