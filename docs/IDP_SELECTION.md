@@ -1,15 +1,20 @@
 ## Status
 Research/verification doc, not a design proposal — same shape as
 `TERRAFORM_MCP_SERVER.md`. Verified against current docs/sources
-2026-07-30. Recommendation only; no IdP is deployed. The first
-device-code primitives now exist in `gateway/auth/login.py`, and the
-first runnable CLI module is `gateway.auth.cli`; no live
-Authentik deployment is checked into this repo.
+2026-07-30, deployment-options section added and verified 2026-07-31,
+data-storage/Redis-removal section added and verified 2026-07-31.
+Recommendation only; no IdP is deployed. The first device-code
+primitives now exist in `gateway/auth/login.py`, and the first
+runnable CLI module is `gateway.auth.cli`; no live Authentik
+deployment is checked into this repo.
 
 ## Real vs. Designed
 | Item | Status |
 |---|---|
 | Any IdP deployment | Not implemented |
+| Authentik deployment options (Docker Compose / Kubernetes) | Research only, verified 2026-07-31 — no instance actually deployed for this project |
+| Authentik managed/hosted offering | Verified absent — self-hosting required across all pricing tiers |
+| Authentik data-storage boundary (PostgreSQL/Redis/file storage) vs. PlatformOps storage | Research only, verified 2026-07-31 — corroborates `AUTH_BOUNDARY.md`'s existing session/grant boundary from the storage side |
 | Authentik/OIDC device-code client primitives | Real in `gateway/auth/login.py`; HTTP is injected, tests use no live IdP |
 | `gateway.auth.cli` CLI module | Real — uses Authentik/OIDC device-code flow, validates the ID token, optionally maps groups to **approval grants only**, writes a token-free local session |
 | `gateway/oidc.py`'s `parse_id_token()` | Real, built (`build-login-schemas`) — **IdP-agnostic by design**: takes a JWKS dict as a parameter, never fetches one, doesn't care which IdP issued the token as long as it's standard OIDC |
@@ -125,6 +130,87 @@ authority from YAML; `execution_grants` remain empty until provider
 discovery adapters are implemented. Authentik SCIM-to-AWS-Identity-
 Center remains separate setup work.
 
+## Authentik Deployment Options
+Verified against Authentik's current docs and pricing page,
+2026-07-31. Matters for anyone actually standing up the instance the
+Local Smoke Contract above talks to.
+
+### Docker Compose — fits this project's MVP scope
+- **2 CPU / 2 GB RAM minimum**, Docker Compose v2 or Podman
+- Bundles PostgreSQL, Redis, the server, and a worker container — the
+  worker mounts the Docker socket for outpost deployment, a real
+  security consideration; Authentik's own docs suggest a Docker Socket
+  Proxy to mitigate it. **Corrected 2026-07-31**: Authentik announced
+  Redis removal starting with the 2025.10 release line, moving
+  cache/queue/session-transient responsibilities into PostgreSQL — the
+  Redis container is only guaranteed to be part of this bundle on
+  versions before that line. Whether a given deployment still needs it
+  depends on which Authentik version is actually pinned.
+- Authentik's own docs describe this path as suited for **"test setups
+  and small-scale production setups"** — directly matches the scope of
+  the CLI smoke test above
+
+### Kubernetes via Helm — the production path, with a real trap
+- Official chart: `https://charts.goauthentik.io`
+- The chart bundles PostgreSQL by default, but Authentik's docs are
+  explicit that **the bundled database is "intended for demonstration
+  and test environments" only** — a real production deployment should
+  run PostgreSQL separately via an operator (CloudNativePG, Zalando
+  Postgres Operator), not the chart's built-in one. Easy trap: the
+  chart works out of the box with the bundled DB, which is exactly why
+  it's easy to leave running past initial testing without meaning to.
+
+### No managed/hosted option — confirmed, not just unresearched
+Checked directly against Authentik's pricing page:
+*"We do not currently provide a hosted version of authentik."* All
+three tiers — Open Source (free), Enterprise (~$5/user/month),
+Enterprise Plus ($20k+/year) — differ in support and feature set, not
+in hosting model. Self-hosting (Docker Compose or Kubernetes) is
+required regardless of which tier would ever be paid for.
+
+### Sharpens a tradeoff already noted, not previously quantified
+`ZITADEL`'s documented free cloud tier (100 DAU, no self-hosting) is a
+genuinely different operational commitment than Authentik — choosing
+Authentik for its SCIM-with-groups advantage means committing to
+running and maintaining a Docker Compose or Kubernetes deployment
+indefinitely, not a one-time setup cost. Doesn't change the
+recommendation (the SCIM fit still stands), but the "Authentik for
+MVP" recommendation implies "and we're self-hosting it" — worth
+stating explicitly rather than leaving implicit.
+
+## Authentik Data Storage & the PlatformOps Boundary
+Verified against Authentik's configuration/backup docs and its own
+architecture docs, 2026-07-31. Matters for what a PlatformOps operator
+needs to back up, and for confirming the storage-side split matches
+what `AUTH_BOUNDARY.md` already designed on the code side.
+
+- **PostgreSQL is Authentik's durable store** for users, groups,
+  applications, providers, policies, flows, and events/configuration —
+  Authentik's own backup docs name it as "the critical backup target."
+  Sessions and other app data live there too.
+- **File storage is separate from the database**: default is local
+  `/data` inside the container; S3-compatible storage is an alternative.
+  Architecture docs also describe `/media` (icons/uploads), `/certs`
+  (optional external cert imports), and `/templates` (optional custom
+  email templates) as distinct mount points.
+- **Redis's role is shrinking, not fixed** — see the Docker Compose
+  correction above. Which transient responsibilities (if any) still
+  need Redis depends on the pinned Authentik version.
+
+**Confirms the boundary `AUTH_BOUNDARY.md` already designed, from the
+storage side rather than the code side.** For this project's use,
+Authentik's PostgreSQL would hold the PlatformOps OAuth/OIDC
+application/provider config, users, groups (`aiq-it-prod-approvers`
+and similar), SCIM configuration, and policies/flows — i.e., identity
+and group membership. PlatformOps's own stores (per
+`AUTH_BOUNDARY.md`'s `sessions.py`) hold the `ActorSession` JSON,
+approval grants derived from those Authentik groups,
+provider-discovered `execution_grants`, and the project/workspace
+registry — i.e., workflow policy, capability ceilings, routing, and
+session snapshots. Authentik is never asked to be the source of truth
+for anything on the PlatformOps side of that line, and nothing here
+changes `AUTH_BOUNDARY.md`'s design — it corroborates it.
+
 ## Sources
 - [Keycloak: OAuth 2.0 Device Authorization Grant design doc](https://github.com/keycloak/keycloak-community/blob/main/design/oauth2-device-authorization-grant.md)
 - [Keycloak SCIM discussion — no native support](https://github.com/keycloak/keycloak/discussions/29444)
@@ -133,6 +219,13 @@ Center remains separate setup work.
 - [Authentik: SCIM Provider](https://docs.goauthentik.io/add-secure-apps/providers/scim/)
 - [ZITADEL: Device Authorization Grant in Custom Login UI](https://zitadel.com/docs/guides/integrate/login-ui/device-auth)
 - [ZITADEL: SCIM v2.0](https://zitadel.com/docs/guides/manage/user/scim2) — User schema only, no group provisioning
+- [Authentik: Docker Compose installation](https://docs.goauthentik.io/install-config/install/docker-compose) — system requirements, bundled services
+- [Authentik: Kubernetes installation](https://docs.goauthentik.io/install-config/install/kubernetes) — Helm chart, bundled-PostgreSQL-is-test-only caveat
+- [Authentik: pricing](https://goauthentik.io/pricing/) — confirms no hosted/managed offering across any tier
+- [Authentik: configuration reference](https://docs.goauthentik.io/install-config/configuration/) — storage mount points
+- [Authentik: backup/restore](https://docs.goauthentik.io/sys-mgmt/ops/backup-restore) — PostgreSQL as the critical backup target
+- [Authentik: architecture (2025.2 docs)](https://version-2025-2.goauthentik.io/docs/core/architecture) — component roles
+- [Authentik blog: "We removed Redis"](https://goauthentik.io/blog/2025-11-13-we-removed-redis/) — Redis removal starting 2025.10
 
 ## How this relates to the existing docs
 Corrects [ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md)'s
@@ -143,4 +236,8 @@ Keycloak — the live-lookup path is its real default. Confirms
 actually implementable against a real, chosen IdP. `gateway/oidc.py`
 (`build-login-schemas`) needs no changes regardless of which IdP is
 chosen — it already only consumes a JWKS dict, never fetches one or
-assumes an issuer. Indexed from [HARNESS_DESIGN.md](HARNESS_DESIGN.md).
+assumes an issuer. Corroborates [AUTH_BOUNDARY.md](AUTH_BOUNDARY.md)'s
+`sessions.py` boundary (`ActorSession`/grants live in PlatformOps,
+never in Authentik) from the storage side, independently of the code
+that already enforces it. Indexed from
+[HARNESS_DESIGN.md](HARNESS_DESIGN.md).
