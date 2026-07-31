@@ -5,13 +5,17 @@ Research/verification doc, not a design proposal — same shape as
 data-storage/Redis-removal section added and verified 2026-07-31.
 Recommendation only; no IdP is deployed. The first device-code
 primitives now exist in `gateway/auth/login.py`, and the first
-runnable CLI module is `gateway.auth.cli`; no live Authentik
-deployment is checked into this repo.
+runnable CLI module is `gateway.auth.cli`. **Updated 2026-07-31**:
+local manual-smoke scaffolding for a real Authentik instance now
+exists (`deploy/authentik/`, `scripts/authentik-smoke.sh`) — still no
+live Authentik deployment is checked into this repo, and this scaffolding
+is explicitly local-only, not a production deployment.
 
 ## Real vs. Designed
 | Item | Status |
 |---|---|
 | Any IdP deployment | Not implemented |
+| Local manual-smoke scaffolding (`deploy/authentik/docker-compose.yml`, `README.md`, `grants.example.yaml`, `scripts/authentik-smoke.sh`) | Real, added 2026-07-31 — pins `AUTHENTIK_TAG=2026.5.6`, verified against `https://docs.goauthentik.io/compose.yml` same day; not run by CI/pytest, manual only |
 | Authentik deployment options (Docker Compose / Kubernetes) | Research only, verified 2026-07-31 — no instance actually deployed for this project |
 | Authentik managed/hosted offering | Verified absent — self-hosting required across all pricing tiers |
 | Authentik data-storage boundary (PostgreSQL/Redis/file storage) vs. PlatformOps storage | Research only, verified 2026-07-31 — corroborates `AUTH_BOUNDARY.md`'s existing session/grant boundary from the storage side |

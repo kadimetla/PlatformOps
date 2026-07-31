@@ -1,0 +1,20 @@
+# Example PLATFORMOPS_GRANT_MAPPING file -- matches gateway/auth/grants.py's
+# GrantMappingConfig/GroupGrantMapping exactly (see docs/IDP_SELECTION.md's
+# Local Smoke Contract). Copy, edit the group name to match what you created
+# in Authentik, and point PLATFORMOPS_GRANT_MAPPING at your copy.
+#
+# grant_type: approval is the only value the code accepts --
+# gateway/auth/grants.py's GroupGrantMapping validator rejects anything
+# else at load time. Per ACCESS_POLICY_AND_IAM_DISCOVERY.md's precedence
+# rule, execution grants come from provider discovery only, never from
+# this file -- do not add a grant_type: execution entry here, it will
+# fail validation, not silently do something unexpected.
+mappings:
+  - group: aiq-it-prod-approvers
+    grant_type: approval
+    capability: apply_limited
+    scope:
+      org: aiq
+      bu: it
+      project: "*"
+      workspace: prod

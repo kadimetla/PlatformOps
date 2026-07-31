@@ -6,3 +6,7 @@ __pycache__/
 *.tfstate
 *.tfstate.backup
 .terraform/
+.platformops/
+deploy/authentik/data/
+deploy/authentik/custom-templates/
+deploy/authentik/certs/
