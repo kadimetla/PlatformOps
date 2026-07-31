@@ -19,7 +19,9 @@ import from `interaction/`.
 | `gateway/auth/schemas.py` (`Capability`, `ExecutionGrant`, `ApprovalGrant`, `Actor`, `ActorRef`) | Real, moved here from `gateway/schemas.py` in a post-implementation restructuring; `ActorRef` added 2026-07-31 |
 | `gateway/policy/ceiling.py` (`effective_access = min(grant, ceiling)`) | Real — `CeilingEntry`/`OrgBuPolicyConfig`, most-specific-scope-wins matching (stated assumption, not pinned down elsewhere); no live `org_bu_policy.yaml` data exists, only the schema/evaluator |
 | `gateway/approval.py` (`ApprovalRequest`, `ApprovalRecord`) | Real — schema only, matches `EXECUTION_CREDENTIALS.md`'s Payload section field-for-field; the approval gate node itself doesn't exist |
-| `interaction/events.py` (`PlatformOpsEvent`, `HITLEvent`, `HITLResponse`) | Real — see `docs/INTERACTION_LAYER.md`; no TUI/web adapter consumes it yet |
+| `interaction/events.py` (`PlatformOpsEvent`, `HITLEvent`, `HITLResponse`) | Real — see `docs/INTERACTION_LAYER.md` |
+| `interaction/tui.py` (stdlib terminal renderer) | Real, added 2026-07-31 — `render_platform_event`/`render_hitl_event`/`prompt_hitl_response`; no `rich`/`textual` dependency yet |
+| `interaction/agui.py` (AG-UI adapter) | Real, added 2026-07-31 — maps `HITLEvent` to AG-UI's `RUN_FINISHED` interrupt outcome and `HITLResponse` to `resume[]` entries; no web server/CopilotKit runtime consumes it yet |
 | `gateway/auth/claims.py` (`OIDCClaims`, `parse_id_token`) | Real, moved here from `gateway/oidc.py` |
 | `gateway/auth/grants.py` | Real — exact IdP-group to `ApprovalGrant` mapping, deterministic and offline-testable; never mints `ExecutionGrant` |
 | `gateway/auth/sessions.py` | Real — `ActorSession` construction plus an in-memory dev/test session store; stores no OIDC tokens or provider credentials |

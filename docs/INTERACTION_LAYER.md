@@ -1,8 +1,12 @@
 ## Status
 Designed and partially real as of 2026-07-31 — `interaction/events.py`
-(`PlatformOpsEvent`/`HITLEvent`/`HITLResponse`) is real code; no TUI or
-web UI exists, and nothing yet emits or consumes the event envelope.
-First design in this project to touch the human-interaction
+(`PlatformOpsEvent`/`HITLEvent`/`HITLResponse`), `interaction/tui.py`
+(stdlib terminal renderer), and `interaction/agui.py` (AG-UI interrupt
+adapter) are all real code. No workflow actually emits a
+`PlatformOpsEvent`/`HITLEvent` yet, and no web server/CopilotKit
+runtime consumes `agui.py` — these modules are proven by unit tests
+only, not wired into a live request path. First design in this project
+to touch the human-interaction
 layer at all — every prior doc designs backend workflow/access/
 execution behavior, none address how a human actually talks to
 PlatformOps. AG-UI and A2UI claims verified against their own current
@@ -27,9 +31,9 @@ intact instead of overloading `gateway/`.
 | Area | Status |
 |---|---|
 | Event envelope (any) | Real, added 2026-07-31 — `interaction/events.py`, `PlatformOpsEvent`/`HITLEvent`/`HITLResponse`; nothing emits or consumes these yet |
-| TUI (any renderer) | Not implemented — no `rich`/`textual`/`prompt_toolkit` installed |
+| TUI (minimal stdlib renderer) | Real, added 2026-07-31 — `interaction/tui.py` renders `PlatformOpsEvent`/`HITLEvent` and builds `HITLResponse` from terminal prompts; no `rich`/`textual`/`prompt_toolkit` dependency yet |
 | Login entry point | Not implemented — was undecided in `build-login-schemas`, resolved here to device-code |
-| AG-UI/CopilotKit web path | Not implemented, not started — documented future path only; event taxonomy, Runtime proxy pattern, and interrupt-based HITL mapping verified 2026-07-31, no code |
+| AG-UI adapter | Real, added 2026-07-31 — `interaction/agui.py` maps `HITLEvent` to AG-UI `RUN_FINISHED` interrupt outcomes and `HITLResponse` to `resume[]` entries; no web server/CopilotKit runtime yet |
 | `HITLEvent` / `interaction/events.py` | Real, implemented 2026-07-31 in `interaction/` (relocated out of `gateway/` same day, before code landed) — concretizes this doc's "future `EventEnvelope[T]`"; also required adding `gateway/approval.py` (`ApprovalRequest`/`ApprovalRecord`) and `ActorRef` (`gateway/auth/schemas.py`), neither of which existed as code before this |
 | A2UI rich widgets | Not implemented, not started — documented future path only |
 
@@ -92,6 +96,12 @@ a persistent "watch multiple runs at once" dashboard is actually
 needed later — not designed preemptively, matching the discipline used
 for every other slice in this project so far (don't build the
 registry/adapter/tier before something real needs it).
+
+**Implemented first slice:** `interaction/tui.py` uses only stdlib
+terminal I/O. It is intentionally less polished than Rich, but proves
+the event/response contract without adding a rendering dependency:
+`render_platform_event()`, `render_hitl_event()`, and
+`prompt_hitl_response()`.
 
 ## The Future Web Path — Documented, Not Built
 Recommended shape, once a browser UI is actually wanted:
@@ -253,6 +263,18 @@ reason `HITLEvent` wraps `IntakeDecision`/`ApprovalRequest` instead of
 redeclaring their fields: one seam absorbs external churn instead of
 every consumer depending on the external shape directly.
 
+The first adapter now exists as `interaction/agui.py`. It deliberately
+returns plain dictionaries instead of depending on an AG-UI SDK:
+
+- `hitl_event_to_interrupt()` maps `HITLEvent` to AG-UI `Interrupt`
+- `hitl_event_to_run_finished()` emits the `RUN_FINISHED` interrupt
+  outcome wrapper
+- `hitl_response_to_resume_entry()` maps `HITLResponse` to a
+  `resume[]` entry
+
+This is enough to prove the wire shape in tests. CopilotKit Runtime,
+SSE endpoints, and web widgets remain future work.
+
 ## `HITLEvent` — the Concretization of the Envelope Above
 **Corrected — home is `interaction/events.py`, not `gateway/events.py`.**
 `gateway/` is the request/auth/policy boundary — `AUTH_BOUNDARY.md:2-8`
@@ -280,13 +302,17 @@ workflows/           # what should happen? plan/result/evidence
 
 interaction/         # how do humans see/respond to workflow events?
   events.py          # PlatformOpsEvent, HITLEvent, HITLResponse, ActorRef
-  tui/               # created only once the TUI is actually built
-  web/               # created only once the web adapter is actually built
+  tui.py             # stdlib terminal renderer (built 2026-07-31)
+  agui.py            # AG-UI interrupt/resume adapter (built 2026-07-31)
 ```
-`tui/` and `web/` aren't created empty — same discipline this doc
-already applies to Textual and the web path itself (don't build the
-registry/adapter/tier before something real needs it). Start with
-`interaction/events.py` alone.
+**Corrected — flat modules, not `tui/`/`web/` subpackages.** The
+original plan below this diagram said don't create `tui/`/`web/` until
+something real needs them; when that something arrived, a single
+`tui.py`/`agui.py` module was enough for the first slice of each —
+no subpackage needed yet. Same discipline as before (don't build the
+registry/adapter/tier before something real needs it), just resolved
+in favor of the smaller unit once real code landed instead of the
+placeholder directory names guessed here in advance.
 
 **`PlatformOpsEvent` is the generic envelope; `HITLEvent` is a sibling,
 not something nested inside it.** Progress/telemetry events
