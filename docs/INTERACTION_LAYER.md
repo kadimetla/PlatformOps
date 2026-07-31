@@ -235,6 +235,18 @@ draft/stable marker either way — the source docs disagree with
 themselves on maturity. Re-verify before building the adapter against
 this; it's the right shape today, not a guaranteed-stable one.
 
+**Given that caveat, insulate PlatformOps from AG-UI's choice, not just
+its instability.** `HITLEvent` is what workflows emit and what the TUI
+renders directly — neither knows or cares that AG-UI exists. Only the
+future web adapter translates `HITLEvent` outward, and it alone decides
+whether a given `kind` becomes a native `Interrupt` or falls back to a
+`Custom` event. If AG-UI's interrupt mechanism changes, is dropped, or
+never stabilizes, that decision changes inside the adapter — no
+workflow, no `HITLEvent` field, and no TUI code moves. This is the same
+reason `HITLEvent` wraps `IntakeDecision`/`ApprovalRequest` instead of
+redeclaring their fields: one seam absorbs external churn instead of
+every consumer depending on the external shape directly.
+
 ## `HITLEvent` — the Concretization of the Envelope Above
 Home: `gateway/events.py` (new file — `gateway/` currently holds only
 `schemas.py` and `auth/`, confirmed no event-envelope file exists yet).
