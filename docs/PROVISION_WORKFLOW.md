@@ -26,6 +26,9 @@ against current docs 2026-07-30 — see Sources/Verify before build.
 | `skills/provision-infra/SKILL.md`'s Path C (`opentofu_local`) | Not implemented — the file only has Paths A/B today; this toolchain has no skill entry yet |
 | `opentofu_local` runner (state backend, runner directory, two-phase credential acquisition) | Designed only, verified against current OpenTofu docs 2026-07-30 |
 | `template_version` in `approval_digest` | Designed only — sixth input, extends Gap 2's five-input formula, corrected there in place |
+| `migrate_workspace_to_opentofu` admin workflow | Designed only |
+| Registry `iac_engine`/`state_owner`/`previous_state_owner`/`migrated_at` fields | Designed only — third incremental registry extension |
+| Backend-config-must-never-carry-credentials rule | Verified verbatim against current OpenTofu docs 2026-07-31; not previously violated but not previously stated as a rule either |
 
 ## Same Access Flow for New and Existing Stacks
 No separate grant model needed for "create a new stack" vs. "update an
@@ -346,6 +349,90 @@ sts:AssumeRole + one reviewed static_site template + plan.json
 checks + manual approval gate + apply saved plan
 ```
 
+### Backend config must never carry credentials — verified, and a real gap in what's already on disk
+Verified against current OpenTofu docs: *"If you use `-backend-config`
+or hardcode these values directly in your configuration, OpenTofu will
+include these values in both the `.terraform` subdirectory and in
+plan files. This can leak sensitive credentials."* The mechanism is
+specific: `.terraform/terraform.tfstate` captures the backend config
+at init time, and **every plan file captures that same snapshot** — a
+saved plan applied later (`tofu apply plan.bin`) uses the backend
+config baked in at plan time, not current settings.
+
+This lands directly on an artifact this design already produces:
+`provision_artifacts/<request_id>/plan.bin` sits on disk for the
+entire approval-pause duration (hours to days, per the design's own
+staleness handling). The S3 backend block above is already
+credential-free (bucket/key/region only; credentials arrive via
+environment variables per Layer 2's two-phase acquisition) — so
+nothing is currently violated, but nothing said so explicitly either.
+Stated as an explicit rule, extending
+[EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md)'s "nothing secret
+in graph state" to a second location: **backend config blocks and
+plan artifacts on disk must never carry credentials, only environment
+variables may** — a future "parameterize the backend via
+`-backend-config` for flexibility" change would silently reintroduce
+this leak if this rule isn't stated somewhere it'll be checked
+against.
+
+### Migrating an existing Terraform-managed workspace to OpenTofu
+A real scenario this design hadn't addressed: a workspace already
+managed by real Terraform (not OpenTofu), onboarded into PlatformOps
+after the fact. **Treated as a one-way handoff, by policy** — not
+because OpenTofu's docs mandate it (checked; no such statement found
+in the general or version-specific migration guides), but because
+alternating writers between two different tools on one state file is
+unsound regardless of what either tool's compatibility currently
+claims:
+
+```
+NEVER THIS:
+  terraform apply Monday -> tofu apply Tuesday -> terraform apply
+  Wednesday -- alternating writers on the same state
+
+THIS, once, per workspace:
+  Terraform reads/writes BEFORE migration
+  OpenTofu reads Terraform state DURING migration only
+  OpenTofu writes AFTER migration
+  Terraform stops writing, permanently, for that workspace
+```
+
+Same shape as [BOOTSTRAP_WORKFLOW.md](BOOTSTRAP_WORKFLOW.md)'s Level 2
+— not a new pattern, a control-plane change (which engine owns a
+workspace's state) applied through the same admin-gated, never-LLM-
+routed, plan-then-approve machinery bootstrap already established:
+
+```
+migrate_workspace_to_opentofu (admin-gated; not reachable via intake)
+  1. freeze the workspace -- no Terraform applies, no PlatformOps
+     applies, no manual changes, for the duration
+  2. terraform plan -> MUST show no changes; unresolved drift stops
+     the migration here, before anything else happens
+  3. back up state (local: file copy; remote: backend-native
+     snapshot, restore procedure verified before proceeding)
+  4. tofu init; tofu plan -> MUST also show no changes; any
+     unexpected diff stops the migration and rolls back to Terraform,
+     nothing committed
+  5. APPROVAL GATE -- same mechanics as every other approval in this
+     design; a no-op plan is still a real state-ownership change and
+     gets the same scrutiny
+  6. tofu apply (no-op) -- lets OpenTofu claim/rewrite state metadata;
+     proves the workspace is now OpenTofu-operable
+  7. update the registry: state ownership recorded, not inferred
+  8. from this point on, only opentofu_local may write this
+     workspace's state
+```
+
+Registry fields this adds — same incremental-growth pattern the
+registry has already followed twice (the `account_id`/`region` split,
+the `state`/`routable` lifecycle fields):
+```yaml
+iac_engine: opentofu
+state_owner: opentofu
+previous_state_owner: terraform
+migrated_at: "2026-07-31T00:00:00Z"
+```
+
 ## Gap 1: Terraform Has a Diff Engine; CCAPI Doesn't
 Terraform's `plan` *is* a diff against real state —
 `get_plan_json_output` (verified in
@@ -489,6 +576,8 @@ allow-list.
 ## Sources
 - [OpenTofu: S3 backend](https://opentofu.org/docs/language/settings/backends/s3/) — `use_lockfile` syntax, DynamoDB-still-supported confirmation, bucket versioning recommendation
 - [OpenTofu: `apply` command](https://opentofu.org/docs/cli/commands/apply/) — saved-plan-file behavior (no interactive prompt, `-auto-approve` ignored)
+- [OpenTofu: backend configuration](https://opentofu.org/docs/language/settings/backends/configuration/) — verified verbatim: `-backend-config`/hardcoded credentials leak into `.terraform/` and plan files; environment variables recommended instead
+- [OpenTofu: migration from Terraform](https://opentofu.org/docs/intro/migration/) and [v1.9-specific migration guide](https://opentofu.org/docs/v1.9/intro/migration/terraform-1.9/) — checked for a stated one-way state-compatibility limitation; **no such statement found** in either. The "never alternate Terraform/OpenTofu writers" rule in this doc is PlatformOps's own operational policy, not a cited OpenTofu constraint.
 
 ## How this relates to the existing docs
 Sits between [INTAKE_HITL_ROUTING.md](INTAKE_HITL_ROUTING.md) (routes

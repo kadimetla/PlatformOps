@@ -112,3 +112,28 @@ def test_unknown_kid_is_rejected_no_fallback(keypair_and_jwks):
 
     with pytest.raises(jwt.InvalidTokenError):
         parse_id_token(token, jwks, ISSUER, AUDIENCE)
+
+
+def test_missing_email_claim_is_rejected_not_defaulted(keypair_and_jwks):
+    priv_pem, jwks = keypair_and_jwks
+    claims = {
+        "sub": "00u1",
+        "groups": ["aiq-it-invoices-dev-operator"],
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "exp": int(time.time()) + 300,
+    }  # no "email" key at all
+    token = jwt.encode(claims, priv_pem, algorithm="RS256", headers={"kid": "k1"})
+
+    with pytest.raises(jwt.InvalidTokenError):
+        parse_id_token(token, jwks, ISSUER, AUDIENCE)
+
+
+def test_disallowed_algorithm_is_rejected(keypair_and_jwks):
+    priv_pem, jwks = keypair_and_jwks
+    jwks["keys"][0]["alg"] = "PS256"  # asymmetric, but not in ALLOWED_ALGORITHMS
+    token = _make_token(priv_pem)  # signature mechanics don't matter --
+                                   # the algorithm check raises first
+
+    with pytest.raises(jwt.InvalidAlgorithmError):
+        parse_id_token(token, jwks, ISSUER, AUDIENCE)

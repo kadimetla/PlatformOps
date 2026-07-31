@@ -1,3 +1,13 @@
+## Post-implementation note: file locations moved
+Everything below describes files as originally built:
+`gateway/schemas.py` and `gateway/oidc.py`. A follow-up restructuring
+(see `docs/AUTH_BOUNDARY.md`) moved `Capability`/`ExecutionGrant`/
+`ApprovalGrant`/`Actor` to `gateway/auth/schemas.py` and `gateway/oidc.py`
+to `gateway/auth/claims.py`. `Scope` and the intake models stayed in
+`gateway/schemas.py`. Behavior and requirements are unchanged; only
+file location moved. Left uncorrected below to preserve the record of
+what was actually proposed at the time.
+
 ## Why
 `docs/ACCESS_POLICY_AND_IAM_DISCOVERY.md` and `docs/EXECUTION_CREDENTIALS.md`
 designed the full login flow (OIDC login → provider principal

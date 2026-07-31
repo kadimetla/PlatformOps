@@ -1,3 +1,12 @@
+> **Post-implementation note**: file paths below (`gateway/schemas.py`,
+> `gateway/oidc.py`) reflect where this change originally built these
+> models. A follow-up restructuring moved
+> `Capability`/`ExecutionGrant`/`ApprovalGrant`/`Actor` to
+> `gateway/auth/schemas.py` and `gateway/oidc.py` to
+> `gateway/auth/claims.py` — see `docs/AUTH_BOUNDARY.md`. Left
+> uncorrected below; this is a checklist of what was done, not a
+> current file-location reference.
+
 ## 1. Capability ladder
 
 - [x] 1.1 `gateway/schemas.py`: `Capability(str, Enum)` — exactly
