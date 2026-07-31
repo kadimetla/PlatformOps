@@ -2,15 +2,20 @@
 Designed and partially real. The module boundary described here
 (`gateway/auth/` vs. `gateway/schemas.py`, vs. `workflows/`) exists on
 disk today for the pieces `build-login-schemas` built
-(`gateway/auth/schemas.py`, `gateway/auth/claims.py`); `grants.py`,
-`sessions.py`, `login.py`, and `providers/` do not exist yet.
+(`gateway/auth/schemas.py`, `gateway/auth/claims.py`,
+`gateway/auth/grants.py`, `gateway/auth/sessions.py`, and
+`gateway/auth/login.py`); provider discovery adapters under
+`gateway/auth/providers/` do not exist yet.
 
 ## Real vs. Designed
 | Area | Status |
 |---|---|
 | `gateway/auth/schemas.py` (`Capability`, `ExecutionGrant`, `ApprovalGrant`, `Actor`) | Real, moved here from `gateway/schemas.py` in a post-implementation restructuring |
 | `gateway/auth/claims.py` (`OIDCClaims`, `parse_id_token`) | Real, moved here from `gateway/oidc.py` |
-| `gateway/auth/grants.py`, `sessions.py`, `login.py` | Not implemented |
+| `gateway/auth/grants.py` | Real — exact IdP-group to `ApprovalGrant` mapping, deterministic and offline-testable; never mints `ExecutionGrant` |
+| `gateway/auth/sessions.py` | Real — `ActorSession` construction plus an in-memory dev/test session store; stores no OIDC tokens or provider credentials |
+| `gateway/auth/login.py` | Real — Authentik/OIDC device-code primitives with injected HTTP callables; no live IdP dependency in tests |
+| `gateway.auth.cli` | Real — CLI smoke entry point over `gateway/auth/login.py`; talks to a real Authentik issuer when configured |
 | `gateway/auth/providers/{aws,azure,gcp}.py` (`CloudAccessAdapter` implementations) | Not implemented — no empty stubs created either, per this project's discipline against speculative scaffolding |
 
 ## The Core Rule: Auth Is a Security Boundary, Not Agent Workflow Behavior
@@ -86,9 +91,14 @@ gateway/
   auth/
     schemas.py         # Capability, ExecutionGrant, ApprovalGrant, Actor
     claims.py          # OIDCClaims, parse_id_token()
-    grants.py          # (future) claims/provider assignments -> grants
-    sessions.py         # (future) store/load ActorSession
-    login.py            # (future) device-code / OIDC entry point
+    grants.py          # exact IdP group names -> approval grants only
+    sessions.py         # build/store ActorSession; no token persistence
+    login.py            # Authentik/OIDC device-code primitives
+
+CLI:
+  python -m gateway.auth.cli
+                        # first smoke entry point; validates ID token
+                        # and writes token-free ActorSession JSON
     providers/
       aws.py             # (future) AwsAccessAdapter
       azure.py            # (future) AzureAccessAdapter

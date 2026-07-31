@@ -1,14 +1,17 @@
 ## Status
 Research/verification doc, not a design proposal — same shape as
 `TERRAFORM_MCP_SERVER.md`. Verified against current docs/sources
-2026-07-30. Recommendation only; no IdP is deployed, no login entry
-point exists (`docs/INTERACTION_LAYER.md` designed device-code flow,
-not yet built).
+2026-07-30. Recommendation only; no IdP is deployed. The first
+device-code primitives now exist in `gateway/auth/login.py`, and the
+first runnable CLI module is `gateway.auth.cli`; no live
+Authentik deployment is checked into this repo.
 
 ## Real vs. Designed
 | Item | Status |
 |---|---|
 | Any IdP deployment | Not implemented |
+| Authentik/OIDC device-code client primitives | Real in `gateway/auth/login.py`; HTTP is injected, tests use no live IdP |
+| `gateway.auth.cli` CLI module | Real — uses Authentik/OIDC device-code flow, validates the ID token, optionally maps groups to **approval grants only**, writes a token-free local session |
 | `gateway/oidc.py`'s `parse_id_token()` | Real, built (`build-login-schemas`) — **IdP-agnostic by design**: takes a JWKS dict as a parameter, never fetches one, doesn't care which IdP issued the token as long as it's standard OIDC |
 | Keycloak device-code grant support | Verified real, since v13.0 |
 | Keycloak native SCIM support | Verified absent — corrects the implicit assumption in `ACCESS_POLICY_AND_IAM_DISCOVERY.md`'s Principal-ID Mapping table |
@@ -74,6 +77,53 @@ alternative** — reach for it if maximum ecosystem depth/community
 support matters more than the SCIM fit, accepting the live
 `identitystore:GetUserId`/`ListUsers` lookup as AWS's default path
 rather than an optimized one.
+
+## Local Smoke Contract
+The first live integration target is a manually configured Authentik
+application/provider with device-code grant enabled. The repo code
+expects:
+
+```text
+PLATFORMOPS_OIDC_ISSUER=https://<authentik-host>
+PLATFORMOPS_OIDC_CLIENT_ID=<authentik-oauth-client-id>
+PLATFORMOPS_OIDC_AUDIENCE=<expected-id-token-audience>  # defaults to client id
+PLATFORMOPS_GRANT_MAPPING=./local/approvers.yaml        # optional
+PLATFORMOPS_SESSION_PATH=.platformops/session.json      # optional
+```
+
+Run:
+
+```bash
+uv run python -m gateway.auth.cli
+```
+
+The command discovers OIDC metadata, starts Authentik's documented
+device-code flow (`/application/o/device/`), polls the token endpoint
+(`/application/o/token/`), validates the ID token using JWKS, resolves
+configured approval-group mappings, and writes only a normalized
+`ActorSession`. It deliberately does **not** store ID tokens, access
+tokens, refresh tokens, provider credentials, or static
+`execution_grants`.
+
+Approval-group mapping file shape:
+
+```yaml
+mappings:
+  - group: aiq-it-prod-approvers
+    grant_type: approval
+    capability: apply_limited
+    scope:
+      org: aiq
+      bu: it
+      project: "*"
+      workspace: prod
+```
+
+This smoke test flushes OIDC/device-code/group-claim shape before
+provider discovery is implemented. By design it cannot grant execution
+authority from YAML; `execution_grants` remain empty until provider
+discovery adapters are implemented. Authentik SCIM-to-AWS-Identity-
+Center remains separate setup work.
 
 ## Sources
 - [Keycloak: OAuth 2.0 Device Authorization Grant design doc](https://github.com/keycloak/keycloak-community/blob/main/design/oauth2-device-authorization-grant.md)
