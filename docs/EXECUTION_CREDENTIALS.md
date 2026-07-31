@@ -23,6 +23,7 @@ exception: already verified in
 | Runtime root identity (Layer 0) | Not implemented — no deployment exists to hold one |
 | Per-workspace execution identities (Layer 1) | Not implemented — created by the bootstrap path (see ACCESS_POLICY_AND_IAM_DISCOVERY.md) |
 | Registry (`gateway/policy/project_registry.yaml`) | Designed only, shared with ACCESS_POLICY_AND_IAM_DISCOVERY.md |
+| `ApprovalRequest`/`ApprovalRecord` (Payload section below) | Real, added 2026-07-31 as `gateway/approval.py` — schema only, matches this doc's fields exactly; the approval gate node that would create/persist these does not exist |
 | Provision workflow the executor plugs into | Designed only (capability-shaped graph, below) |
 | Approval gate (self-looping interrupt node, `approval_groups` policy, staleness rechecking) | Designed only |
 | Executor sub-graph (dispatch/acquire/invoke/poll/verify/record, `ExecutionRequest`, digest binding, failure taxonomy) | Designed only |

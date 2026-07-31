@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from gateway.auth.schemas import ApprovalGrant, Capability, Actor, ExecutionGrant
+from gateway.auth.schemas import ActorRef, ApprovalGrant, Capability, Actor, ExecutionGrant
 from gateway.schemas import Scope
 
 
@@ -76,3 +76,9 @@ def test_actor_carries_both_grant_sets_independently():
     assert len(actor.approval_grants) == 1
     assert actor.execution_grants[0].scope.workspace == "dev"
     assert actor.approval_grants[0].scope.workspace == "prod"
+
+
+def test_actor_ref_carries_no_grants():
+    ref = ActorRef(user_id="00u1", email="alice@example.com")
+    assert not hasattr(ref, "execution_grants")
+    assert not hasattr(ref, "approval_grants")

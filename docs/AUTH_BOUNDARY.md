@@ -5,12 +5,21 @@ disk today for the pieces `build-login-schemas` built
 (`gateway/auth/schemas.py`, `gateway/auth/claims.py`,
 `gateway/auth/grants.py`, `gateway/auth/sessions.py`, and
 `gateway/auth/login.py`); provider discovery adapters under
-`gateway/auth/providers/` do not exist yet.
+`gateway/auth/providers/` do not exist yet. **Updated 2026-07-31**:
+`gateway/policy/` (the `effective_access` evaluator) and
+`gateway/approval.py` (`ApprovalRequest`/`ApprovalRecord`) now exist
+too, plus `interaction/` — a third top-level package, sibling to
+`gateway/` and `workflows/`, for TUI/web-facing event schemas
+(`docs/INTERACTION_LAYER.md`). Neither `gateway/` nor `workflows/` may
+import from `interaction/`.
 
 ## Real vs. Designed
 | Area | Status |
 |---|---|
-| `gateway/auth/schemas.py` (`Capability`, `ExecutionGrant`, `ApprovalGrant`, `Actor`) | Real, moved here from `gateway/schemas.py` in a post-implementation restructuring |
+| `gateway/auth/schemas.py` (`Capability`, `ExecutionGrant`, `ApprovalGrant`, `Actor`, `ActorRef`) | Real, moved here from `gateway/schemas.py` in a post-implementation restructuring; `ActorRef` added 2026-07-31 |
+| `gateway/policy/ceiling.py` (`effective_access = min(grant, ceiling)`) | Real — `CeilingEntry`/`OrgBuPolicyConfig`, most-specific-scope-wins matching (stated assumption, not pinned down elsewhere); no live `org_bu_policy.yaml` data exists, only the schema/evaluator |
+| `gateway/approval.py` (`ApprovalRequest`, `ApprovalRecord`) | Real — schema only, matches `EXECUTION_CREDENTIALS.md`'s Payload section field-for-field; the approval gate node itself doesn't exist |
+| `interaction/events.py` (`PlatformOpsEvent`, `HITLEvent`, `HITLResponse`) | Real — see `docs/INTERACTION_LAYER.md`; no TUI/web adapter consumes it yet |
 | `gateway/auth/claims.py` (`OIDCClaims`, `parse_id_token`) | Real, moved here from `gateway/oidc.py` |
 | `gateway/auth/grants.py` | Real — exact IdP-group to `ApprovalGrant` mapping, deterministic and offline-testable; never mints `ExecutionGrant` |
 | `gateway/auth/sessions.py` | Real — `ActorSession` construction plus an in-memory dev/test session store; stores no OIDC tokens or provider credentials |

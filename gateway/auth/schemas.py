@@ -101,3 +101,16 @@ class Actor(BaseModel):
     execution_grants: list[ExecutionGrant] = Field(default_factory=list)
     approval_grants: list[ApprovalGrant] = Field(default_factory=list)
     resolved_at: datetime
+
+
+class ActorRef(BaseModel):
+    """Minimal identity projection for cross-boundary payloads (approval
+    requests, interaction-layer events) that need to know who but must
+    not carry grants -- Actor is session-internal and has no business
+    being serialized into a wire event or a persisted approval record.
+    Lives here, not in interaction/, because gateway/approval.py's
+    ApprovalRequest needs it too and gateway/ must not depend on
+    interaction/ (see docs/INTERACTION_LAYER.md)."""
+
+    user_id: str
+    email: str

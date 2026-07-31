@@ -1,6 +1,8 @@
 ## Status
-Designed only. No TUI, event envelope, or web UI code exists on this
-branch. First design in this project to touch the human-interaction
+Designed and partially real as of 2026-07-31 — `interaction/events.py`
+(`PlatformOpsEvent`/`HITLEvent`/`HITLResponse`) is real code; no TUI or
+web UI exists, and nothing yet emits or consumes the event envelope.
+First design in this project to touch the human-interaction
 layer at all — every prior doc designs backend workflow/access/
 execution behavior, none address how a human actually talks to
 PlatformOps. AG-UI and A2UI claims verified against their own current
@@ -24,11 +26,11 @@ intact instead of overloading `gateway/`.
 ## Real vs. Designed
 | Area | Status |
 |---|---|
-| Event envelope (any) | Not implemented |
+| Event envelope (any) | Real, added 2026-07-31 — `interaction/events.py`, `PlatformOpsEvent`/`HITLEvent`/`HITLResponse`; nothing emits or consumes these yet |
 | TUI (any renderer) | Not implemented — no `rich`/`textual`/`prompt_toolkit` installed |
 | Login entry point | Not implemented — was undecided in `build-login-schemas`, resolved here to device-code |
 | AG-UI/CopilotKit web path | Not implemented, not started — documented future path only; event taxonomy, Runtime proxy pattern, and interrupt-based HITL mapping verified 2026-07-31, no code |
-| `HITLEvent` / `interaction/events.py` | Designed only, added 2026-07-31, relocated out of `gateway/` same day — concretizes this doc's "future `EventEnvelope[T]`"; no file, no `interaction/` package exists yet |
+| `HITLEvent` / `interaction/events.py` | Real, implemented 2026-07-31 in `interaction/` (relocated out of `gateway/` same day, before code landed) — concretizes this doc's "future `EventEnvelope[T]`"; also required adding `gateway/approval.py` (`ApprovalRequest`/`ApprovalRecord`) and `ActorRef` (`gateway/auth/schemas.py`), neither of which existed as code before this |
 | A2UI rich widgets | Not implemented, not started — documented future path only |
 
 ## Core Decision: TUI First, Web UI Later — Same Event Stream, Two Renderers

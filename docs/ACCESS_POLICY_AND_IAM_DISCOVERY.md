@@ -1,6 +1,13 @@
 ## Status
-Designed only. No auth layer, `gateway/`, or workflow code exists on
-this branch. Every provider API cited below was verified against
+Designed only. No auth layer or workflow code exists on this branch.
+**Corrected 2026-07-31**: `gateway/` itself now has real code
+(`gateway/auth/`, `gateway/policy/`, `gateway/approval.py` — see
+`AUTH_BOUNDARY.md`), but nothing that implements *this* doc's own
+subject — login-time discovery, provider principal resolution,
+capability normalization — exists yet; only the downstream
+`effective_access` evaluator (`gateway/policy/ceiling.py`) and the
+capability ladder it consumes (`gateway/auth/schemas.py`) are real.
+Every provider API cited below was verified against
 current docs on 2026-07-28 (see Sources) — not recalled from training
 data, per `AGENTS.md`'s hard rule on third-party integrations. Three
 real gaps were found and corrected during that verification (marked
@@ -21,7 +28,8 @@ no prior credential artifact in this repo was treated as a baseline.
 | OIDC login + claims → `Actor` | Designed only |
 | Login-time provider access discovery | Designed only |
 | Capability ladder + normalization mapping | Designed only |
-| PlatformOps policy registry (`gateway/policy/*.yaml`) | Designed only |
+| PlatformOps policy registry (`gateway/policy/*.yaml` data files) | Designed only — no `org_bu_policy.yaml`/`project_registry.yaml`/`access_templates.yaml` exists |
+| `effective_access` evaluator (`gateway/policy/ceiling.py`) | Real, added 2026-07-31 — the `min(grant, ceiling)` code, loads `OrgBuPolicyConfig` from YAML if given a path; deny-by-default when no grant or ceiling matches |
 | Discovery identity (per cloud, read-only, org-wide) | Designed only — new requirement identified this session |
 | Execution identity (per workspace + capability tier) | Designed only |
 | `spec/check_compliance.py` | Real, deterministic, unrelated — the only currently-executable check in the repo |
