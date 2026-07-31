@@ -18,7 +18,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from gateway.approval import ApprovalRequest
 from gateway.auth.schemas import ActorRef
@@ -75,7 +75,12 @@ class HITLEvent(BaseModel):
     already lives on IntakeRequest and is read off the wrapped
     IntakeDecision. Duplicate-approval/self-approval/digest-match
     checks are not this model's job -- those are enforced in-graph
-    (docs/EXECUTION_CREDENTIALS.md); this only surfaces status."""
+    (docs/EXECUTION_CREDENTIALS.md); this only surfaces status.
+
+    kind/payload/resume_mode consistency IS this model's job, though --
+    it's the cross-UI protocol boundary, so an inconsistent combination
+    (e.g. kind=CLARIFICATION_REQUIRED carrying an ApprovalRequest) is
+    rejected at construction, not left for a renderer to discover."""
 
     event_id: str
     request_id: str
@@ -86,6 +91,26 @@ class HITLEvent(BaseModel):
     resume_mode: Literal["reinvoke", "checkpoint_resume"]
     created_at: datetime
     expires_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def kind_payload_and_resume_mode_agree(self) -> "HITLEvent":
+        if self.kind == HITLEventKind.CLARIFICATION_REQUIRED:
+            if not isinstance(self.payload, IntakeDecision):
+                raise ValueError(
+                    "clarification.required must carry an IntakeDecision payload"
+                )
+            if self.resume_mode != "reinvoke":
+                raise ValueError("clarification.required must use resume_mode='reinvoke'")
+        elif self.kind == HITLEventKind.APPROVAL_REQUIRED:
+            if not isinstance(self.payload, ApprovalRequest):
+                raise ValueError(
+                    "approval.required must carry an ApprovalRequest payload"
+                )
+            if self.resume_mode != "checkpoint_resume":
+                raise ValueError(
+                    "approval.required must use resume_mode='checkpoint_resume'"
+                )
+        return self
 
 
 class HITLResponse(BaseModel):

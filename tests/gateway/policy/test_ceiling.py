@@ -1,5 +1,13 @@
+import pytest
+
 from gateway.auth.schemas import Capability, ExecutionGrant
-from gateway.policy.ceiling import CeilingEntry, OrgBuPolicyConfig, effective_access
+from gateway.policy.ceiling import (
+    CeilingEntry,
+    OrgBuPolicyConfig,
+    effective_access,
+    resolve_ceiling,
+    resolve_execution_capability,
+)
 from gateway.schemas import Intent, Scope
 
 
@@ -96,6 +104,46 @@ def test_exact_scope_wins_over_wildcard_grant():
     )
 
     assert result == Capability.APPLY_FULL
+
+
+def test_same_specificity_execution_grants_resolve_to_the_lower_capability():
+    scope = Scope(org="aiq", bu="it", project="invoices", workspace="dev")
+    grants_a_first = [
+        _grant("invoices", "dev", Capability.APPLY_FULL),
+        _grant("invoices", "dev", Capability.DESCRIBE),
+    ]
+    grants_b_first = [
+        _grant("invoices", "dev", Capability.DESCRIBE),
+        _grant("invoices", "dev", Capability.APPLY_FULL),
+    ]
+
+    assert resolve_execution_capability(scope, grants_a_first) == Capability.DESCRIBE
+    assert resolve_execution_capability(scope, grants_b_first) == Capability.DESCRIBE
+
+
+def test_same_specificity_ceiling_disagreement_raises():
+    scope = Scope(org="aiq", bu="it", project="invoices", workspace="dev")
+    policy = OrgBuPolicyConfig(
+        entries=[
+            _ceiling("invoices", "dev", Intent.PROVISION, Capability.APPLY_FULL),
+            _ceiling("invoices", "dev", Intent.PROVISION, Capability.DESCRIBE),
+        ]
+    )
+
+    with pytest.raises(ValueError):
+        resolve_ceiling(scope, Intent.PROVISION, policy)
+
+
+def test_same_specificity_ceiling_agreement_does_not_raise():
+    scope = Scope(org="aiq", bu="it", project="invoices", workspace="dev")
+    policy = OrgBuPolicyConfig(
+        entries=[
+            _ceiling("invoices", "dev", Intent.PROVISION, Capability.APPLY_LIMITED),
+            _ceiling("invoices", "dev", Intent.PROVISION, Capability.APPLY_LIMITED),
+        ]
+    )
+
+    assert resolve_ceiling(scope, Intent.PROVISION, policy) == Capability.APPLY_LIMITED
 
 
 def test_wrong_intent_does_not_match_ceiling():

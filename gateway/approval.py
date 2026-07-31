@@ -6,11 +6,24 @@ is only the schema, added because interaction/events.py's HITLEvent
 wraps ApprovalRequest and needs a real type to wrap.
 """
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel, Field
 
 from gateway.auth.schemas import ActorRef, Capability
 from gateway.schemas import Scope
+
+
+class ApprovalVerdict(str, Enum):
+    """gateway/ must not import interaction/ (see AUTH_BOUNDARY.md), so
+    this is a separate, gateway-local enum from interaction/events.py's
+    HITLVerdict -- not the same type, deliberately, even though the
+    approve/reject/cancel values overlap. ANSWER (clarification-only)
+    has no meaning for an approval record and isn't included here."""
+
+    APPROVE = "approve"
+    REJECT = "reject"
+    CANCEL = "cancel"
 
 
 class ApprovalRecord(BaseModel):
@@ -19,7 +32,7 @@ class ApprovalRecord(BaseModel):
 
     request_id: str
     approver_id: str
-    verdict: str
+    verdict: ApprovalVerdict
     timestamp: datetime
     plan_digest: str
     approval_digest: str
@@ -37,5 +50,5 @@ class ApprovalRequest(BaseModel):
     vibe_diff: str
     requester: ActorRef
     approvals_so_far: list[ApprovalRecord] = Field(default_factory=list)
-    required_approvals: int
+    required_approvals: int = Field(ge=1)
     approval_expires_at: datetime | None = None

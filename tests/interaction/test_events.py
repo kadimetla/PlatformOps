@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
 
+import pytest
+from pydantic import ValidationError
+
 from gateway.approval import ApprovalRequest
 from gateway.auth.schemas import ActorRef, Capability
 from gateway.schemas import ClarificationQuestion, IntakeDecision, Scope
@@ -12,6 +15,29 @@ from interaction.events import (
     HITLVerdict,
     PlatformOpsEvent,
 )
+
+
+def _approval_request():
+    return ApprovalRequest(
+        request_id="req-2",
+        scope=Scope(org="aiq", bu="it", project="invoices", workspace="prod"),
+        intent="provision",
+        capability_required=Capability.APPLY_LIMITED,
+        plan_digest="sha256:plan",
+        approval_digest="sha256:approval",
+        vibe_diff="Create S3 bucket and CloudFront distribution",
+        requester=ActorRef(user_id="00u1", email="alice@example.com"),
+        required_approvals=1,
+    )
+
+
+def _intake_decision():
+    return IntakeDecision(
+        intent=None,
+        clarification_questions=[
+            ClarificationQuestion(field="intent", question="Which workflow?", choices=[])
+        ],
+    )
 
 
 def test_platform_ops_event_wraps_a_generic_payload():
@@ -73,6 +99,58 @@ def test_hitl_event_wraps_approval_request_for_approval():
     )
     assert isinstance(event.payload, ApprovalRequest)
     assert event.payload.required_approvals == 1
+
+
+def test_clarification_required_rejects_approval_request_payload():
+    with pytest.raises(ValidationError):
+        HITLEvent(
+            event_id="hitl-3",
+            request_id="req-3",
+            kind=HITLEventKind.CLARIFICATION_REQUIRED,
+            status=HITLStatus.PENDING,
+            payload=_approval_request(),
+            resume_mode="reinvoke",
+            created_at=datetime.now(timezone.utc),
+        )
+
+
+def test_clarification_required_rejects_checkpoint_resume_mode():
+    with pytest.raises(ValidationError):
+        HITLEvent(
+            event_id="hitl-4",
+            request_id="req-4",
+            kind=HITLEventKind.CLARIFICATION_REQUIRED,
+            status=HITLStatus.PENDING,
+            payload=_intake_decision(),
+            resume_mode="checkpoint_resume",
+            created_at=datetime.now(timezone.utc),
+        )
+
+
+def test_approval_required_rejects_intake_decision_payload():
+    with pytest.raises(ValidationError):
+        HITLEvent(
+            event_id="hitl-5",
+            request_id="req-5",
+            kind=HITLEventKind.APPROVAL_REQUIRED,
+            status=HITLStatus.PENDING,
+            payload=_intake_decision(),
+            resume_mode="checkpoint_resume",
+            created_at=datetime.now(timezone.utc),
+        )
+
+
+def test_approval_required_rejects_reinvoke_mode():
+    with pytest.raises(ValidationError):
+        HITLEvent(
+            event_id="hitl-6",
+            request_id="req-6",
+            kind=HITLEventKind.APPROVAL_REQUIRED,
+            status=HITLStatus.PENDING,
+            payload=_approval_request(),
+            resume_mode="reinvoke",
+            created_at=datetime.now(timezone.utc),
+        )
 
 
 def test_hitl_response_carries_verdict_not_grants():

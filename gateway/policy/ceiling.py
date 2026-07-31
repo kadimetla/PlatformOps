@@ -17,6 +17,15 @@ project+workspace beats a wildcard on either) rather than the
 highest-capability one -- picking the highest would let an unrelated
 wildcard grant leak capability into a more specific scope, which is
 the opposite of deny-by-default.
+
+Tie-break when two entries share the *same* specificity, stated
+explicitly rather than left to dict/YAML/list ordering:
+- Execution grants: choose the LOWER capability. Two equally-specific
+  grants disagreeing on capability should never resolve to the more
+  permissive one -- same deny-by-default logic as effective_access
+  itself, applied one level down.
+- Policy ceilings: this is a config-authoring bug, not a runtime
+  condition to silently resolve either way -- raise, don't guess.
 """
 from pathlib import Path
 
@@ -55,26 +64,38 @@ def resolve_execution_capability(
     scope: Scope, grants: list[ExecutionGrant]
 ) -> Capability:
     """The WHO half: best-match execution grant for this scope, or
-    Capability.NONE if none matches."""
+    Capability.NONE if none matches. Same-specificity ties resolve to
+    the lower capability -- see module docstring."""
 
     matches = [g for g in grants if _scope_matches(g.scope, scope)]
     if not matches:
         return Capability.NONE
-    best = max(matches, key=lambda g: _specificity(g.scope))
-    return best.capability
+    top = max(_specificity(g.scope) for g in matches)
+    tied = [g for g in matches if _specificity(g.scope) == top]
+    return min(g.capability for g in tied)
 
 
 def resolve_ceiling(scope: Scope, intent: Intent, config: OrgBuPolicyConfig) -> Capability:
     """The WHAT half: best-match policy ceiling for this
-    (scope, intent), or Capability.NONE if none is configured."""
+    (scope, intent), or Capability.NONE if none is configured. Raises
+    if same-specificity entries disagree on the ceiling -- see module
+    docstring."""
 
     matches = [
         e for e in config.entries if e.intent == intent and _scope_matches(e.scope, scope)
     ]
     if not matches:
         return Capability.NONE
-    best = max(matches, key=lambda e: _specificity(e.scope))
-    return best.ceiling
+    top = max(_specificity(e.scope) for e in matches)
+    tied = [e for e in matches if _specificity(e.scope) == top]
+    ceilings = {e.ceiling for e in tied}
+    if len(ceilings) > 1:
+        raise ValueError(
+            f"ambiguous policy ceiling for scope={scope!r} intent={intent!r}: "
+            f"equally-specific entries disagree ({sorted(c.value for c in ceilings)}) "
+            "-- fix the policy config, this is an authoring bug"
+        )
+    return tied[0].ceiling
 
 
 def effective_access(
