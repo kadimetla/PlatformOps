@@ -32,7 +32,8 @@ intact instead of overloading `gateway/`.
 |---|---|
 | Event envelope (any) | Real, added 2026-07-31 — `interaction/events.py`, `PlatformOpsEvent`/`HITLEvent`/`HITLResponse`; nothing emits or consumes these yet |
 | TUI (minimal stdlib renderer) | Real, added 2026-07-31 — `interaction/tui.py` renders `PlatformOpsEvent`/`HITLEvent` and builds `HITLResponse` from terminal prompts; no `rich`/`textual`/`prompt_toolkit` dependency yet |
-| Login entry point | Not implemented — was undecided in `build-login-schemas`, resolved here to device-code |
+| Login entry point | Real, added 2026-07-31 as `transports/cli.py`'s `platformops login` (see `docs/TRANSPORTS.md` — the CLI itself is a transport, not part of this package; `interaction/` stays presentation-only) |
+| `render_session_summary`/`render_session_detail` (`interaction/tui.py`) | Real, added 2026-07-31 — rendering functions the CLI transport calls; `interaction/` still does no I/O or process orchestration itself |
 | AG-UI adapter | Real, added 2026-07-31 — `interaction/agui.py` maps `HITLEvent` to AG-UI `RUN_FINISHED` interrupt outcomes and `HITLResponse` to `resume[]` entries; no web server/CopilotKit runtime yet |
 | `HITLEvent` / `interaction/events.py` | Real, implemented 2026-07-31 in `interaction/` (relocated out of `gateway/` same day, before code landed) — concretizes this doc's "future `EventEnvelope[T]`"; also required adding `gateway/approval.py` (`ApprovalRequest`/`ApprovalRecord`) and `ActorRef` (`gateway/auth/schemas.py`), neither of which existed as code before this |
 | A2UI rich widgets | Not implemented, not started — documented future path only |

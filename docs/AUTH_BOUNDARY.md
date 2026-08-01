@@ -24,7 +24,7 @@ import from `interaction/`.
 | `interaction/agui.py` (AG-UI adapter) | Real, added 2026-07-31 — maps `HITLEvent` to AG-UI's `RUN_FINISHED` interrupt outcome and `HITLResponse` to `resume[]` entries; no web server/CopilotKit runtime consumes it yet |
 | `gateway/auth/claims.py` (`OIDCClaims`, `parse_id_token`) | Real, moved here from `gateway/oidc.py` |
 | `gateway/auth/grants.py` | Real — exact IdP-group to `ApprovalGrant` mapping, deterministic and offline-testable; never mints `ExecutionGrant` |
-| `gateway/auth/sessions.py` | Real — `ActorSession` construction plus an in-memory dev/test session store; stores no OIDC tokens or provider credentials |
+| `gateway/auth/sessions.py` | Real — `ActorSession` construction plus an in-memory dev/test session store; stores no OIDC tokens or provider credentials. `read_session()` added 2026-07-31, symmetric to `gateway/auth/cli.py`'s `write_session` — reads the on-disk session `transports/cli.py` writes/reads |
 | `gateway/auth/login.py` | Real — Authentik/OIDC device-code primitives with injected HTTP callables; no live IdP dependency in tests |
 | `gateway.auth.cli` | Real — CLI smoke entry point over `gateway/auth/login.py`; talks to a real Authentik issuer when configured |
 | `gateway/auth/providers/{aws,azure,gcp}.py` (`CloudAccessAdapter` implementations) | Not implemented — no empty stubs created either, per this project's discipline against speculative scaffolding |
