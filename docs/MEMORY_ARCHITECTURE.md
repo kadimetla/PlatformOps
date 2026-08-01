@@ -8,6 +8,11 @@ accepted secondhand. The memory taxonomy and the skills-as-procedural-
 memory mapping are grounded against this repo's actual code; the
 identity/behavior sections are grounded against already-enforced rules,
 not proposed as new config surfaces (see "Identity & Behavior" below).
+**Tightened 2026-07-31**: consolidated the identity/behavior boundary
+table, added the corrected-architecture diagram (`transports/` →
+`harness/` → `workflows/` → `executors/`, matching
+`PLATFORMOPS_HARNESS.md`'s OpenClaw runtime-core/harness mapping), and
+made the "don't build yet" list explicit imperatives rather than prose.
 
 ## The Governing Distinction
 ```
@@ -120,29 +125,61 @@ drift from the code that actually enforces it.
 
 | Proposed boundary | Already enforced at |
 |---|---|
-| Never mutate without approval | `EXECUTION_CREDENTIALS.md`'s approval gate (designed); `gateway/policy/ceiling.py` deny-by-default |
+| Never mutate without approval / HITL before mutation | `EXECUTION_CREDENTIALS.md`'s approval gate (designed); `gateway/policy/ceiling.py` deny-by-default |
 | Deny by default | `gateway/policy/ceiling.py`: no matching grant/ceiling → `Capability.NONE`, always |
 | `max_clarification_rounds: 2` | `harness/core.py`'s `_MAX_CLARIFICATION_ROUNDS`, enforced before a third model call |
-| Never use user cloud credentials | `AUTH_BOUNDARY.md`: execution identities are PlatformOps-owned, never a requester's own credentials |
+| No credentials in state | `EXECUTION_CREDENTIALS.md`'s no-tokens-in-graph-state rule; `AUTH_BOUNDARY.md`: execution identities are PlatformOps-owned, never a requester's own credentials |
+| Memory does not authorize | This doc's governing distinction, above — policy memory is the only type that may gate an action |
 
 If this becomes a doc, it should read as an index into these
 enforcement points, not a spec for a new `behavior/*.yaml` loader —
 the code is the source of truth, this would just be the map to it.
 
+## The Corrected Architecture, One Diagram
+Layers agree with [PLATFORMOPS_HARNESS.md](PLATFORMOPS_HARNESS.md)'s
+OpenClaw correction (not restated here) — `PlatformOpsHarness` plays
+OpenClaw's runtime-core role, and PlatformOps's actual analog to
+OpenClaw's harness is the toolchain/executor layer, not the object
+named `PlatformOpsHarness`:
+```
+transports/            cli, tui, http, teams, google_chat
+  |
+  v
+harness/                PlatformOpsHarness  -- runtime-core analog: prepares
+  |                                            and coordinates the run
+  v
+workflows/              intake, provision, inquiry
+  |
+  v
+executors/               opentofu_local, hcp_terraform, ccapi  -- OpenClaw-
+                                                                   harness analog:
+                                                                   runs the concrete
+                                                                   attempt
+```
+`executors/` is a new naming proposal, not something pinned down
+elsewhere — `EXECUTION_CREDENTIALS.md`/`PROVISION_WORKFLOW.md` only
+describe this conceptually as an executor sub-graph dispatched by
+toolchain, with no module path decided. It belongs in the "not yet"
+list below alongside the others, for the same reason: no provision
+workflow exists to call it.
+
 ## What Not to Build Yet
-`memory/{working,episodic,semantic,procedural,policy,evidence}.py` as
-a uniform package, `context/project_memory.py`,
-`context/evidence_store.py`, `executors/` — all real translations of
-the taxonomy above, all speculative today. None has a second
-workflow, dispatcher, or executor yet to actually serve — building
-them now would be exactly the "registry/adapter/tier before something
-real needs it" this project has avoided everywhere else
-(`docs/INTERACTION_LAYER.md`'s Textual/web-adapter deferrals,
-`docs/TRANSPORTS.md`'s HTTP/WebSocket/Teams/Google Chat deferrals).
-Semantic memory (`gateway/policy/*.yaml`) and evidence memory
-(`ExecutionRecord`'s persistence) are the two most likely to be needed
-next, once a provision workflow exists to write to either — not
-before.
+Explicit, not implied:
+- **Do not implement `memory/{working,episodic,semantic,procedural,policy,evidence}.py`** as a uniform package.
+- **Do not add `behavior/*.yaml`** or a `PlatformOpsIdentity` config loader.
+- **Do not build `context/project_memory.py`, `context/evidence_store.py`, or `workspace_context/`.**
+- **Do not build `executors/`** (`opentofu_local`/`hcp_terraform`/`ccapi`) — sketched above as the target shape, not a next step.
+- **Do not turn any of this doc into runtime config until a workflow needs it.**
+
+None of the above has a second workflow, dispatcher, or executor yet
+to actually serve — building any of it now would be exactly the
+"registry/adapter/tier before something real needs it" this project
+has avoided everywhere else (`docs/INTERACTION_LAYER.md`'s
+Textual/web-adapter deferrals, `docs/TRANSPORTS.md`'s
+HTTP/WebSocket/Teams/Google Chat deferrals). Semantic memory
+(`gateway/policy/*.yaml`) and evidence memory (`ExecutionRecord`'s
+persistence) are the two most likely to be needed next, once a
+provision workflow exists to write to either — not before.
 
 ## Sources
 - [OpenClaw: memory model](https://docs.openclaw.ai/concepts/memory) — four-layer file model, "the model only remembers what gets saved to disk," "memory can preserve approval context, but it does not enforce policy"
