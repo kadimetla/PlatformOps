@@ -17,11 +17,14 @@ adapter, or Google Chat adapter exists yet.
 ## Transport Boundary
 A transport moves bytes between a user-facing surface and the same
 gateway/workflow contract. It must not classify intent, compute grants,
-approve policy, or execute workflow-specific behavior.
+approve policy, or execute workflow-specific behavior. It calls into
+that contract through one object, not `gateway/`/`workflows/`
+directly — see [PLATFORMOPS_HARNESS.md](PLATFORMOPS_HARNESS.md).
 
 ```text
 transport            normalize/render channel-specific messages
 interaction/         render/adapt PlatformOpsEvent and HITLEvent
+harness/              PlatformOpsHarness -- the one call-in point every transport shares
 gateway/             auth, sessions, policy, request contracts
 workflows/           intake, provision, inquiry, approval, execution
 ```
