@@ -4,6 +4,7 @@ Sessions hold normalized Actor data and group claims. They deliberately
 do not persist ID tokens, refresh tokens, or provider credentials.
 """
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -47,6 +48,14 @@ def build_actor_session(
         created_at=issued_at,
         expires_at=issued_at + timedelta(seconds=ttl_seconds),
     )
+
+
+def read_session(path: Path) -> ActorSession:
+    """Symmetric to gateway/auth/cli.py's write_session -- reads the
+    token-free session JSON it writes. Does not check is_expired;
+    callers (whoami, session show) decide how to surface that."""
+
+    return ActorSession.model_validate_json(path.read_text())
 
 
 class InMemorySessionStore:

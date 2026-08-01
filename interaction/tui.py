@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from gateway.approval import ApprovalRequest
 from gateway.auth.schemas import ActorRef
+from gateway.auth.sessions import ActorSession
 from gateway.schemas import IntakeDecision
 from interaction.events import (
     PlatformOpsEvent,
@@ -21,6 +22,40 @@ from interaction.events import (
 
 def render_platform_event(event: PlatformOpsEvent) -> str:
     return f"[{event.kind.value}] request={event.request_id} payload={event.payload}"
+
+
+def render_session_summary(session: ActorSession) -> str:
+    status = "EXPIRED" if session.is_expired else "active"
+    return (
+        f"{session.actor.email} ({session.actor.user_id})\n"
+        f"session {status}, expires {session.expires_at.isoformat()}"
+    )
+
+
+def render_session_detail(session: ActorSession) -> str:
+    lines = [render_session_summary(session), "", f"groups: {', '.join(session.groups) or '(none)'}"]
+
+    lines.append("execution_grants:")
+    if session.actor.execution_grants:
+        for grant in session.actor.execution_grants:
+            lines.append(
+                f"  {grant.scope.org_bu}/{grant.scope.project or '*'}/"
+                f"{grant.scope.workspace or '*'} -> {grant.capability.value} ({grant.provider})"
+            )
+    else:
+        lines.append("  (none)")
+
+    lines.append("approval_grants:")
+    if session.actor.approval_grants:
+        for grant in session.actor.approval_grants:
+            lines.append(
+                f"  {grant.scope.org_bu}/{grant.scope.project or '*'}/"
+                f"{grant.scope.workspace or '*'} -> max {grant.max_capability.value}"
+            )
+    else:
+        lines.append("  (none)")
+
+    return "\n".join(lines)
 
 
 def render_hitl_event(event: HITLEvent) -> str:
