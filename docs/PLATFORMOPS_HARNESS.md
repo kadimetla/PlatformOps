@@ -175,5 +175,9 @@ above depends on an approval flow that
 [EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md) already designed
 (self-approval/duplicate-approval rules, `approval_digest` binding) but
 this repo hasn't built — `ThreadState`'s access rules assume that
-doc's rules, don't restate them. Indexed from
+doc's rules, don't restate them. `ThreadState`/`RunState`/`EventRecord`
+above are the working/episodic memory shapes in
+[MEMORY_ARCHITECTURE.md](MEMORY_ARCHITECTURE.md)'s six-type taxonomy —
+that doc covers the other five types and doesn't restate the OpenClaw
+harness-naming correction made here. Indexed from
 [HARNESS_DESIGN.md](HARNESS_DESIGN.md).
