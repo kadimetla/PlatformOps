@@ -12,6 +12,10 @@ dependencies = [
     "langchain-core",
     "pydantic",
     "pyjwt",
+    "fastapi",
+    "uvicorn",
+    "ag-ui-protocol",
+    "langchain-anthropic",
 ]
 # Note: boto3 is no longer a direct dependency — provisioning now routes
 # through external MCP servers (awslabs.aws-iac-mcp-server, awslabs.ccapi-mcp-server,

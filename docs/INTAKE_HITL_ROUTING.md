@@ -1,8 +1,16 @@
 ## Status
-Designed only. No `gateway/`, `workflows/`, or LangGraph intake code
-exists on this branch yet. This document captures the OpenSpec explore
-result for request intake with human-in-the-loop clarification before
-workflow routing.
+Mostly designed only, with two narrow real slices (**corrected
+2026-08-07** — this line previously said no `gateway/`/`workflows/`
+code existed at all, which stopped being true once
+`build-intake-workflow` landed): `gateway/schemas.py` and
+`workflows/intake/` are real, and `workflows/intake/nodes.py`'s
+`resolve_route` deterministically routes the `compliance_check` intent
+(`openspec/changes/build-intake-dispatcher/`). Everything scope/policy
+-dependent below — `Scope` on `IntakeRequest`, `POLICY[(org_bu,
+intent)]`, `actor.execution_grants` gating, `gateway/dispatcher.py` —
+remains designed only; see the Real vs. Designed table. This document
+captures the OpenSpec explore result for request intake with
+human-in-the-loop clarification before workflow routing.
 
 **Corrected by the 2026-07-27 deep-dive explore** (grounded against
 `design/harness-architecture`'s built-and-tested intake:
@@ -80,9 +88,9 @@ LLM call.
 ## Real vs. Designed
 | Area | Current branch | Designed target |
 |---|---|---|
-| Intake workflow | Not implemented | `workflows/intake/` LangGraph `StateGraph` classifies requests and resolves routing fields |
-| Gateway schemas | Not implemented | `gateway/schemas.py` owns request, decision, route, and clarification models |
-| Dispatcher | Not implemented | Deterministic route selection maps known intents to known workflows only |
+| Intake workflow | **Real** (corrected 2026-08-07) — `workflows/intake/` LangGraph `StateGraph` runs `classify_workflow -> resolve_route -> END` | (built) |
+| Gateway schemas | **Real** (corrected 2026-08-07) — `gateway/schemas.py` owns `Intent`, `Scope`, `IntakeRequest`, `IntakeDecision`; `IntakeRequest` has no `scope` field yet, see Actor/grants row | `gateway/schemas.py` owns request, decision, route, and clarification models |
+| Dispatcher | **Real for `compliance_check` only** (corrected 2026-08-07) — `workflows/intake/nodes.py`'s `resolve_route`, a static intent-keyed table, no scope/policy dimension | Deterministic route selection maps known intents to known workflows only, keyed on `(org_bu, intent)` via a real `POLICY` registry and `gateway/dispatcher.py` — neither exists |
 | HITL clarification | Not implemented | Intake returns clarification questions as data and ends; caller re-invokes, capped at 2 rounds (corrected — C1; was "intake interrupts") |
 | Mutation approval | Not implemented in intake | Intake can mark approval required, but cannot approve or execute mutation |
 | Compliance check | Existing deterministic CLI in `spec/check_compliance.py` | Dispatcher can route compliance requests to a wrapper around the deterministic checker |

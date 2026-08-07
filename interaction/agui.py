@@ -3,13 +3,21 @@
 This module deliberately returns plain dictionaries instead of taking a
 runtime dependency on a specific AG-UI SDK. PlatformOps keeps
 HITLEvent as the internal contract; this adapter is the only place
-that knows AG-UI's interrupt wire shape.
+that knows AG-UI's interrupt wire shape -- and, since
+platformops_event_to_run_finished below, its non-interrupt (success)
+wire shape too, so transports/http.py never has to invent either.
 """
 from typing import Any
 
 from gateway.approval import ApprovalRequest
 from gateway.schemas import IntakeDecision
-from interaction.events import HITLEvent, HITLEventKind, HITLResponse, HITLVerdict
+from interaction.events import (
+    HITLEvent,
+    HITLEventKind,
+    HITLResponse,
+    HITLVerdict,
+    PlatformOpsEvent,
+)
 
 _ANSWER_FIELDS = {"selected_choice", "value"}
 _APPROVAL_VERDICT_FIELDS = {"verdict", "approval_digest"}
@@ -97,6 +105,28 @@ def hitl_event_to_run_finished(
             "type": "interrupt",
             "interrupts": [hitl_event_to_interrupt(event)],
         },
+    }
+
+
+def platformops_event_to_run_finished(
+    event: PlatformOpsEvent, *, thread_id: str, run_id: str
+) -> dict[str, Any]:
+    """Emit AG-UI's RUN_FINISHED success outcome for a non-HITL event.
+
+    The counterpart to hitl_event_to_run_finished above -- a run that
+    didn't pause for human input still ends with a RUN_FINISHED frame,
+    just with outcome.type="success" instead of "interrupt". result sits
+    on the event itself, not nested under outcome -- ag_ui.core's real
+    RunFinishedSuccessOutcome carries only `type`; RunFinishedEvent
+    itself is what has the `result` field. Verified directly against
+    the installed ag-ui-protocol package 2026-08-07, not assumed.
+    """
+    return {
+        "type": "RUN_FINISHED",
+        "threadId": thread_id,
+        "runId": run_id,
+        "result": event.payload,
+        "outcome": {"type": "success"},
     }
 
 

@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-08-07
+goal: Ship workflows/intake/nodes.py's resolve_route + gateway/schemas.py's
+  new IntakeDecision fields per docs/INTAKE_HITL_ROUTING.md, narrowed to
+  the compliance_check tier only (the one real routable target).

@@ -4,12 +4,15 @@ validation and per-request clarification state; calls workflows;
 wraps results as interaction/events.py's event contracts.
 
 Scope, stated explicitly rather than guessed: this only wires together
-what already exists. It does NOT route past intake classification --
-gateway/dispatcher.py and the provision/inquiry/bootstrap workflows it
-would route to don't exist yet (docs/INTAKE_HITL_ROUTING.md scoped
-resolve_route out of the intake build). A successful classification
-returns a route.resolved PlatformOpsEvent naming the intent; nothing
-downstream acts on it yet. Only the clarification resume path
+what already exists. workflows/intake/graph.py now resolves a route
+for the compliance_check tier (openspec/changes/build-intake-dispatcher/),
+so the route.resolved PlatformOpsEvent below carries route/
+ready_to_route/mutation_requested/approval_required/unsupported_reason
+-- but this harness still does not dispatch anywhere: no
+gateway/dispatcher.py exists to route by scope/policy, no
+provision/inquiry workflow exists for a route to call into, and
+nothing here invokes spec/check_compliance.py even when route
+resolves to "compliance_check". Only the clarification resume path
 (resume_mode="reinvoke") is implemented -- approval resume
 (resume_mode="checkpoint_resume") needs a real LangGraph checkpointer
 behind a provision/inquiry workflow, neither of which exists, so
@@ -20,6 +23,7 @@ intake_request -- this project has not chosen an LLM provider (see
 that module's docstring), and silently picking one here would repeat
 the exact mistake that docstring warns against.
 """
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -38,10 +42,23 @@ from workflows.intake.graph import intake_request
 _MAX_CLARIFICATION_ROUNDS = 2  # docs/INTAKE_HITL_ROUTING.md's caller-side cap
 
 
+@dataclass
+class _PendingClarification:
+    """interrupt_id/actor_id exist so resume_clarification can verify a
+    resume actually addresses the interrupt it claims to, and was
+    submitted by the actor who started it -- not enforced before this
+    was reviewed: request_id alone let any resume for a known thread
+    succeed regardless of which interrupt (or which actor) it named."""
+
+    request: IntakeRequest
+    interrupt_id: str
+    actor_id: str
+
+
 class PlatformOpsHarness:
     def __init__(self, model):
         self._model = model
-        self._pending_intake: dict[str, IntakeRequest] = {}
+        self._pending_intake: dict[str, _PendingClarification] = {}
 
     async def start_run(
         self, actor: ActorSession, request_id: str, text: str
@@ -50,14 +67,26 @@ class PlatformOpsHarness:
         return await self._classify(actor, request_id, IntakeRequest(raw_text=text))
 
     async def resume_clarification(
-        self, actor: ActorSession, request_id: str, answer: str
+        self, actor: ActorSession, request_id: str, interrupt_id: str, answer: str
     ) -> HITLEvent | PlatformOpsEvent:
         _require_active_session(actor)
-        prior = self._pending_intake.pop(request_id, None)
-        if prior is None:
+        pending = self._pending_intake.get(request_id)
+        if pending is None:
             raise ValueError(f"no pending clarification for request {request_id!r}")
+        # Checked before popping: a failed check must leave a still-valid
+        # pending clarification resumable by a correct follow-up call,
+        # not silently consume it on a rejected attempt.
+        if pending.interrupt_id != interrupt_id:
+            raise ValueError(
+                f"interrupt {interrupt_id!r} does not match the pending "
+                f"clarification for request {request_id!r}"
+            )
+        if pending.actor_id != actor.actor.user_id:
+            raise ValueError("resume actor does not match the actor who started this run")
         if not answer:
             raise ValueError("clarification answer must not be empty")
+        self._pending_intake.pop(request_id)
+        prior = pending.request
         # clarification_round is 0-indexed at the first question, so
         # prior.clarification_round + 1 is how many questions have
         # already been asked -- block before asking one more once
@@ -81,9 +110,12 @@ class PlatformOpsHarness:
         now = datetime.now(timezone.utc)
 
         if decision.clarification_questions:
-            self._pending_intake[request_id] = request
+            event_id = str(uuid4())
+            self._pending_intake[request_id] = _PendingClarification(
+                request=request, interrupt_id=event_id, actor_id=actor.actor.user_id
+            )
             return HITLEvent(
-                event_id=str(uuid4()),
+                event_id=event_id,
                 request_id=request_id,
                 kind=HITLEventKind.CLARIFICATION_REQUIRED,
                 status=HITLStatus.PENDING,
@@ -97,7 +129,14 @@ class PlatformOpsHarness:
             event_id=str(uuid4()),
             request_id=request_id,
             kind=EventKind.ROUTE_RESOLVED,
-            payload={"intent": decision.intent.value if decision.intent else None},
+            payload={
+                "intent": decision.intent.value if decision.intent else None,
+                "route": decision.route,
+                "ready_to_route": decision.ready_to_route,
+                "mutation_requested": decision.mutation_requested,
+                "approval_required": decision.approval_required,
+                "unsupported_reason": decision.unsupported_reason,
+            },
             created_at=now,
         )
 

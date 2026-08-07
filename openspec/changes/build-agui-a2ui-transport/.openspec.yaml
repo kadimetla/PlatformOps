@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-08-07
+goal: Ship transports/http.py (FastAPI AG-UI/SSE backend) and
+  interaction/a2ui.py (A2UI dynamic-rendering adapter) so the browser
+  chat app can talk to PlatformOpsHarness end to end for the
+  compliance_check intake tier, per docs/WEB_CHAT_APP.md.

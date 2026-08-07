@@ -1,6 +1,9 @@
 """No real model credentials anywhere -- every model in this file is
 a scripted FakeMessagesListChatModel. See
-openspec/changes/build-intake-workflow/specs/intake-classification/spec.md.
+openspec/changes/build-intake-workflow/specs/intake-classification/spec.md
+(classification) and
+openspec/changes/build-intake-dispatcher/specs/intake-routing/spec.md
+(routing, tested here since resolve_route runs in the same graph).
 """
 import asyncio
 
@@ -75,14 +78,45 @@ def test_tool_call_with_invalid_intent_value_never_guesses():
     assert decision.clarification_questions
 
 
-def test_route_and_ready_to_route_always_inert():
-    cases = [
-        ("provision: deploy invoices to dev", _fake()),
-        ("how should I host a static site", _fake(_tool_call(intent="inquiry"))),
-        ("set this up", _fake(_tool_call(clarifying_question="which app?"))),
-        ("???", _fake(AIMessage(content="I don't know"))),
-    ]
-    for raw_text, model in cases:
-        decision = _run(raw_text, model)
-        assert decision.route is None
-        assert decision.ready_to_route is False
+def test_compliance_check_resolves_a_real_route():
+    decision = _run("compliance_check: does this comply?", _fake())
+    assert decision.route == "compliance_check"
+    assert decision.ready_to_route is True
+    assert decision.mutation_requested is False
+    assert decision.approval_required is False
+    assert decision.unsupported_reason is None
+    assert decision.evidence  # audit trail line recording the resolution
+
+
+def test_provision_has_no_route_yet_and_is_marked_unsupported():
+    decision = _run("provision: deploy invoices to dev", _fake())
+    assert decision.route is None
+    assert decision.ready_to_route is False
+    assert decision.mutation_requested is True  # provision implies mutation
+    assert decision.unsupported_reason is not None
+
+
+def test_inquiry_has_no_route_yet_and_is_marked_unsupported():
+    decision = _run(
+        "how should I host a static site", _fake(_tool_call(intent="inquiry"))
+    )
+    assert decision.route is None
+    assert decision.ready_to_route is False
+    assert decision.mutation_requested is False
+    assert decision.unsupported_reason is not None
+
+
+def test_pending_clarification_is_not_marked_unsupported():
+    decision = _run("set this up", _fake(_tool_call(clarifying_question="which app?")))
+    assert decision.intent is None
+    assert decision.route is None
+    assert decision.ready_to_route is False
+    assert decision.mutation_requested is False
+    assert decision.unsupported_reason is None
+
+
+def test_missing_tool_call_route_stays_inert_too():
+    decision = _run("???", _fake(AIMessage(content="I don't know")))
+    assert decision.route is None
+    assert decision.ready_to_route is False
+    assert decision.unsupported_reason is None

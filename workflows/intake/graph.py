@@ -1,10 +1,11 @@
-"""One-node intake graph -- classify_workflow -> END. See
-openspec/changes/build-intake-workflow/design.md.
+"""Two-node intake graph -- classify_workflow -> resolve_route -> END.
+See openspec/changes/build-intake-workflow/design.md (classification)
+and openspec/changes/build-intake-dispatcher/design.md (routing).
 """
 from langgraph.graph import END, StateGraph
 
 from gateway.schemas import IntakeDecision, IntakeRequest
-from workflows.intake.nodes import build_classify_workflow
+from workflows.intake.nodes import build_classify_workflow, resolve_route
 from workflows.intake.state import IntakeState
 
 
@@ -21,8 +22,10 @@ def build_intake_graph(model):
     """
     builder = StateGraph(IntakeState)
     builder.add_node("classify_workflow", build_classify_workflow(model))
+    builder.add_node("resolve_route", resolve_route)
     builder.set_entry_point("classify_workflow")
-    builder.add_edge("classify_workflow", END)
+    builder.add_edge("classify_workflow", "resolve_route")
+    builder.add_edge("resolve_route", END)
     return builder
 
 

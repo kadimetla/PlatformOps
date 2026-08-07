@@ -1,16 +1,17 @@
 ## Status
-Designed and partially real as of 2026-07-31. `transports/cli.py` is
-the local CLI transport. `transports/remote_tui.py` is a tested
-protocol-state slice for a future remote TUI, not a real WebSocket
-client. No HTTP server, SSE endpoint, WebSocket endpoint, Teams
-adapter, or Google Chat adapter exists yet.
+Designed and partially real as of 2026-07-31, extended 2026-08-07.
+`transports/cli.py` is the local CLI transport. `transports/remote_tui.py`
+is a tested protocol-state slice for a future remote TUI, not a real
+WebSocket client. **2026-08-07**: `transports/http.py` is now a real
+FastAPI/SSE server — see `docs/WEB_CHAT_APP.md`. WebSocket endpoint,
+Teams adapter, and Google Chat adapter still don't exist.
 
 ## Real vs. Designed
 | Item | Status |
 |---|---|
 | `transports/cli.py` (`platformops login`/`whoami`/`session show`/`run`) | Real — moved here from `interaction/cli.py` before that path was ever committed |
 | `transports/remote_tui.py` (`RemoteTUIState`, `build_user_run_input`, `observe_agui_event`, `build_resume_run_input`) | Real — no-network protocol-state helper; proves the pending-interrupt/all-open-interrupts-in-one-resume/thread-ownership rules before any WebSocket code exists. Known gap: validates `threadId`, not `runId` — a stale/duplicate `RUN_FINISHED` for an earlier run on the same thread could still be accepted; harmless with no live transport, needs fixing before a real WebSocket client is built |
-| `transports/http.py` (REST/SSE) | Not implemented, not started |
+| `transports/http.py` (`GET /info`, `POST /runs`) | **Real as of 2026-08-07** (`openspec/changes/build-agui-a2ui-transport/`) — FastAPI/SSE server calling `PlatformOpsHarness` unchanged, session read fresh from disk every request, no browser login flow yet; see `docs/WEB_CHAT_APP.md`. Single-user/local-dev only |
 | `transports/websocket.py` | Not implemented, not started — `remote_tui.py` is the protocol logic this would eventually carry over a real socket |
 | `transports/teams.py`, `transports/google_chat.py` | Not implemented, not started |
 
@@ -98,12 +99,26 @@ send build_resume_run_input(...)
 ```
 
 ## HTTP/SSE Before WebSocket
-HTTP/SSE is still the lower-friction first server transport:
+HTTP/SSE is still the lower-friction first server transport. **Corrected
+2026-08-07**: the three-endpoint sketch below predates verifying AG-UI's
+own real convention; `transports/http.py` ships one endpoint instead,
+matching what `@ag-ui/client`'s `HttpAgent` actually posts and what
+`transports/remote_tui.py`'s `build_user_run_input`/`build_resume_run_input`
+already assumed (both build the same `{threadId, runId, messages|resume}`
+shape) — a resume is another run on the same thread, not a separate
+call, and the SSE stream is the `POST /runs` response body itself, not a
+second `GET` call:
 
 ```text
+# Original sketch (superseded):
 POST /runs
 GET  /runs/{thread_id}/events
 POST /runs/{thread_id}/resume
+
+# Real (transports/http.py):
+GET  /info
+POST /runs   # messages -> new turn, resume -> clarification resume;
+             # response body is the SSE stream
 ```
 
 WebSocket becomes useful when the terminal needs one persistent
@@ -126,5 +141,9 @@ changing either. Consumes [AUTH_BOUNDARY.md](AUTH_BOUNDARY.md)'s
 `gateway/auth/` boundary and
 [EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md)'s approval gate as
 the enforcement points every transport defers to — transports
-normalize and render, they never enforce. Indexed from
+normalize and render, they never enforce. **2026-08-07**:
+[WEB_CHAT_APP.md](WEB_CHAT_APP.md) is the detailed build doc for
+`transports/http.py` specifically — this doc keeps the cross-transport
+boundary description, that one keeps the verified wire shapes and the
+CopilotKit scope decision. Indexed from
 [HARNESS_DESIGN.md](HARNESS_DESIGN.md).

@@ -1,8 +1,9 @@
 """Gateway-level data contracts for request intake. See
-docs/INTAKE_HITL_ROUTING.md and
-openspec/changes/build-intake-workflow/design.md for the design this
-implements -- routing/dispatch fields exist here for forward
-compatibility but are not populated by this change's graph.
+docs/INTAKE_HITL_ROUTING.md, openspec/changes/build-intake-workflow/design.md,
+and openspec/changes/build-intake-dispatcher/design.md for the design this
+implements. Routing/dispatch fields are populated by
+workflows/intake/nodes.py's resolve_route for the compliance_check tier
+only -- see IntakeDecision's docstring.
 
 Scope lives here rather than in gateway/auth/ because it's shared by
 both intake (project/workspace targeting) and auth (grant scoping) --
@@ -56,12 +57,18 @@ class IntakeRequest(BaseModel):
 
 
 class IntakeDecision(BaseModel):
-    """route/ready_to_route are inert in this change -- always None
-    and False, regardless of intent. They exist now so the dispatcher
-    change can extend this model instead of breaking it."""
+    """route/ready_to_route are resolved by workflows/intake/nodes.py's
+    resolve_route for the compliance_check tier only (the one real
+    routable target -- see openspec/changes/build-intake-dispatcher/).
+    mutation_requested/approval_required/unsupported_reason are new in
+    that change; approval_required stays inert (always False) until a
+    real mutating route exists to require approval for."""
 
     intent: Intent | None = None
     clarification_questions: list[ClarificationQuestion] = Field(default_factory=list)
     route: str | None = None
     ready_to_route: bool = False
+    mutation_requested: bool = False
+    approval_required: bool = False
+    unsupported_reason: str | None = None
     evidence: list[str] = Field(default_factory=list)

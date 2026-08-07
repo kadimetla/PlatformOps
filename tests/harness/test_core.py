@@ -15,10 +15,10 @@ from harness.core import PlatformOpsHarness
 from interaction.events import EventKind, HITLEvent, HITLEventKind, PlatformOpsEvent
 
 
-def _session(*, expired=False):
+def _session(*, expired=False, user_id="alice"):
     now = datetime.now(timezone.utc)
     session = build_actor_session(
-        OIDCClaims(sub="alice", email="alice@example.com", groups=[]),
+        OIDCClaims(sub=user_id, email=f"{user_id}@example.com", groups=[]),
         [],
         [],
         now=now,
@@ -46,7 +46,17 @@ def test_start_run_resolves_tier2_intent_with_zero_model_calls():
 
     assert isinstance(event, PlatformOpsEvent)
     assert event.kind == EventKind.ROUTE_RESOLVED
-    assert event.payload == {"intent": "provision"}
+    # provision has no real workflow to route to yet (see
+    # openspec/changes/build-intake-dispatcher/design.md) -- unsupported,
+    # not routed.
+    assert event.payload == {
+        "intent": "provision",
+        "route": None,
+        "ready_to_route": False,
+        "mutation_requested": True,
+        "approval_required": False,
+        "unsupported_reason": "no workflow implemented for intent 'provision' yet",
+    }
 
 
 def test_start_run_returns_hitl_event_on_clarification():
@@ -67,27 +77,67 @@ def test_resume_clarification_reinvokes_with_combined_text():
             _tool_call(intent="provision"),
         )
     )
-    asyncio.run(harness.start_run(_session(), "req-3", "set this up"))
+    pending = asyncio.run(harness.start_run(_session(), "req-3", "set this up"))
 
-    event = asyncio.run(harness.resume_clarification(_session(), "req-3", "invoices"))
+    event = asyncio.run(
+        harness.resume_clarification(_session(), "req-3", pending.event_id, "invoices")
+    )
 
     assert isinstance(event, PlatformOpsEvent)
-    assert event.payload == {"intent": "provision"}
+    assert event.payload == {
+        "intent": "provision",
+        "route": None,
+        "ready_to_route": False,
+        "mutation_requested": True,
+        "approval_required": False,
+        "unsupported_reason": "no workflow implemented for intent 'provision' yet",
+    }
 
 
 def test_resume_clarification_without_a_pending_request_raises():
     harness = PlatformOpsHarness(_fake())
 
     with pytest.raises(ValueError, match="no pending clarification"):
-        asyncio.run(harness.resume_clarification(_session(), "unknown", "invoices"))
+        asyncio.run(harness.resume_clarification(_session(), "unknown", "some-id", "invoices"))
+
+
+def test_resume_clarification_rejects_wrong_interrupt_id():
+    harness = PlatformOpsHarness(
+        _fake(_tool_call(clarifying_question="which app?"), _tool_call(intent="provision"))
+    )
+    pending = asyncio.run(harness.start_run(_session(), "req-7", "set this up"))
+
+    with pytest.raises(ValueError, match="does not match the pending clarification"):
+        asyncio.run(
+            harness.resume_clarification(_session(), "req-7", "wrong-interrupt-id", "invoices")
+        )
+
+    # The mismatched attempt must not have consumed the pending entry --
+    # a correct follow-up with the real interrupt id still resumes it.
+    event = asyncio.run(
+        harness.resume_clarification(_session(), "req-7", pending.event_id, "invoices")
+    )
+    assert isinstance(event, PlatformOpsEvent)
+
+
+def test_resume_clarification_rejects_a_different_actor():
+    harness = PlatformOpsHarness(_fake(_tool_call(clarifying_question="which app?")))
+    pending = asyncio.run(harness.start_run(_session(user_id="alice"), "req-8", "set this up"))
+
+    with pytest.raises(ValueError, match="does not match the actor"):
+        asyncio.run(
+            harness.resume_clarification(
+                _session(user_id="bob"), "req-8", pending.event_id, "invoices"
+            )
+        )
 
 
 def test_resume_clarification_rejects_empty_answer():
     harness = PlatformOpsHarness(_fake(_tool_call(clarifying_question="which app?")))
-    asyncio.run(harness.start_run(_session(), "req-4", "set this up"))
+    pending = asyncio.run(harness.start_run(_session(), "req-4", "set this up"))
 
     with pytest.raises(ValueError, match="must not be empty"):
-        asyncio.run(harness.resume_clarification(_session(), "req-4", ""))
+        asyncio.run(harness.resume_clarification(_session(), "req-4", pending.event_id, ""))
 
 
 def test_resume_clarification_enforces_the_round_cap():
@@ -97,11 +147,15 @@ def test_resume_clarification_enforces_the_round_cap():
             _tool_call(clarifying_question="still unclear"),
         )
     )
-    asyncio.run(harness.start_run(_session(), "req-5", "set this up"))
-    asyncio.run(harness.resume_clarification(_session(), "req-5", "invoices"))
+    first = asyncio.run(harness.start_run(_session(), "req-5", "set this up"))
+    second = asyncio.run(
+        harness.resume_clarification(_session(), "req-5", first.event_id, "invoices")
+    )
 
     with pytest.raises(ValueError, match="round cap"):
-        asyncio.run(harness.resume_clarification(_session(), "req-5", "still invoices"))
+        asyncio.run(
+            harness.resume_clarification(_session(), "req-5", second.event_id, "still invoices")
+        )
 
 
 def test_start_run_rejects_an_expired_session():

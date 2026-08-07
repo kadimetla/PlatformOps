@@ -7,8 +7,17 @@ from interaction.agui import (
     hitl_event_to_interrupt,
     hitl_event_to_run_finished,
     hitl_response_to_resume_entry,
+    platformops_event_to_run_finished,
 )
-from interaction.events import HITLEvent, HITLEventKind, HITLResponse, HITLStatus, HITLVerdict
+from interaction.events import (
+    EventKind,
+    HITLEvent,
+    HITLEventKind,
+    HITLResponse,
+    HITLStatus,
+    HITLVerdict,
+    PlatformOpsEvent,
+)
 
 
 NOW = datetime(2026, 7, 31, tzinfo=timezone.utc)
@@ -89,6 +98,25 @@ def test_hitl_event_maps_to_run_finished_interrupt_outcome():
     assert event["type"] == "RUN_FINISHED"
     assert event["outcome"]["type"] == "interrupt"
     assert event["outcome"]["interrupts"][0]["id"] == "hitl-1"
+
+
+def test_platformops_event_maps_to_run_finished_success_outcome():
+    event = PlatformOpsEvent(
+        event_id="evt-1",
+        request_id="req-3",
+        kind=EventKind.ROUTE_RESOLVED,
+        payload={"intent": "compliance_check", "route": "compliance_check"},
+        created_at=NOW,
+    )
+
+    frame = platformops_event_to_run_finished(event, thread_id="thread-1", run_id="run-2")
+
+    assert frame["type"] == "RUN_FINISHED"
+    assert frame["outcome"] == {"type": "success"}
+    assert frame["result"] == {
+        "intent": "compliance_check",
+        "route": "compliance_check",
+    }
 
 
 def test_hitl_response_maps_to_resume_entry():

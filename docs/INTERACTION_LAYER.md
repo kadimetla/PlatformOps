@@ -1,11 +1,14 @@
 ## Status
-Designed and partially real as of 2026-07-31 — `interaction/events.py`
-(`PlatformOpsEvent`/`HITLEvent`/`HITLResponse`), `interaction/tui.py`
-(stdlib terminal renderer), and `interaction/agui.py` (AG-UI interrupt
-adapter) are all real code. No workflow actually emits a
-`PlatformOpsEvent`/`HITLEvent` yet, and no web server/CopilotKit
-runtime consumes `agui.py` — these modules are proven by unit tests
-only, not wired into a live request path. First design in this project
+Designed and partially real as of 2026-07-31, extended 2026-08-07 —
+`interaction/events.py` (`PlatformOpsEvent`/`HITLEvent`/`HITLResponse`),
+`interaction/tui.py` (stdlib terminal renderer), and `interaction/agui.py`
+(AG-UI interrupt adapter, now also the success-outcome mapping) are all
+real code. **2026-08-07**: `interaction/a2ui.py` (A2UI dynamic rendering)
+and `transports/http.py` (a real FastAPI/SSE web server consuming both
+adapters) now exist too — see `docs/WEB_CHAT_APP.md` for the full
+build. `harness/core.py`'s `PlatformOpsHarness` is the real
+`PlatformOpsEvent`/`HITLEvent` emitter both `transports/cli.py` and
+`transports/http.py` call into. First design in this project
 to touch the human-interaction
 layer at all — every prior doc designs backend workflow/access/
 execution behavior, none address how a human actually talks to
@@ -34,9 +37,9 @@ intact instead of overloading `gateway/`.
 | TUI (minimal stdlib renderer) | Real, added 2026-07-31 — `interaction/tui.py` renders `PlatformOpsEvent`/`HITLEvent` and builds `HITLResponse` from terminal prompts; no `rich`/`textual`/`prompt_toolkit` dependency yet |
 | Login entry point | Real, added 2026-07-31 as `transports/cli.py`'s `platformops login` (see `docs/TRANSPORTS.md` — the CLI itself is a transport, not part of this package; `interaction/` stays presentation-only) |
 | `render_session_summary`/`render_session_detail` (`interaction/tui.py`) | Real, added 2026-07-31 — rendering functions the CLI transport calls; `interaction/` still does no I/O or process orchestration itself |
-| AG-UI adapter | Real, added 2026-07-31 — `interaction/agui.py` maps `HITLEvent` to AG-UI `RUN_FINISHED` interrupt outcomes and `HITLResponse` to `resume[]` entries; no web server/CopilotKit runtime yet |
+| AG-UI adapter | Real, added 2026-07-31 — `interaction/agui.py` maps `HITLEvent` to AG-UI `RUN_FINISHED` interrupt outcomes and `HITLResponse` to `resume[]` entries; **2026-08-07**: also maps `PlatformOpsEvent` to `RUN_FINISHED` success outcomes (`platformops_event_to_run_finished`), and a real FastAPI/SSE server (`transports/http.py`) now consumes it — no CopilotKit runtime yet, deliberately (see `docs/WEB_CHAT_APP.md`'s Scope Decision) |
 | `HITLEvent` / `interaction/events.py` | Real, implemented 2026-07-31 in `interaction/` (relocated out of `gateway/` same day, before code landed) — concretizes this doc's "future `EventEnvelope[T]`"; also required adding `gateway/approval.py` (`ApprovalRequest`/`ApprovalRecord`) and `ActorRef` (`gateway/auth/schemas.py`), neither of which existed as code before this |
-| A2UI rich widgets | Not implemented, not started — documented future path only |
+| A2UI rich widgets | **Real as of 2026-08-07** — `interaction/a2ui.py` (`openspec/changes/build-agui-a2ui-transport/`), rendered via `@a2ui/react`'s built-in `basicCatalog` (`Column`/`Text`/`Button` only); see `docs/WEB_CHAT_APP.md` |
 
 ## Core Decision: TUI First, Web UI Later — Same Event Stream, Two Renderers
 ```
@@ -104,20 +107,33 @@ the event/response contract without adding a rendering dependency:
 `render_platform_event()`, `render_hitl_event()`, and
 `prompt_hitl_response()`.
 
-## The Future Web Path — Documented, Not Built
-Recommended shape, once a browser UI is actually wanted:
+## The Future Web Path — Documented, Now Partially Built
+**Corrected 2026-08-07**: the CopilotKit-fronted shape below is still
+the documented recommendation for when CopilotKit's chat chrome gets
+layered on, but a first real slice of this path shipped without it —
+`transports/http.py` + `interaction/a2ui.py`, `@ag-ui/client`'s
+`HttpAgent` talking AG-UI directly to a plain React frontend, per
+`docs/WEB_CHAT_APP.md`'s Scope Decision (CopilotKit's Runtime buys
+nothing this milestone needs, and can be added later without touching
+the backend). Endpoint shape and SSE-over-WebSocket reasoning below are
+both real now, not just recommended. Original recommended shape,
+preserved as the trail:
 ```
 Frontend:  CopilotKit React chat
 Runtime:   CopilotKit runtime or a thin AG-UI-compatible server
 Backend:   the same LangGraph workflows, unchanged
 Protocol:  AG-UI (transport-agnostic; SSE is PlatformOps's own choice,
            not an AG-UI requirement — see Sources)
-Rich UI:   A2UI later, fixed-schema widgets first (not dynamic/
-           freeform schema) — approvals and provisioning need
-           predictable, reviewable UI contracts, and A2UI's
-           declarative-not-executable design is a structural fit for
-           that: an agent can never ship code to run, only data
-           describing a UI
+Rich UI:   A2UI, dynamic from day one (**corrected 2026-08-07** — this
+           line previously recommended "A2UI later, fixed-schema
+           widgets first"; the user explicitly chose dynamic A2UI
+           rendering from the start instead, overriding that
+           recommendation, and `interaction/a2ui.py` now ships on that
+           basis — see docs/WEB_CHAT_APP.md). A2UI's
+           declarative-not-executable design remains a structural fit
+           regardless of timing: an agent can never ship code to run,
+           only data describing a UI, which is what made "dynamic from
+           day one" a safe choice to make rather than a compromise.
 ```
 Endpoint shape, for whenever this gets built:
 ```

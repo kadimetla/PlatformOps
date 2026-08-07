@@ -1,14 +1,29 @@
 """classify_workflow -- Tier 2 prefix match, Tier 3 one bound-tool
-call on a miss. One node, not two: see
-openspec/changes/build-intake-workflow/design.md for why (resolve_route
-is out of scope for this change, so there's nothing after
-classification for a second node to lead to).
+call on a miss. resolve_route -- deterministic routing, added by
+openspec/changes/build-intake-dispatcher/design.md once
+compliance_check had a real wrapper target
+(spec/check_compliance.py). Two nodes, not one: see that change's
+design.md -- once resolve_route exists after classification, the
+prefix-skip becomes a real second step, matching
+docs/INTAKE_HITL_ROUTING.md's original two-node sketch.
 """
 from gateway.schemas import ClarificationQuestion, Intent, IntakeDecision
 from workflows.intake.state import IntakeState
 from workflows.intake.tools import match_tier2_prefix
 
 _CANDIDATES = tuple(intent.value for intent in Intent)
+
+# Static, intent-keyed only -- no scope/org_bu dimension, because no
+# scope exists on IntakeRequest yet and no per-org_bu POLICY YAML
+# exists anywhere in the repo (see build-intake-dispatcher/design.md's
+# Non-Goals). compliance_check is the only real routable target today
+# (spec/check_compliance.py); provision/inquiry have no workflow
+# package to route to yet. This table moves into a real
+# gateway/dispatcher.py once per-org_bu routing policy is built --
+# until then it isn't worth a separate module for one entry.
+_ROUTE_TABLE: dict[Intent, str] = {
+    Intent.COMPLIANCE_CHECK: "compliance_check",
+}
 
 
 def _clarification(question: str | None = None) -> ClarificationQuestion:
@@ -65,3 +80,51 @@ def build_classify_workflow(model):
         }
 
     return classify_workflow
+
+
+async def resolve_route(state: IntakeState) -> dict:
+    """Deterministic, no model call. Reads the intent classify_workflow
+    already resolved and decides route/ready_to_route/mutation_requested/
+    approval_required/unsupported_reason from _ROUTE_TABLE alone -- see
+    that table's comment for why scope/policy don't factor in yet.
+    """
+    decision = state["result"]
+
+    if decision is None or decision.intent is None:
+        # Still needs clarification (or hasn't been classified) -- not
+        # "unsupported", just not yet routable. Pass through unchanged.
+        return {"result": decision}
+
+    route = _ROUTE_TABLE.get(decision.intent)
+    if route is not None:
+        return {
+            "result": decision.model_copy(
+                update={
+                    "route": route,
+                    "ready_to_route": True,
+                    "mutation_requested": False,
+                    "approval_required": False,
+                    "evidence": [
+                        *decision.evidence,
+                        f"resolved route={route!r} for intent={decision.intent.value!r}",
+                    ],
+                }
+            )
+        }
+
+    return {
+        "result": decision.model_copy(
+            update={
+                "route": None,
+                "ready_to_route": False,
+                "mutation_requested": decision.intent == Intent.PROVISION,
+                "unsupported_reason": (
+                    f"no workflow implemented for intent {decision.intent.value!r} yet"
+                ),
+                "evidence": [
+                    *decision.evidence,
+                    f"no route available for intent={decision.intent.value!r}",
+                ],
+            }
+        )
+    }
