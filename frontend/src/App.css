@@ -1,0 +1,334 @@
+/* Full-viewport flex column: turn stream (grows) above a fixed input
+   bar -- no position:fixed needed, flex-shrink:0 on the input bar keeps
+   it pinned at the bottom of the column. See docs/WEB_CHAT_APP.md's
+   layout notes: this is the TUI-style linear-stream shape, not a
+   two-pane chat/canvas split -- full width for structured content,
+   capped line-length for prose. */
+
+:root {
+  --pops-bg: #ffffff;
+  --pops-fg: #1a1a1a;
+  --pops-muted: #6b6b6b;
+  --pops-border: #d9d9d9;
+  --pops-block-bg: #fafafa;
+  --pops-error: #b3261e;
+  --pops-accent: #2f5fce;
+  --pops-needs-input: #c98a1e;
+  --pops-approval: #a34fc9;
+  --pops-done: #2e9e5b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pops-bg: #15161a;
+    --pops-fg: #e8e8ea;
+    --pops-muted: #9a9a9f;
+    --pops-border: #33343a;
+    --pops-block-bg: #1c1d22;
+    --pops-error: #ff6b60;
+    --pops-accent: #6f9bff;
+    --pops-needs-input: #e0ab4a;
+    --pops-approval: #c084f5;
+    --pops-done: #4fc47f;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--pops-bg);
+  color: var(--pops-fg);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  flex-shrink: 0;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--pops-border);
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  flex: 1;
+}
+
+.thread-view-header h1 {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--pops-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.new-thread-button,
+.back-button,
+.close-thread-button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--pops-border);
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.new-thread-button:hover,
+.back-button:hover,
+.close-thread-button:hover {
+  background: rgba(127, 127, 127, 0.1);
+}
+
+.thread-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+  align-content: start;
+}
+
+.thread-card {
+  border: 1px solid var(--pops-border);
+  border-left: 3px solid var(--pops-border);
+  border-radius: 8px;
+  background: var(--pops-block-bg);
+  padding: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.thread-card:hover {
+  border-color: var(--pops-accent);
+}
+
+.thread-card[data-status="working"] {
+  border-left-color: var(--pops-accent);
+}
+
+.thread-card[data-status="done"] {
+  border-left-color: var(--pops-done);
+}
+
+.thread-card[data-status="awaiting_approval"] {
+  border-left-color: var(--pops-approval);
+}
+
+.thread-card[data-status="needs_input"] {
+  border-left-color: var(--pops-needs-input);
+}
+
+.thread-card[data-status="error"] {
+  border-left-color: var(--pops-error);
+}
+
+.thread-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.thread-card-label {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-card-close {
+  border: none;
+  background: none;
+  color: var(--pops-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+}
+
+.thread-card-close:hover {
+  color: var(--pops-error);
+}
+
+.thread-card-preview {
+  margin: 0;
+  color: var(--pops-muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.thread-card-status {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--pops-muted);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pops-accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+
+.turn-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 1.25rem;
+}
+
+.turn-stream-empty {
+  color: var(--pops-muted);
+  padding: 1rem 0;
+}
+
+.turn-block {
+  border: 1px solid var(--pops-border);
+  border-radius: 6px;
+  margin: 0.5rem 0;
+  background: var(--pops-block-bg);
+  overflow: hidden;
+}
+
+.turn-block[data-kind="error"] {
+  border-color: var(--pops-error);
+}
+
+.turn-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.turn-header:hover {
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.turn-kind {
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.turn-block[data-kind="user_message"] .turn-kind {
+  color: var(--pops-accent);
+}
+
+.turn-block[data-kind="error"] .turn-kind {
+  color: var(--pops-error);
+}
+
+.turn-timestamp {
+  color: var(--pops-muted);
+  font-size: 0.75rem;
+}
+
+.turn-collapse-indicator {
+  margin-left: auto;
+  color: var(--pops-muted);
+}
+
+.turn-body {
+  padding: 0 0.9rem 0.85rem;
+}
+
+.turn-text {
+  max-width: 70ch;
+  margin: 0 0 0.5rem;
+  white-space: pre-wrap;
+}
+
+.turn-surface {
+  max-width: 100%;
+}
+
+.input-bar {
+  flex-shrink: 0;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--pops-border);
+  background: var(--pops-bg);
+}
+
+.input-bar input {
+  flex: 1;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--pops-border);
+  border-radius: 6px;
+  background: var(--pops-bg);
+  color: var(--pops-fg);
+  font-size: 0.95rem;
+}
+
+.input-bar button {
+  padding: 0.6rem 1.1rem;
+  border: 1px solid var(--pops-accent);
+  border-radius: 6px;
+  background: var(--pops-accent);
+  color: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.input-bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

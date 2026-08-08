@@ -21,12 +21,19 @@
 // handleAction below look the interrupt up directly, with no separate
 // id-mapping table.
 //
-// State (log/isSubmitting/surfaces) is owned here, not in App.tsx, as a
-// small external store consumed via React's useSyncExternalStore --
-// both sendMessage (text input) and handleAction (A2UI button clicks,
-// invoked by MessageProcessor's actionHandler, outside React's own event
-// handling) need to share one in-flight guard, which only works if one
-// place owns the flag both paths check.
+// State is a Turn[] -- one entry per conversational step (matching the
+// event kinds workflows/harness already define: intake started,
+// clarification required, route resolved, plus client-side user/error
+// turns), each carrying its own A2UI surface if it created one. This is
+// the TUI-style model docs/INTERACTION_LAYER.md already justified
+// ("mostly linear progress, occasionally pausing for a structured
+// choice") -- one scrolling stream, not a chat log separate from a
+// content panel. Owned here, not in App.tsx, as a small external store
+// consumed via React's useSyncExternalStore -- both sendMessage (text
+// input) and handleAction (A2UI button clicks, invoked by
+// MessageProcessor's actionHandler, outside React's own event handling)
+// need to share one in-flight guard, which only works if one place owns
+// the flag both paths check.
 import {
   HttpAgent,
   buildResumeArray,
@@ -44,25 +51,69 @@ export { A2uiSurface };
 // SurfaceModel is parametrized with) directly -- derive the exact
 // surface type A2uiSurface itself expects from its own prop type,
 // rather than guessing at re-declaring the generic by hand.
-type A2uiSurfaceModel = ComponentProps<typeof A2uiSurface>["surface"];
+export type A2uiSurfaceModel = ComponentProps<typeof A2uiSurface>["surface"];
 
-export interface LogEntry {
+export type TurnKind =
+  | "user_message"
+  | "clarification_required"
+  | "approval_required"
+  | "route_resolved"
+  | "error";
+
+export interface Turn {
   id: string;
-  kind: "user" | "result" | "error";
+  kind: TurnKind;
+  timestamp: string;
   text: string;
+  surfaceId?: string;
 }
 
 export interface PlatformOpsClientState {
-  log: LogEntry[];
+  turns: Turn[];
   isSubmitting: boolean;
-  surfaces: A2uiSurfaceModel[];
+  surfacesById: Map<string, A2uiSurfaceModel>;
 }
 
-export function createPlatformOpsClient(runsUrl: string) {
-  const agent = new HttpAgent({ url: runsUrl });
+function surfaceIdFromMessage(message: A2uiMessage): string | undefined {
+  if ("createSurface" in message) return message.createSurface.surfaceId;
+  if ("updateComponents" in message) return message.updateComponents.surfaceId;
+  return undefined;
+}
+
+function summarizeResult(result: unknown): string {
+  if (result && typeof result === "object" && "intent" in result) {
+    const r = result as Record<string, unknown>;
+    return r.route
+      ? `Routed to ${String(r.route)}`
+      : `No route yet -- ${String(r.unsupported_reason ?? "unsupported")}`;
+  }
+  return "Result received";
+}
+
+export interface ThreadClient {
+  id: string;
+  getState: () => PlatformOpsClientState;
+  subscribe: (listener: () => void) => () => void;
+  sendMessage: (text: string) => Promise<void>;
+}
+
+/** One HttpAgent + MessageProcessor + state store per thread -- threadId
+ * is AG-UI's own thread identifier and harness/core.py's request_id, so
+ * each ThreadClient is a fully independent conversation as far as the
+ * backend is concerned (PlatformOpsHarness._pending_intake is already
+ * keyed per request_id; nothing backend-side needs to change to support
+ * more than one of these at once). See lib/threadManager.ts for the
+ * multi-thread registry this composes into.
+ */
+export function createThreadClient(runsUrl: string, threadId: string): ThreadClient {
+  const agent = new HttpAgent({ url: runsUrl, threadId });
   const processor = new MessageProcessor([basicCatalog], handleAction);
 
-  let state: PlatformOpsClientState = { log: [], isSubmitting: false, surfaces: [] };
+  let state: PlatformOpsClientState = {
+    turns: [],
+    isSubmitting: false,
+    surfacesById: new Map(),
+  };
   const listeners = new Set<() => void>();
 
   function notify(): void {
@@ -74,44 +125,16 @@ export function createPlatformOpsClient(runsUrl: string) {
     notify();
   }
 
-  function appendLog(entry: Omit<LogEntry, "id">): void {
-    setState({ log: [...state.log, { id: crypto.randomUUID(), ...entry }] });
+  function appendTurn(entry: Omit<Turn, "id" | "timestamp">): void {
+    const turn: Turn = { id: crypto.randomUUID(), timestamp: new Date().toISOString(), ...entry };
+    setState({ turns: [...state.turns, turn] });
   }
 
   function syncSurfaces(): void {
-    setState({ surfaces: Array.from(processor.model.surfacesMap.values()) });
+    setState({ surfacesById: new Map(processor.model.surfacesMap) });
   }
   processor.onSurfaceCreated(syncSurfaces);
   processor.onSurfaceDeleted(syncSurfaces);
-
-  function handleCustomEvent({ event }: { event: AGUICustomEvent }): void {
-    if (!event.name.startsWith("a2ui.")) return;
-    processor.processMessages([event.value as A2uiMessage]);
-  }
-
-  function subscriber(): AgentSubscriber {
-    return {
-      onCustomEvent: handleCustomEvent,
-      onRunFinishedEvent: (params) => {
-        if (params.outcome === "success") {
-          appendLog({ kind: "result", text: JSON.stringify(params.result ?? {}) });
-        }
-        // interrupt outcome: the A2UI surface already renders the
-        // question/choices -- no separate transcript line needed.
-      },
-    };
-  }
-
-  async function runAndLog(run: (s: AgentSubscriber) => Promise<unknown>): Promise<void> {
-    setState({ isSubmitting: true });
-    try {
-      await run(subscriber());
-    } catch (err) {
-      appendLog({ kind: "error", text: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setState({ isSubmitting: false });
-    }
-  }
 
   function handleAction(action: A2uiClientAction): void {
     if (state.isSubmitting) {
@@ -133,14 +156,55 @@ export function createPlatformOpsClient(runsUrl: string) {
     void runAndLog((s) => agent.runAgent({ resume }, s));
   }
 
+  async function runAndLog(run: (s: AgentSubscriber) => Promise<unknown>): Promise<void> {
+    setState({ isSubmitting: true });
+    // Scoped to this one call: at most one surface is created per run
+    // (interaction/a2ui.py's design), so the last surfaceId observed
+    // during this run is the one to attach to whichever turn its
+    // RUN_FINISHED outcome produces.
+    let lastSurfaceId: string | undefined;
+    const subscriber: AgentSubscriber = {
+      onCustomEvent: ({ event }: { event: AGUICustomEvent }) => {
+        if (!event.name.startsWith("a2ui.")) return;
+        const message = event.value as A2uiMessage;
+        lastSurfaceId = surfaceIdFromMessage(message) ?? lastSurfaceId;
+        processor.processMessages([message]);
+      },
+      onRunFinishedEvent: (params) => {
+        if (params.outcome === "success") {
+          appendTurn({
+            kind: "route_resolved",
+            text: summarizeResult(params.result),
+            surfaceId: lastSurfaceId,
+          });
+          return;
+        }
+        const reason = params.interrupts[0]?.reason;
+        appendTurn({
+          kind: reason === "approval.required" ? "approval_required" : "clarification_required",
+          text: params.interrupts[0]?.message ?? "Input needed",
+          surfaceId: lastSurfaceId,
+        });
+      },
+    };
+    try {
+      await run(subscriber);
+    } catch (err) {
+      appendTurn({ kind: "error", text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setState({ isSubmitting: false });
+    }
+  }
+
   async function sendMessage(text: string): Promise<void> {
     if (state.isSubmitting) return;
-    appendLog({ kind: "user", text });
+    appendTurn({ kind: "user_message", text });
     agent.messages.push({ id: crypto.randomUUID(), role: "user", content: text });
     await runAndLog((s) => agent.runAgent({}, s));
   }
 
   return {
+    id: threadId,
     getState: () => state,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
