@@ -100,26 +100,178 @@ unique_permission_sets` — dominated by group count and distinct
 permission-set count, not account count.
 
 ## Capability normalization
+**Corrected 2026-08-14**: this section originally proposed storing the
+mapping below in `access_templates.yaml`. That name was already taken
+— `BOOTSTRAP_WORKFLOW.md` defines `access_templates.yaml` as
+bootstrap-time workspace templates (tier → ceiling/execution-identity
+pattern, consumed by `instantiate_template` when creating a *new*
+project), a different concern from normalizing what an *existing*
+permission set already grants. Caught while deep-diving that file's
+schema; moved to its own name below rather than overloading one file
+with two unrelated jobs (same reasoning `INTAKE_HITL_ROUTING.md:127`
+already applied to the `gateway/policy.py` vs. `gateway/policy/`
+collision — reconcile, don't pick one silently).
+
 `DescribePermissionSet`'s `Name` string is org-defined free text — AWS
 gives no structured capability field. Map `Name -> Capability` via a
-lookup table stored in `gateway/policy/access_templates.yaml`
-(`ACCESS_POLICY_AND_IAM_DISCOVERY.md`'s Recommended Storage, not yet
-created — currently only `ceiling.py` exists under `gateway/policy/`).
-Example shape:
+lookup table stored in `gateway/policy/capability_mappings.yaml` (new
+— not in `ACCESS_POLICY_AND_IAM_DISCOVERY.md`'s original Recommended
+Storage list, added there now; see that doc's note). Per-provider,
+since Azure's `roleName` and GCP's role strings need the same kind of
+mapping (`ACCESS_POLICY_AND_IAM_DISCOVERY.md`'s Per-Provider Discovery
+Mechanics) — nest under an `aws:`/`azure:`/`gcp:` top key so one file
+serves all three rather than one per provider.
 
-```yaml
-aws_permission_set_capability:
-  PlatformOpsViewer: describe
-  PlatformOpsPlanner: plan
-  PlatformOpsOperator: apply_limited
-  PlatformOpsAdmin: apply_full
+### Boundary — what this file answers and what it deliberately doesn't
+`capability_mappings.yaml` is a **trusted, versioned mapping from
+provider-native access names to the PlatformOps capability ladder**. It
+must never become a second source of user grants.
+
+```
+AWS permission assignment
+  -> permission-set name
+  -> capability_mappings.yaml normalization
+  -> Capability
+  -> account/project registry resolves Scope
+  -> ExecutionGrant
 ```
 
-Unrecognized `Name` values must resolve to `Capability.NONE`, not raise
-and not default upward — an unmapped permission set is exactly the
-"fail closed on the unknown" case the rest of this project's access
-design already commits to (`ACCESS_POLICY_AND_IAM_DISCOVERY.md`'s core
-decision).
+It answers **"what does this provider role mean to PlatformOps?"** —
+never "which users have this role" (provider discovery), "which
+projects exist" (`project_registry.yaml`), "what is the policy
+ceiling" (`org_bu_policy.yaml`), or "which credentials should be used"
+(the `CloudAccessAdapter` credential methods). Contributes only the
+first term of `effective_access` — and does so indirectly, through
+`ExecutionGrant`, never by constructing one itself.
+
+### Schema (v1)
+```yaml
+version: 1
+
+providers:
+  aws:
+    permission_sets:
+      - name: PlatformOpsViewer
+        capability: describe
+      - name: PlatformOpsPlanner
+        capability: plan
+      - name: PlatformOpsOperator
+        capability: apply_limited
+      - name: PlatformOpsAdmin
+        capability: admin
+
+  azure:
+    role_definitions:
+      - name: "<azure-role-definition-id-or-resolved-roleName>"
+        capability: describe
+
+  gcp:
+    roles:
+      - name: roles/viewer
+        capability: describe
+      - name: roles/editor
+        capability: apply_limited
+```
+For the immediate AWS slice, the file can start with just the `aws:`
+section — `azure`/`gcp` sections are additive, not required day one.
+
+**Azure's `name` field, called out explicitly**: unresolved which
+identifier goes here — the opaque `roleDefinitionId` (stable across
+renames, matches how AWS's `PermissionSetArn` is opaque) or the
+resolved `roleName` string (human-authorable, matches how this file
+matches AWS by `Name` not ARN). Deferred — Azure discovery isn't
+designed to two-hop-resolution depth yet
+(`ACCESS_POLICY_AND_IAM_DISCOVERY.md`'s Per-Provider Discovery
+Mechanics names the same `roleDefinitionId -> GET -> roleName` shape
+AWS has, so whichever this project picks for AWS's `Name` field should
+probably decide Azure's too, when that doc gets its own deep dive).
+
+### Exact matching only — no regex, no wildcards
+```
+PlatformOpsViewer -> describe        # correct
+*Admin* -> admin                     # do not do this
+```
+Role/permission-set names are **organization-controlled input**, not
+PlatformOps-controlled. A wildcard rule can silently reclassify a
+permission set nobody reviewed against this file — the opposite of the
+fail-closed posture the rest of this design commits to. Unknown names
+must resolve to `Capability.NONE`, never raise and never default
+upward; the discovery code (not this file) should also record an
+evidence message — `unmapped AWS permission set 'BillingPowerUser' ->
+none` — so a real access gap is visible in evidence, not silently
+dropped.
+
+### Pydantic shape
+```python
+class AccessMapping(BaseModel):
+    name: str = Field(min_length=1)
+    capability: Capability
+
+
+class AwsAccessMappings(BaseModel):
+    permission_sets: list[AccessMapping] = Field(default_factory=list)
+
+
+class AzureAccessMappings(BaseModel):
+    role_definitions: list[AccessMapping] = Field(default_factory=list)
+
+
+class GcpAccessMappings(BaseModel):
+    roles: list[AccessMapping] = Field(default_factory=list)
+
+
+class ProviderAccessMappings(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # unsupported provider
+                                                # sections must raise,
+                                                # not silently no-op
+    aws: AwsAccessMappings = Field(default_factory=AwsAccessMappings)
+    azure: AzureAccessMappings = Field(default_factory=AzureAccessMappings)
+    gcp: GcpAccessMappings = Field(default_factory=GcpAccessMappings)
+
+
+class CapabilityMappingConfig(BaseModel):
+    version: Literal[1]
+    providers: ProviderAccessMappings
+```
+
+### Validation must reject
+| Case | Why |
+|---|---|
+| Missing or unsupported `version` | Free (required field, no default — forces every real file to declare it, unlike the `path is None` empty-config case a loader handles separately) |
+| Blank names | `Field(min_length=1)` |
+| Unknown capabilities | Free — `Capability` is a `str` `Enum`, pydantic rejects unrecognized values |
+| Duplicate names within a provider's list | Needs a `model_validator` — **any** duplicate, even one where both rows agree on the same capability, since an accidental duplicate is still an authoring mistake worth surfacing, and there's no cost to full strictness on a file this security-sensitive |
+| Duplicate mappings with different capabilities | Subsumed by the rule above — no separate check needed once *any* duplicate name is rejected |
+| Unsupported provider sections (e.g. a typo`awss:`) | `ConfigDict(extra="forbid")` on `ProviderAccessMappings` |
+
+**Do not silently keep the last duplicate YAML key** — PyYAML's
+default `safe_load` already does this for literal duplicate mapping
+keys before pydantic even sees the data, which is exactly the failure
+mode the duplicate-name validator exists to catch at the list level
+(YAML's own dict-key collision only protects against duplicate
+*top-level* keys, not duplicate `name:` values inside a list — the
+shape this file actually uses).
+
+### Worked example — the one `AWS_PROVIDER_DISCOVERY.md`'s call sequence produces
+```
+AWS discovery returns:
+  {"AccountId": "123456789012",
+   "PermissionSetArn": "arn:aws:sso:::permissionSet/...",
+   "PermissionSetName": "PlatformOpsOperator"}
+
+PlatformOpsOperator
+  -> capability_mappings.yaml            -> apply_limited
+  -> account_id 123456789012
+  -> project_registry.yaml reverse lookup -> aiq:it/invoices/dev
+  -> ExecutionGrant(
+       scope=Scope(org="aiq", bu="it", project="invoices", workspace="dev"),
+       provider="aws",
+       capability=Capability.APPLY_LIMITED,
+     )
+```
+This is the same `AccountId -> Scope` reverse-lookup dependency on
+`project_registry.yaml` flagged above — shown here end-to-end to make
+the full chain concrete.
 
 ## AccountId -> Scope: the reverse lookup this design needs and doesn't have yet
 Step 4 returns `AccountId` per assignment; `ExecutionGrant.scope`
@@ -160,7 +312,7 @@ Credentials, Ever."
 |---|---|
 | `gateway/auth/providers/` package, `aws.py` | Does not exist |
 | `boto3` as a dependency | Not present — `ModuleNotFoundError` confirmed via `.venv/bin/python -c "import boto3"` 2026-08-14 |
-| `gateway/policy/access_templates.yaml` | Does not exist |
+| `gateway/policy/capability_mappings.yaml` | Does not exist |
 | `gateway/policy/project_registry.yaml` (+ account_id reverse index) | Does not exist |
 | AWS API call shapes in this doc | Verified against current AWS docs 2026-08-14 (see Sources) — design only, unimplemented |
 

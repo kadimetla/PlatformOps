@@ -470,9 +470,11 @@ prod: capability_ceiling = describe,       execution_identity = invoices-prod-re
 ## Recommended Storage
 ```
 gateway/policy/
-  org_bu_policy.yaml      # POLICY[(org_bu, project, workspace, intent)] -> capability ceiling
-  project_registry.yaml   # provider targets, execution identity refs, capability ceilings
-  access_templates.yaml   # baseline templates for bootstrap
+  org_bu_policy.yaml        # POLICY[(org_bu, project, workspace, intent)] -> capability ceiling
+  project_registry.yaml     # provider targets, execution identity refs, capability ceilings
+  access_templates.yaml     # baseline templates for bootstrap (full schema: BOOTSTRAP_WORKFLOW.md)
+  capability_mappings.yaml  # per-provider role/permission-set name -> Capability (added 2026-08-14,
+                             # see AWS_PROVIDER_DISCOVERY.md -- not in this doc's original list)
 ```
 
 Conceptual shape:

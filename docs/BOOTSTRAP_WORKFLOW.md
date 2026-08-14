@@ -8,7 +8,12 @@ down to adding a workspace. Provider mechanisms named here
 role-ceiling constraints) are standard but **not freshly web-verified**
 — see "Verify before build." Design converged over a 2026-07-28
 explore session; decisions below were each made deliberately, with
-alternatives noted where they were real.
+alternatives noted where they were real. **2026-08-14**: added
+`access_templates.yaml`'s full field-level schema (was previously just
+the `instantiate_template` step name and one concrete-instance
+example); surfaced an unresolved gap between the registry's scalar
+`max_capability` and `ceiling.py`'s intent-keyed `CeilingEntry` while
+doing so.
 
 ## Real vs. Designed
 | Area | Status |
@@ -244,12 +249,153 @@ account_strategy: per_env   # separate dev/prod accounts — the
                             # via Organizations account vending
 ```
 
+## `access_templates.yaml` — full schema
+Deep-dived 2026-08-14 (previous mentions of this file were the rough
+per-project example above and the `instantiate_template` step name —
+never a field-level schema). A **template is generic and reusable
+across projects** — the earlier `project = invoices` example in
+`ACCESS_POLICY_AND_IAM_DISCOVERY.md` was a *concrete instantiation*,
+not the template shape itself; `instantiate_template` substitutes
+per-project params into one of these:
+
+```yaml
+templates:
+  standard_three_tier:
+    description: "Three environment tiers, capability narrows toward prod."
+    tiers:
+      dev:
+        max_capability: apply_limited
+        execution_identity_name: "platformops-{project}-dev-provisioner"
+        required_approvals: 1
+      uat:
+        max_capability: propose_change
+        execution_identity_name: "platformops-{project}-uat-planner"
+        required_approvals: 1
+      prod:
+        max_capability: describe
+        execution_identity_name: "platformops-{project}-prod-reader"
+        required_approvals: 2
+
+  single_tier_sandbox:
+    description: "One tier, no prod isolation -- POC/demo BUs only."
+    tiers:
+      dev:
+        max_capability: apply_full
+        execution_identity_name: "platformops-{project}-dev-operator"
+        required_approvals: 1
+```
+
+**Field notes:**
+- `templates.<name>` — a BU's `org_bu_policy.yaml` row selects one by
+  name (`template: standard_three_tier`); this is what "account
+  strategy is a per-BU template choice, recorded in the BU row" (above)
+  actually resolves to — the BU row names the template, not the tier
+  values themselves.
+- `tiers.<tier>.max_capability` — the ceiling `instantiate_template`
+  writes into the workspace's registry row (`project_registry.yaml`'s
+  `max_capability` field, per the canonical field set above). Checked
+  by `deterministic_checks` against the BU's own ceiling before
+  `generate_plan` runs — the nesting invariant (a BU capped at
+  `apply_limited` can never mint an `apply_full` workspace) is enforced
+  here, not assumed by the template author.
+- `tiers.<tier>.execution_identity_name` — a **name pattern**, not a
+  resolved ARN. `{project}` is substituted at `instantiate_template`
+  time (deterministic string substitution — no other params needed for
+  this field); the ARN itself doesn't exist until `execute` actually
+  creates the role, using `account_id` from `account_strategy`
+  resolution.
+- `tiers.<tier>.required_approvals` — per-tier, not templated as a
+  single bootstrap-wide number. The two example templates show why:
+  `single_tier_sandbox` deliberately doesn't force `prod`'s 2-approver
+  floor (Decision 5) because it has no prod tier at all. **Must
+  validate `>= 1`** — zero would let a tier bootstrap with no
+  governance gate, contradicting Decision 5 outright.
+
+**What deliberately stays out of this file** (Decision 1's "template =
+desired shape, not safety boundary" framing, extended):
+- The bootstrap allow-list — `infra/bootstrap-allowed-resource-types.json`,
+  already decided.
+- Per-cloud escalation ceilings (AWS `permissions_boundary_arn`, Azure's
+  role-definition allow-list, GCP's grantable-roles allow-list) — these
+  constrain what the **bootstrap identity itself** can create, which is
+  an org/BU-level property (same identity creates every project in that
+  BU), not a per-template one. Belongs on the org/BU row in
+  `org_bu_policy.yaml`, read by `generate_plan` alongside whichever
+  template `instantiate_template` expanded — not designed further here,
+  flagged as this section's one direct dependency on a file this doc
+  doesn't own.
+
+**Resolved 2026-08-14** (was open): `project_registry.yaml`'s
+`max_capability` is a single scalar per workspace (confirmed in
+`EXECUTION_CREDENTIALS.md`'s Registry shape section: "one registry,
+read by both the policy layer (ceilings) and the executor"), but
+nothing previously connected it to `gateway/policy/ceiling.py`'s
+`effective_access`, which only ever read `org_bu_policy.yaml`. Decided
+shape — option (b) from the original gap, refined: the public two-term
+contract stays `effective_access = min(execution_grant, policy_ceiling)`,
+but `policy_ceiling` becomes composite instead of reading
+`org_bu_policy.yaml` alone:
+
+```
+workspace_ceiling = min(org_bu_policy.ceiling, registry.workspace.max_capability)
+effective_access  = min(provider_execution_grant, workspace_ceiling)
+```
+
+Three inputs feed the decision, but the public mental model doesn't
+change — `policy_ceiling` now *means* "the tighter of BU governance and
+this workspace's own tier limit," not just the BU row alone. Treating
+`max_capability` as bootstrap metadata the executor reads separately
+(rejected) would let a registry row silently claim `describe` while
+`ceiling.py` still permitted `apply_limited` — the two ceilings must be
+combined at the point of decision, not layered ad hoc by callers.
+
+**Preferred implementation shape**: not a fifth positional parameter
+bolted onto `effective_access`, but a resolved snapshot built once per
+workflow entry and passed downstream immutably:
+
+```python
+class WorkflowAuthContext(BaseModel):
+    effective_access: Capability
+    evidence: list[str]
+
+# evidence, in order the terms were combined -- mirrors gateway/auth/
+# grants.py's existing evidence-string pattern (GrantResolution.evidence)
+# rather than inventing a new logging shape:
+#   "provider grant=apply_limited"
+#   "org/bu ceiling=apply_full"
+#   "workspace max_capability=describe"
+#   "effective_access=describe"
+```
+`resolve_execution_capability`/`resolve_ceiling` stay as they are
+(pure, independently testable); a new resolver composes them plus a
+`project_registry.yaml` lookup into one `WorkflowAuthContext`, so every
+workflow node downstream of intake reads one immutable value instead
+of re-deriving it. Requires modifying `gateway/policy/ceiling.py`'s
+already-implemented contract, not just adding new design — flagged
+explicitly since that file is real, tested code
+(`tests/gateway/policy/test_ceiling.py`), not a docs-only surface.
+
+**Bootstrap-time consistency check, new**: `verify_created` (the Level
+2 graph's read-back-and-compare step) must additionally confirm
+`template.max_capability == registry.max_capability ==
+execution-identity's declared ceiling` before `write_registry` runs. A
+mismatch fails bootstrap verification and the registry row is not
+written — the same "registry written last" discipline (Decision 3)
+extended to cover ceiling agreement, not just cloud-side existence.
+
+**Schema addition**: `tiers.<tier>.required_approvals` (in the schema
+section above) must validate `>= 1` — a template tier with zero
+required approvals would let bootstrap create a workspace identity with
+no governance gate at all, contradicting Decision 5's entire premise.
+
 ## Open Questions
 | Question | Current state |
 |---|---|
 | BU offboarding / teardown at every ladder level | Deferred (Decision 6) — orphaned execution identities are standing risk; needs its own design |
 | Does the bootstrap workflow need its own drift-check cadence (does cloud-side still match registry)? | Open — IaC drift detection makes it cheap; when to run it is undecided |
 | Who may edit `access_templates.yaml` / the bootstrap allow-list themselves? | Same PR-review gate as org/BU rows for MVP; unresolved beyond that |
+| How does a workspace's `max_capability` (registry) reach `ceiling.py`'s `effective_access`? | **Resolved 2026-08-14** — composite `workspace_ceiling = min(org_bu_policy.ceiling, registry.max_capability)`, exposed via a `WorkflowAuthContext` snapshot; not yet implemented (changes `ceiling.py`'s existing contract) |
+| Does `org_bu_policy.yaml`'s BU row need a `permissions_boundary_arn` (or per-cloud equivalent) field for the bootstrap identity itself? | Open — flagged in the schema section above as this doc's dependency on a file it doesn't own; not yet added to any row example |
 
 ## Verify before build
 - AWS: exact delegated-IAM-administration pattern — `iam:CreateRole`
