@@ -7,6 +7,12 @@ domain directories, then the final provider-namespaced form below; the
 final form is what this doc records, the intermediates are superseded).
 Two integration claims verified against current sources this session
 (Kubernetes provider exec auth, EKS access entries — see Sources).
+Three LangGraph mechanics verified **empirically** against the installed
+version, not assumed: `checkpointer=False` is a valid argument
+(`Checkpointer = None | bool | BaseCheckpointSaver`), a compiled subgraph
+sharing the parent's state schema composes correctly across an approval
+interrupt without re-running on resume, and list edges are required for
+correct joins (see Step 6).
 Everything here is the *target* shape for `workflows/provision/` and a
 `skills/` reorganization; nothing below exists yet except the three
 current skill files, which are the migration *inputs*.
@@ -14,7 +20,7 @@ current skill files, which are the migration *inputs*.
 ## Real vs. Designed
 | Area | Status |
 |---|---|
-| `SKILL_REGISTRY` / any skill graph | Not implemented |
+| `UNIT_REGISTRY` / any unit graph | Not implemented |
 | `ResourceIntent` / `DeploymentPlan` models | Not implemented |
 | Deployment profiles (`aws-kubernetes-static-web`, ...) | Not implemented |
 | Provider-namespaced `skills/aws/`, `skills/azure/`, `skills/gcp/`, `skills/kubernetes/` | Not implemented — today's `skills/` has exactly three flat entries (`provision-infra`, `security-review-checklist`, `sdlc-diagram-compliance-check`) |
@@ -22,26 +28,404 @@ current skill files, which are the migration *inputs*.
 | `infra/kubernetes-allowed-resources.json` | Not implemented — decided this session (see APPLICATION_PROVISIONING.md's resolved Q1) |
 | `skills/provision-infra/SKILL.md` as entry point | Real file, wrong content — CDK/CCAPI+HCP-shaped, predates this design; **also carries the known `allowed-tools` YAML-list schema bug (`AGENTS.md` Conventions) that must be fixed before any skill-loading mechanism is wired to it** |
 
-## The core idea — units composed by topology, not by an LLM
-Skills are broken into small reusable units, and a **deterministic
-composition layer** — not a free LLM decision — assembles them per
-deployment topology. The LLM may help *select or explain* a profile;
-deterministic code validates the final composition. This is
+## The core idea — the LLM proposes; deterministic code authorizes
+Skills are broken into small reusable units. A planner LLM may select
+an approved profile or propose a `TopologySpec` made only from registered
+unit IDs. That proposal has **no execution authority**: deterministic
+code validates its units, inputs, dependencies, target scope, and profile
+policy before any graph is compiled. This is
 `PROVISION_WORKFLOW.md`'s template-first rule (Level 1/2/3) applied at
 a finer grain: the same "runtime renders reviewed artifacts, never
 generates arbitrary IaC" invariant, with the reviewed artifact now
 being a *profile + unit templates* instead of one monolithic template.
 
+**Refined 2026-08-14:** the earlier wording said the LLM may select or
+explain a profile but never assemble one. The stricter approved-profile
+path remains the default. The additional supported path is an LLM-
+proposed unit DAG, bounded by an approved composition policy. The
+proposal is treated like untrusted input, not like a graph that may run
+because the model emitted it.
+
 ```
 User request
   -> intake graph (exists today)
-  -> deployment-profile selection
-  -> skill graph registry           SKILL_REGISTRY["aws.s3.private_bucket"] ...
-  -> composed DeploymentPlan        typed IR, NOT Terraform
+  -> planner LLM tool call          approved profile OR TopologySpec proposal
+  -> topology policy validator     proposal becomes executable only here
+  -> unit graph registry            UNIT_REGISTRY["aws.s3.private_bucket"] ...
+  -> topology graph compiler        registered implementations only
+  -> composed DeploymentPlan        typed IR, NOT OpenTofu
   -> deterministic validation       unit contracts + allow-lists + scope
   -> OpenTofu renderer              reviewed templates only
   -> tofu plan -> approval -> apply (PROVISION_WORKFLOW.md, unchanged)
 ```
+
+The dynamic topology graph occupies one bounded slot inside a fixed
+provision workflow. Authentication, access calculation, credential
+acquisition, plan checks, approval, apply, and evidence are never nodes
+the planner may add, remove, or reorder:
+
+```
+FIXED: resolve actor/workspace -> calculate access -> validate prerequisites
+                                  |
+                                  v
+DYNAMIC:                 [validated topology subgraph]
+                                  |
+                                  v
+FIXED: render -> plan -> checks -> approval -> revalidate -> apply -> verify
+```
+
+## Implementation walkthrough — one request, end to end
+This section is the implementation contract. It shows exactly what is
+stored, what the LLM sees, what gets compiled, and what runs. The first
+worked example is `aws-static-web`; Kubernetes units use the same
+mechanism once the smaller path works.
+
+### Step 1 — define one fixed state for the parent and dynamic subgraphs
+Do not generate a new state schema from every model proposal. Every unit
+writes its result under its instance ID into one reducer-backed map:
+
+```python
+from typing import Annotated, TypedDict
+
+def merge_unit_results(left: dict, right: dict) -> dict:
+    merged = dict(left)
+    for unit_id, result in right.items():
+        if unit_id in merged and merged[unit_id] != result:
+            raise ValueError(f"conflicting result for unit {unit_id!r}")
+        merged[unit_id] = result
+    return merged
+
+class ProvisionState(TypedDict):
+    request: ApplicationProvisionRequest
+    auth_context: WorkflowAuthContext
+    workspace: WorkspaceContext
+    topology_spec: TopologySpec | None
+    unit_results: Annotated[dict[str, UnitResult], merge_unit_results]
+    deployment_plan: DeploymentPlan | None
+    artifact_path: str | None
+    plan_result: TofuPlanResult | None
+    approval: ApprovalRecord | None
+    execution_result: ExecutionResult | None
+    verification: VerificationResult | None
+```
+
+`auth_context` and `workspace` are produced before the dynamic subgraph.
+Unit nodes may read them but cannot update them. Credentials never appear
+in this state.
+
+### Step 2 — define the graph-as-data schema the LLM may propose
+The model emits data, never Python, HCL, import paths, or condition
+expressions:
+
+```python
+class LiteralValue(BaseModel):
+    kind: Literal["literal"]
+    value: JsonValue
+
+class ContextRef(BaseModel):
+    kind: Literal["context"]
+    field: str
+
+class UnitOutputRef(BaseModel):
+    kind: Literal["unit_output"]
+    unit_id: str
+    output_name: str
+
+InputValue = Annotated[
+    LiteralValue | ContextRef | UnitOutputRef,
+    Field(discriminator="kind"),
+]
+
+class UnitSpec(BaseModel):
+    id: str
+    uses: str
+    inputs: dict[str, InputValue] = Field(default_factory=dict)
+
+class EdgeSpec(BaseModel):
+    source: str = Field(alias="from")
+    target: str = Field(alias="to")
+
+class TopologySpec(BaseModel):
+    schema_version: Literal["1"]
+    name: str
+    profile: str
+    provider: Literal["aws", "azure", "gcp"]
+    units: list[UnitSpec]
+    edges: list[EdgeSpec]
+```
+
+Example proposal:
+
+```json
+{
+  "schema_version": "1",
+  "name": "invoices-static-web",
+  "profile": "aws.application",
+  "provider": "aws",
+  "units": [
+    {"id": "assets", "uses": "aws.s3.private_bucket", "inputs": {}},
+    {
+      "id": "cdn",
+      "uses": "aws.cloudfront.s3_distribution",
+      "inputs": {
+        "bucket_id": {
+          "kind": "unit_output",
+          "unit_id": "assets",
+          "output_name": "bucket_id"
+        }
+      }
+    }
+  ],
+  "edges": [{"from": "assets", "to": "cdn"}]
+}
+```
+
+### Step 3 — register trusted implementations at process startup
+The registry is a PlatformOps application construct, not a built-in
+LangGraph service and not content supplied by the LLM:
+
+```python
+@dataclass(frozen=True)
+class RegisteredUnit:
+    unit_id: str
+    input_model: type[BaseModel]
+    output_model: type[BaseModel]
+    planner: Runnable
+    module_path: Path
+    allowed_profiles: frozenset[str]
+    allowed_resources: frozenset[AllowedResource]
+    verifier: UnitVerifier
+
+UNIT_REGISTRY = UnitRegistry([
+    register_aws_s3_private_bucket(),
+    register_aws_cloudfront_s3_distribution(),
+])
+```
+
+Registration uses explicit imports from reviewed code. `unit.yaml` may
+provide metadata, but it may not provide a Python import path that the
+runtime imports blindly. Unknown and duplicate IDs fail startup.
+
+A registered `planner` may be a plain typed function or a compiled
+LangGraph. Use a graph only when the unit actually has meaningful
+multi-step behavior. Both expose the same `ainvoke(input) -> output`
+contract to the topology compiler.
+
+### Step 4 — expose one planning schema to the LLM
+Do not bind every mutation-capable operation to the model. Bind one tool
+whose arguments are the topology proposal:
+
+```python
+@tool
+def propose_deployment_topology(spec: TopologySpec) -> str:
+    """Propose registered infrastructure units and their dependencies."""
+    return "topology proposal captured"
+```
+
+As with the existing intake classifier, the tool call itself is the
+structured signal. The planner node binds this tool, invokes the model,
+and parses the call arguments into state; it does not execute a
+mutation-capable tool:
+
+```python
+async def propose_topology(state: ProvisionState, model):
+    planner = model.bind_tools(
+        [propose_deployment_topology],
+        tool_choice="propose_deployment_topology",
+    )
+    response = await planner.ainvoke(build_planner_messages(state))
+    call = require_exactly_one_tool_call(response)
+    spec = TopologySpec.model_validate(call["args"]["spec"])
+    return {"topology_spec": spec}
+```
+
+This call only captures a proposal. It does not resolve credentials,
+compile a graph, run OpenTofu, or invoke provider APIs. Session identity,
+workspace target, account, region, cluster, namespace, state key, and
+execution identity remain hidden runtime context; they are never tool
+arguments the LLM chooses.
+
+### Step 5 — validate the proposal before compilation
+`validate_topology()` is deterministic and returns either a
+`ValidatedTopology` or a list of precise errors. It checks:
+
+1. Every unit ID is unique and exists in `UNIT_REGISTRY`.
+2. Every unit is allowed by the selected composition policy/profile.
+3. The requested provider matches the registered workspace.
+4. Every input passes that unit's Pydantic input model.
+5. Every output reference names an existing upstream unit and declared
+   output.
+6. Every reference has a corresponding dependency edge.
+7. The graph is acyclic, all units are reachable, and all units reach a
+   terminal leaf.
+8. Application profiles contain no bootstrap/IAM/RBAC/cluster units.
+9. Resource and action declarations are non-empty and allow-listed.
+10. No unit has a mutation/executor phase; the dynamic slot is topology-
+    planning only.
+
+An invalid proposal may be returned to the planner for at most a bounded
+number of corrections. It is never partially compiled or "best effort"
+executed.
+
+### Step 6 — compile the validated unit DAG into a stateless subgraph
+The parent graph is already fixed. Its `run_topology` node compiles and
+invokes a per-request subgraph:
+
+```python
+def compile_topology(spec: ValidatedTopology, registry: UnitRegistry):
+    builder = StateGraph(ProvisionState)
+
+    for unit in spec.units:
+        registration = registry.resolve(unit.uses)
+        builder.add_node(
+            unit.id,
+            build_unit_wrapper(unit, registration),
+        )
+
+    for root_id in spec.root_ids:
+        builder.add_edge(START, root_id)
+    for target_id, predecessor_ids in spec.predecessors_by_target.items():
+        # A list edge is a real join: wait for every predecessor rather
+        # than triggering the target once per independently-added edge.
+        builder.add_edge(predecessor_ids, target_id)
+    for leaf_id in spec.leaf_ids:
+        builder.add_edge(leaf_id, END)
+
+    return builder.compile(checkpointer=False)
+```
+
+**The list edge is not stylistic — verified empirically 2026-08-14**
+against the installed LangGraph. With branches of *unequal depth*
+(`a -> join` alongside `b1 -> b2 -> join`), separate `add_edge` calls run
+`join` **twice**; a single list edge runs it once:
+```
+list-edge join   -> join ran 1 time(s); order: ['a', 'b1', 'b2', 'join']
+separate edges   -> join ran 2 time(s); order: ['a', 'b1', 'b2', 'join', 'join']
+```
+Equal-depth branches hide the difference (both run once), so this is easy
+to get wrong and not notice. `merge_unit_results`' conflict check is the
+second line of defence if it ever regresses.
+
+`build_unit_wrapper()` resolves only typed context references and
+already-produced upstream outputs, calls the registered planner, validates
+its output model, and writes `{unit.id: result}` to `unit_results`.
+Independent roots may run in parallel; the reducer merges their distinct
+instance IDs. The dynamic subgraph is stateless because human pauses and
+durable execution live in the fixed parent graph.
+
+### Step 7 — invoke the subgraph from the fixed provision graph
+LangGraph cannot add nodes to an already-compiled parent. The fixed
+parent therefore invokes the newly compiled topology from one node:
+
+```python
+async def run_topology(state: ProvisionState):
+    validated = validate_topology(
+        state["topology_spec"],
+        workspace=state["workspace"],
+        registry=UNIT_REGISTRY,
+    )
+    topology = compile_topology(validated, UNIT_REGISTRY)
+    result = await topology.ainvoke(state)
+    return {"unit_results": result["unit_results"]}
+```
+
+The fixed parent graph is compiled once at application startup:
+
+```text
+resolve_context -> propose_topology -> run_topology -> compose_plan
+  -> render_opentofu -> tofu_plan -> validate_plan -> approval_interrupt
+  -> revalidate -> tofu_apply -> verify -> evidence -> END
+```
+
+`approval_interrupt`, credential acquisition, and `tofu_apply` are not
+registered topology units and cannot appear in `TopologySpec`.
+
+### Step 8 — merge unit results into a deployment plan
+`compose_plan` verifies that every expected unit produced exactly one
+typed result, resolves output wiring, and creates the orchestration IR:
+
+```python
+class DeploymentPlan(BaseModel):
+    topology_digest: str
+    profile: str
+    scope: Scope
+    units: list[ResolvedUnit]
+    dependency_order: list[str]
+    template_digests: dict[str, str]
+```
+
+The topology digest covers the normalized `TopologySpec`, registry unit
+versions, and template digests. It becomes part of the later approval
+digest, so changing a node, edge, input, or template invalidates approval.
+
+### Step 9 — render reviewed OpenTofu modules
+Each unit result identifies a reviewed module already present in its
+skill folder. The renderer writes a root module containing only `module`
+blocks and typed wiring:
+
+```hcl
+module "assets" {
+  source      = "./modules/aws_s3_private_bucket"
+  bucket_name = "invoices-dev-assets"
+}
+
+module "cdn" {
+  source    = "./modules/aws_cloudfront_s3_distribution"
+  bucket_id = module.assets.bucket_id
+}
+```
+
+The renderer cannot emit a raw `resource` block from model text. Direct
+LLM-generated OpenTofu remains an authoring-time PR path only.
+
+### Step 10 — validate the real OpenTofu plan
+`tofu show -json plan.bin` is the authoritative diff. The plan validator
+maps every resource address back to exactly one unit and checks:
+
+```text
+planned resource type is declared by that unit
+planned action is allowed (delete denied by default)
+provider/account/region match the workspace
+Kubernetes resources remain in the registered namespace
+no unexplained resource exists
+```
+
+Unit-level validation proves the composition is legal; plan-level
+validation proves the rendered provider resources actually match it.
+
+### Step 11 — approval and apply remain fixed
+The parent graph pauses with an approval payload bound to the saved plan,
+topology digest, policy snapshot, current-state fingerprint, execution
+identity, allow-list version, and template digests. On resume it rechecks
+all of them, obtains a fresh apply credential, and runs only
+`tofu apply plan.bin`. The model cannot regenerate or modify anything
+between approval and apply.
+
+### Step 12 — verify units and store evidence
+After apply, each registered verifier receives only its declared outputs
+and immutable workspace context. Results merge into one evidence record:
+
+```text
+request -> topology spec/digest -> unit versions -> rendered artifacts
+        -> plan/digest -> approval -> execution identity -> resources
+        -> independent verification
+```
+
+### What is stored where
+| Artifact | Location | Authoritative for |
+|---|---|---|
+| `SKILL.md` | `skills/<provider>/<domain>/<unit>/` | Human/LLM procedure and discovery |
+| Unit registration code | Same unit package, imported by application startup | Executable implementation and typed contract |
+| Reviewed OpenTofu module | Unit's `template/` directory | IaC emitted at runtime |
+| Approved `topology.yaml` | `skills/provision-infra/profiles/<profile>/` | Reusable fast-path composition |
+| LLM-proposed `TopologySpec` | Request/run evidence, never written into `skills/` automatically | This run's untrusted proposal and validated topology |
+| Compiled topology graph | Process memory; optionally cached by topology digest | Per-request planning execution |
+| Saved OpenTofu plan | Request artifact directory | Exact approved provider diff |
+| Checkpoint | Parent provision graph's checkpointer | Approval pause/resume |
+
+To promote an LLM-proposed topology into a reusable profile, a coder
+opens a PR adding `topology.yaml`; normal code review is the promotion
+boundary. Runtime execution never edits the skill library.
 
 ## Four unit categories
 | Category | Examples | Nature |
@@ -110,36 +494,68 @@ The units above keep that: each unit's `SKILL.md` is real procedural
 memory (`MEMORY_ARCHITECTURE.md`'s "skills are procedural memory" —
 "skill says how, policy says whether"). What's *new* is that the
 runtime composition path doesn't rely on description-matching at all:
-`SKILL_REGISTRY` is a code-level dict from provider-qualified ID to
-graph builder, and profiles name unit IDs explicitly. Progressive
+`UNIT_REGISTRY` is a code-level registry from provider-qualified ID to
+trusted registration, and profiles name unit IDs explicitly. Progressive
 disclosure remains how a *human or LLM* finds and reads the procedure;
 the registry is how the *workflow* executes it. One folder serves both
 readers.
 
-## The registry and the shared contract
+## Earlier conceptual contract, refined by the walkthrough above
+The first design pass represented every unit as a four-method object.
+The implementation walkthrough refines that into a `RegisteredUnit`
+whose planner has one typed `ainvoke` boundary and whose module/verifier/
+policy metadata sit on the registration. The old sketch is retained here
+in corrected form because it explains the common calling convention:
+
 ```python
-SKILL_REGISTRY = {
-    "aws.s3.private_bucket":        AwsS3BucketGraph,
-    "azure.storage.private_container": AzureStorageGraph,
-    "gcp.storage.private_bucket":   GcpStorageGraph,
-    "aws.eks.cluster":              AwsEksGraph,
-    "kubernetes.deployment":        KubernetesDeploymentGraph,
+UNIT_REGISTRY = {
+    "aws.s3.private_bucket": AwsS3BucketRegistration,
+    "azure.storage.private_container": AzureStorageRegistration,
+    "gcp.storage.private_bucket": GcpStorageRegistration,
+    "aws.eks.cluster": AwsEksRegistration,
+    "kubernetes.deployment": KubernetesDeploymentRegistration,
 }
 
-class ProvisionSkill(Protocol):
-    name: str
-    provider: str
-    def validate_inputs(self, inputs: dict) -> ValidationResult: ...
-    def plan(self, inputs: dict) -> list[ResourceIntent]: ...
-    def render(self, inputs: dict) -> IaCArtifacts: ...
-    def verify(self, outputs: dict) -> VerificationResult: ...
+class UnitPlanner(Protocol):
+    async def ainvoke(self, request: BaseModel) -> BaseModel: ...
 ```
 The contract is shared; the implementation is not. `aws.s3.private_bucket`
-internally means bucket + policy + public-access block + encryption;
-`azure.storage.private_container` means storage account + private
-endpoint + container + network rules; `gcp.storage.private_bucket`
-means bucket + IAM binding + uniform bucket-level access. The IR does
-not pretend these are the same resource.
+internally means bucket + public-access block + encryption (**corrected
+2026-08-14**: the first pass said "bucket + policy"; the bucket policy is
+deliberately a *separate* unit — see "The bucket-policy unit" below, and
+note Step 3's registry example already excludes it from
+`allowed_resources`); `azure.storage.private_container` means storage
+account + private endpoint + container + network rules;
+`gcp.storage.private_bucket` means bucket + IAM binding + uniform
+bucket-level access. The IR does not pretend these are the same resource.
+
+### The bucket-policy unit — why it is separate, and an open gap
+The OAC pattern needs `aws_s3_bucket_policy` granting
+`cloudfront.amazonaws.com` `s3:GetObject` under an
+`AWS:SourceArn`-equals-this-distribution condition (verified against AWS's
+own example — see `APPLICATION_PROVISIONING.md`'s Sources). That policy
+depends on **both** the bucket and the distribution, so it cannot live
+inside `aws.s3.private_bucket`: doing so would make the unit DAG cyclic
+(bucket needs the distribution ARN, distribution needs the bucket). As a
+third unit downstream of both, the DAG stays acyclic:
+
+```
+assets (bucket) ---------> cdn (distribution + OAC) ---> oac_bucket_policy
+      \                                                       ^
+       \-----------------------------------------------------/
+```
+This is the general constraint worth stating once: **topology edges order
+render-time data flow, not resource creation** — OpenTofu derives real
+creation order from the rendered HCL. Unit boundaries must therefore be
+drawn so that no unit needs an output of something downstream of itself.
+
+**Open gap, not yet closed**: neither the Step 2 worked example, the
+Step 9 rendered HCL, nor the `aws-kubernetes-static-web` profile below
+names a bucket-policy unit. Implementing from those verbatim yields a
+private bucket and a distribution that gets 403s from it. Add
+`aws.s3.oac_bucket_policy` (inputs: bucket id + distribution ARN) to the
+registry and to the profile's `compose` list before the first slice is
+built.
 
 ## The intermediate representation — typed plan, never direct Terraform
 Skill graphs return **`ResourceIntent`, not Terraform**. The renderer
@@ -150,8 +566,8 @@ class ResourceIntent(BaseModel):
     provider: Literal["aws", "azure", "gcp", "kubernetes"]
     kind: str
     logical_name: str
-    inputs: dict            # provider-specific fields live HERE,
-                            # not in pretend-common top-level fields
+    inputs: dict            # serialized only AFTER the unit-specific
+                            # Pydantic model validates provider fields
     dependencies: list[str]
     allowed_actions: list[str]
     verification_checks: list[str]
@@ -184,15 +600,18 @@ name: aws-kubernetes-static-web
 provider: aws
 requires:                      # prerequisite check -> clear failure,
   - existing: eks.cluster      # never implicit creation
+  - existing: kubernetes.namespace
   - existing: route53.hosted_zone
   - existing: opentofu.state_backend
 compose:
   - aws.s3.private_bucket
   - aws.cloudfront.origin_access_control
   - aws.cloudfront.distribution
+  - aws.s3.oac_bucket_policy   # depends on bucket AND distribution --
+                               # see "The bucket-policy unit" above;
+                               # omitting it means CloudFront gets 403
   - aws.acm.cloudfront_certificate
   - aws.route53.alias
-  - kubernetes.namespace
   - kubernetes.service_account
   - kubernetes.deployment
   - kubernetes.service
@@ -210,14 +629,20 @@ and vice versa.
 Dependency order comes from the units' declared `dependencies`:
 ```
 s3 -> cloudfront.oac -> cloudfront.distribution -> route53.alias
-namespace -> service_account -> deployment -> service -> ingress -> ALB address -> route53.alias
+existing namespace -> service_account -> deployment -> service -> ingress -> ALB address
 ```
 Independent branches plan together; dependencies order creation. One
 complete OpenTofu plan is rendered from the whole composition —
 security checks validate the **final plan**, not just individual units.
 
+The first slice gives the static frontend a custom Route 53 hostname via
+CloudFront and reports the controller-created ALB hostname for the API.
+Creating a custom API hostname after the asynchronous Ingress controller
+reports its ALB is a later reconciliation unit, not falsely represented
+as an input known to the first saved plan.
+
 ## Kubernetes is a shared layer; cluster access is not
-`kubernetes.namespace/deployment/service/ingress/hpa` are genuinely
+`kubernetes.deployment/service/ingress/hpa` are genuinely
 provider-agnostic (they speak the Kubernetes API). Cluster *access* is
 provider-specific and stays in the provider namespaces:
 
@@ -246,7 +671,7 @@ For AWS specifically (verified this session, both sources):
   access to the Kubernetes API," the successor to the `aws-auth`
   ConfigMap), associating the IAM role with namespace-scoped
   Kubernetes permissions or a Kubernetes group. **Creating the access
-  entry + namespace-scoped RBAC is bootstrap's job**
+  entry + namespace creation + namespace-scoped RBAC is bootstrap's job**
   (`BOOTSTRAP_WORKFLOW.md` Level 2 output, alongside the execution
   role itself); the application workflow only *consumes* that access
   and never creates cluster-wide bindings dynamically.
@@ -264,38 +689,41 @@ unit granularity so "many small skills" never drifts into "many small
 autonomous agents."
 
 ## Execution flow (per provider, same spine)
-1. Choose cloud/provider profile
-2. Resolve provider-qualified unit IDs against `SKILL_REGISTRY`
-3. Run each unit's `validate_inputs`
-4. Compose + validate the dependency graph
-5. Generate `ResourceIntent`s → `DeploymentPlan`
-6. Render OpenTofu from reviewed templates only
-7. Provider-specific plan checks (AWS: S3 public access blocked, OAC
+1. Resolve the authenticated workspace and its composition policy.
+2. Select an approved profile or capture an LLM-proposed `TopologySpec`.
+3. Resolve provider-qualified unit IDs against `UNIT_REGISTRY`.
+4. Validate unit inputs, output references, profile membership, and the
+   dependency DAG.
+5. Compile and invoke the stateless topology subgraph.
+6. Generate `ResourceIntent`s → `DeploymentPlan`.
+7. Render OpenTofu from reviewed templates only.
+8. Provider-specific plan checks (AWS: S3 public access blocked, OAC
    in use, IAM actions allowed; Azure: public access disabled, role
    assignments allow-listed, private endpoint; GCP: uniform
    bucket-level access, IAM roles allow-listed, no public principals)
-8. Shared security checks (`security-review-checklist`)
-9. Approval (existing gate, six-input digest — `DeploymentPlan.
+9. Shared security checks (`security-review-checklist`).
+10. Approval (existing gate, six-input digest — `DeploymentPlan.
    template_version`/`policy_snapshot` land in the digest's existing
    inputs, no formula change)
-10. Provider-specific short-lived credentials (`CloudAccessAdapter`)
-11. `tofu apply`
-12. Provider-specific verification (units' `verify`)
-13. Normalized evidence
+11. Provider-specific short-lived credentials (`CloudAccessAdapter`).
+12. `tofu apply` of the saved plan.
+13. Provider-specific verification (registered unit verifiers).
+14. Normalized evidence.
 
 ## Build order note
-This is a target shape, not a first-slice instruction.
-`APPLICATION_PROVISIONING.md`'s 12-step implementation order still
-governs what gets built first — one profile
-(`aws-kubernetes-static-web`), its units inlined as plain modules
-inside `workflows/provision/` if that's faster, split into registry
-units **only when something is independently reused**
-(`MEMORY_ARCHITECTURE.md`'s anti-build list still applies: no
-speculative `executors/` package, no uniform unit scaffolding ahead of
-a second consumer). The registry earns its existence with the second
-profile, not the first.
+**Refined 2026-08-14:** the earlier version deferred the registry until
+a second profile reused a unit. The graph-as-data design now makes the
+small registry part of the first vertical slice because validation and
+compilation require it. This does not authorize scaffolding every cloud:
+start with `aws.s3.private_bucket` and
+`aws.cloudfront.s3_distribution`, one `aws-static-web` profile, and the
+12 walkthrough steps above. Add Kubernetes after that path can render
+and validate a real OpenTofu plan; add Azure/GCP registrations only when
+their first profiles are implemented.
 
 ## Sources
+- [LangGraph: Subgraphs](https://docs.langchain.com/oss/python/langgraph/use-subgraphs) — verified 2026-08-14: compiled subgraph as a parent node when state is shared; wrapper invocation when schemas differ; `checkpointer=False` for stateless subgraphs
+- [LangChain: Tools](https://docs.langchain.com/oss/python/langchain/tools) — verified 2026-08-14: model-visible name/description/input schema, structured tool calls, and `ToolNode` execution boundary; this design captures the forced tool call as structured proposal data rather than exposing execution authority
 - [Kubernetes provider docs (hashicorp/terraform-provider-kubernetes)](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs) — verified 2026-08-14 via the provider repo's `docs/index.md`: exec-based credential plugin for short-lived cloud tokens, `aws eks get-token` example, `client.authentication.k8s.io/v1`, warning against mixing exec with static credential attributes
 - [AWS: EKS access entries](https://docs.aws.amazon.com/eks/latest/userguide/access-entries.html) — verified 2026-08-14: "the best way to grant users access to the Kubernetes API," IAM role ↔ Kubernetes permissions/groups association, `aws-auth` ConfigMap successor
 
@@ -309,10 +737,10 @@ template-first rule at unit granularity — no change to that rule.
 Extends [EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md)'s
 no-secrets and executor-isolation rules to the Kubernetes credential
 path (exec plugin) and unit boundary, and reuses its
-one-adapter-per-provider reasoning for unit namespacing. Adds two
-bootstrap outputs to [BOOTSTRAP_WORKFLOW.md](BOOTSTRAP_WORKFLOW.md)'s
-Level 2 (EKS access entry + namespace-scoped RBAC for the execution
-role) — flagged here, that doc not yet edited.
+one-adapter-per-provider reasoning for unit namespacing. The matching
+[BOOTSTRAP_WORKFLOW.md](BOOTSTRAP_WORKFLOW.md) Level 2 contract now
+creates the registered Namespace, EKS access entry, and namespace-scoped
+RBAC before the application profile can route.
 [MEMORY_ARCHITECTURE.md](MEMORY_ARCHITECTURE.md)'s skills-as-
 procedural-memory framing is preserved and its anti-build list still
 binds the build order. `AGENTS.md`'s known `allowed-tools` bug in

@@ -46,7 +46,9 @@ Level 1   BU onboarding                BU container + guardrails: AWS OU
                                        IdP group namespace (aiq-it-*)
 
 Level 2   Project bootstrap            execution identities per workspace
-          (occasional)                 tier, trust/delegation, registry rows
+          (occasional)                 tier, trust/delegation, Kubernetes
+                                       namespace/RBAC where applicable,
+                                       registry rows
 
 Level 3   Workspace addition           same machinery as Level 2, additive
 ```
@@ -86,7 +88,7 @@ evidence), three swaps:
 
 | | Normal provision | Bootstrap |
 |---|---|---|
-| Allow-list | App resources (S3, CloudFront, ...) — **identity types excluded** | Identity/scaffolding only (IAM roles/policies, Azure MI/SP/RBAC assignments, GCP SAs/bindings, HCP workspaces) — **app resources excluded** |
+| Allow-list | App resources (S3, CloudFront, namespaced workload resources, ...) — **identity and cluster-scaffolding types excluded** | Identity/platform scaffolding only (IAM roles/policies, Azure MI/SP/RBAC assignments, GCP SAs/bindings, HCP workspaces, registered Kubernetes namespaces + namespace RBAC) — **application workload resources excluded** |
 | Execution identity | Workspace execution role | The bootstrap identity |
 | Entry | LLM-routed via intake | Never LLM-routed; explicit admin action |
 
@@ -189,7 +191,8 @@ bootstrap_create_project (admin CLI/form entry; no LLM anywhere)
   │                      spec. Deterministic substitution — nothing
   │                      to interpret, hence no LLM
   ▼ generate_plan        IaC plan: every role, trust policy, boundary,
-  │                      MI/SA, RG, HCP workspace, name, tag — as
+  │                      MI/SA, RG, HCP workspace, registered Kubernetes
+  │                      namespace/RBAC, name, tag — as
   │                      reviewable text; digest computed
   ▼ deterministic_checks bootstrap allow-list; naming convention;
   │                      every created role carries the mandatory
@@ -206,7 +209,8 @@ bootstrap_create_project (admin CLI/form entry; no LLM anywhere)
   │                      (the BOOTSTRAP identity, not a workspace's) and
   │                      the toolchain targets the disjoint bootstrap
   │                      allow-list (Decision 1), not app resources
-  ▼ verify_created       read back; compare to plan (part of the reused
+  ▼ verify_created       read back identities, namespace/RBAC, and other
+  │                      scaffolding; compare to plan (part of the reused
   │                      sub-graph, not a separate step — shown here for
   │                      continuity with the Level 2 graph narrative)
   ▼ write_registry       LAST; state: active, routable: true

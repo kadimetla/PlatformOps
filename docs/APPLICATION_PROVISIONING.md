@@ -88,7 +88,8 @@ Platform bootstrap:     VPC, EKS cluster, node groups, IAM, AWS Load
                          Level 0-2 of its ladder
 
 Application provisioning: S3+CloudFront+ACM+Route53, Kubernetes
-                         namespace/deployment/service/ingress/etc --
+                         deployment/service/ingress/etc inside an
+                         existing registered namespace --
                          THIS doc's scope
 
 Application release:    build image, push to ECR, upload frontend
@@ -110,8 +111,9 @@ cluster/workspace — it does not attempt to create one.
 AWS account, region, VPC + subnets, EKS cluster, node group/Fargate
 profile, AWS Load Balancer Controller, ECR access, OIDC provider/pod
 identity, Route 53 hosted zone, OpenTofu state bucket + locking,
-PlatformOps execution role, **EKS access entry for that execution role
-+ namespace-scoped Kubernetes RBAC** (added 2026-08-14 with resolved
+PlatformOps execution role, a PlatformOps runner with network reachability
+to the EKS API, an existing application namespace, **EKS access entry for
+that execution role + namespace-scoped Kubernetes RBAC** (added 2026-08-14 with resolved
 Q2 below — bootstrap outputs the application workflow consumes, never
 creates). Represented in the project registry
 (extending the shape `BOOTSTRAP_WORKFLOW.md`'s "Registry row —
@@ -123,6 +125,8 @@ cloud: aws
 region: us-east-1
 cluster_name: platformops-dev
 namespace: invoices-dev
+cluster_endpoint_mode: private
+runner_ref: platformops-executor-vpc
 toolchain: opentofu_local
 state_key: aiq/it/invoices/dev/tofu.tfstate
 ```
@@ -133,7 +137,7 @@ OAC, CloudFront distribution, the CloudFront→S3 bucket policy, ACM
 certificate (`us-east-1`), Route 53 records, ECR repository (if
 missing).
 
-**Kubernetes**: Namespace, ServiceAccount, Deployment, Service,
+**Kubernetes**: ServiceAccount, Deployment, Service,
 Ingress, ConfigMap, Secret reference/`ExternalSecret` (never a raw
 secret value — matches `EXECUTION_CREDENTIALS.md`'s "nothing secret in
 graph state" rule, extended to Kubernetes manifests: reference a
@@ -157,15 +161,15 @@ class ApplicationProvisionRequest(BaseModel):
                                    # directly -- no new model needed
     frontend_artifact_uri: str
     backend_image_digest: str
-    domain_name: str
-    kubernetes_cluster: str
-    namespace: str
+    frontend_hostname: str
     replicas: int
     cpu_request: str
     memory_request: str
 ```
-Missing values become clarification questions
-(`"Which Kubernetes cluster should receive the API?"`, etc.) — this is
+Cluster, namespace, region, state key, and execution identity are derived
+from `scope` through the workspace registry, never supplied by the user.
+The requested hostname must fall under the registry's allowed DNS zone.
+Missing application values become clarification questions — this is
 exactly the workflow-specific Stage 2 extraction
 `INTAKE_HITL_ROUTING.md`'s C2 correction already deferred out of intake
 and into "each target workflow" (`PROVISION_WORKFLOW.md`'s
@@ -177,7 +181,7 @@ Numbered 1-16 below; each step notes whether it **reuses** an
 already-designed mechanic or is **new**.
 
 1. **User submits a request** (free text, org/bu/project/workspace/
-   app name/artifact/image/domain/cluster/replicas/limits). *New wording,
+   app name/artifact/image/hostname/replicas/limits). *New wording,
    same intake shape.*
 2. **Intake classifies** `intent=provision`, `target=Scope` — does not
    choose a role, invent infrastructure, or execute anything. *Reuses
@@ -186,7 +190,7 @@ already-designed mechanic or is **new**.
    clarifying missing fields. *New schema, reuses the deferred-
    clarification pattern.*
 4. **Match a reviewed template** — `templates/aws/kubernetes-static-web/`,
-   containing S3/CloudFront/ACM/Route53/ECR/namespace/deployment/
+   containing S3/CloudFront/ACM/Route53/ECR/deployment/
    service/ingress modules. **Reuses `PROVISION_WORKFLOW.md`'s
    template-first rule verbatim**: the runtime renders an
    already-reviewed template with validated parameters — it never asks
@@ -207,7 +211,7 @@ already-designed mechanic or is **new**.
    requires `effective_access >= apply_limited`. Execution identity
    comes from the registry — the user never chooses it.
 6. **Validate prerequisites** deterministically (account/region/
-   cluster/namespace/state-key/domain/image-digest-immutability/
+   cluster/namespace/runner-reachability/state-key/domain/image-digest-immutability/
    artifact-existence/template-version/naming/size-limits) — stops
    before any AWS contact if invalid. *Reuses `PROVISION_WORKFLOW.md`'s
    "template match happens before any cloud read" ordering, extended
@@ -293,8 +297,8 @@ reasoning trail):
 
 | # | Question | Resolution |
 |---|---|---|
-| 1 | **What backs the Kubernetes "resource types are allowed" check?** Original options: (a) a parallel Kubernetes allow-list file, or (b) template-scoping alone. This doc originally leaned (b). | **Resolved: both controls, not (b) alone — template matching is not sufficient by itself.** New `infra/kubernetes-allowed-resources.json` (parallel to the existing CloudFormation-shaped file, entries shaped `{"api_version", "kind", "actions"}`), initial entries: Namespace/Deployment/Service/Ingress/HPA/ConfigMap, `create`+`update` only — **deletes denied by default** (same action-verb extension `PROVISION_WORKFLOW.md`'s Gap 3 already designed for the AWS list). Secrets, RBAC, CRDs, cluster-wide resources, and IAM changes are excluded from the first application template entirely. Additionally the template declares its own expected resources, and the plan validator checks **three** things per resource: globally allowed, allowed by this template, and inside the target namespace/scope — preserving deny-by-default at every layer. |
-| 2 | **How does OpenTofu's `kubernetes` provider authenticate to the EKS API?** Flagged as a potential credential-leak surface. | **Resolved and verified** (see `COMPOSABLE_PROVISIONER.md`'s Kubernetes-layer section for the full mechanics + sources): the provider's `exec` block runs `aws eks get-token`, which inherits the same short-lived STS credentials from the process environment — the documented mechanism for short-lived cloud tokens per the provider's own docs; no bearer token ever lands in variables/state/plan/LangGraph state. The two permission planes stay distinct: the AWS credential authorizes AWS-provider resources; cluster authorization comes from an **EKS access entry** (verified: AWS's stated successor to `aws-auth`) mapping the execution role to namespace-scoped RBAC. **The access entry + namespace RBAC are bootstrap outputs** — added to the prerequisites list above; the application workflow only consumes them and never creates cluster access dynamically. |
+| 1 | **What backs the Kubernetes "resource types are allowed" check?** Original options: (a) a parallel Kubernetes allow-list file, or (b) template-scoping alone. This doc originally leaned (b). | **Resolved: both controls, not (b) alone — template matching is not sufficient by itself.** New `infra/kubernetes-allowed-resources.json` (parallel to the existing CloudFormation-shaped file, entries shaped `{"api_version", "kind", "actions"}`), initial entries: Deployment/Service/Ingress/HPA/ConfigMap, `create`+`update` only — **deletes denied by default** (same action-verb extension `PROVISION_WORKFLOW.md`'s Gap 3 already designed for the AWS list). Namespace is cluster-scoped and therefore bootstrap-owned; Secrets, RBAC, CRDs, other cluster-wide resources, and IAM changes are excluded from the first application template entirely. Additionally the template declares its own expected resources, and the plan validator checks **three** things per resource: globally allowed, allowed by this template, and inside the target namespace/scope — preserving deny-by-default at every layer. |
+| 2 | **How does OpenTofu's `kubernetes` provider authenticate to the EKS API?** Flagged as a potential credential-leak surface. | **Resolved and verified** (see `COMPOSABLE_PROVISIONER.md`'s Kubernetes-layer section for the full mechanics + sources): the provider's `exec` block runs `aws eks get-token`, which inherits the same short-lived STS credentials from the process environment — the documented mechanism for short-lived cloud tokens per the provider's own docs; no bearer token ever lands in variables/state/plan/LangGraph state. The two permission planes stay distinct: the AWS credential authorizes AWS-provider resources; cluster authorization comes from an **EKS access entry** (verified: AWS's stated successor to `aws-auth`) mapping the execution role to namespace-scoped RBAC. **The namespace, access entry, and namespace RBAC are bootstrap outputs** — added to the prerequisites list above; the application workflow only consumes them and never creates cluster access dynamically. |
 | 3 | **Does `provision-application` retire `skills/provision-infra/SKILL.md`?** | **Resolved: no second top-level provisioning entry point.** `skills/provision-infra/SKILL.md` stays the single catalog trigger, rewritten around the real workflow (select profile → select template → render → plan → security review → approval → apply → verify), with deployment profiles and reusable units under the provider-namespaced structure `COMPOSABLE_PROVISIONER.md` defines. This doc's "Skill composition" tree above is **superseded** by that structure — kept below unedited for the reasoning trail, but `COMPOSABLE_PROVISIONER.md`'s repository shape is the target. |
 | 4 | `security-review-checklist`'s missing `opentofu_local`/Kubernetes section. | Confirmed as originally noted: extend the existing skill file with a third path-specific section following its own `cdk`/`terraform` pattern; no new skill file. |
 
@@ -304,9 +308,11 @@ reasoning trail):
 3. Request extraction + clarification.
 4. Template rendering.
 5. `opentofu_local` plan-only execution.
-6. Deterministic plan checks (blocked on Open Question 1).
+6. Deterministic plan checks using the resolved global + template +
+   namespace controls from Question 1.
 7. Approval pause/resume.
-8. AWS short-lived plan credentials (blocked on Open Question 2 for the Kubernetes-provider half).
+8. AWS short-lived plan credentials, with the Kubernetes provider using
+   the resolved exec-token path from Question 2.
 9. Apply credentials + apply.
 10. Post-apply verification.
 11. Evidence reporting.
