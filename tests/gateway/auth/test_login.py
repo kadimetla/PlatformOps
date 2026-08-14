@@ -68,7 +68,7 @@ def test_begin_device_authorization_posts_client_and_scope():
     assert calls == [
         (
             f"{ISSUER}/application/o/device/",
-            {"client_id": "platformops", "scope": "openid email profile groups"},
+            {"client_id": "platformops", "scope": "openid email profile"},
         )
     ]
     assert result.user_code == "ABCD-EFGH"

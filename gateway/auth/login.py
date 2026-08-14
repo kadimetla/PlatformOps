@@ -16,7 +16,16 @@ class OIDCDeviceClientConfig(BaseModel):
     issuer: str
     client_id: str
     audience: str
-    scopes: tuple[str, ...] = ("openid", "email", "profile", "groups")
+    # No separate "groups" scope -- verified 2026-08-14 against
+    # docs.goauthentik.io/add-secure-apps/providers/oauth2: Authentik's
+    # standard scopes are openid/profile/email/entitlements/offline_access,
+    # and group membership rides on "profile" ("basic profile information,
+    # such as username, name and group membership"), not a scope of its
+    # own. An IdP that did define a real "groups" scope would still work
+    # fine with an extra requested scope it recognizes; Authentik simply
+    # ignores unrecognized ones, which is why requesting a nonexistent
+    # "groups" scope here never broke login -- it just never did anything.
+    scopes: tuple[str, ...] = ("openid", "email", "profile")
 
 
 class OIDCProviderMetadata(BaseModel):
