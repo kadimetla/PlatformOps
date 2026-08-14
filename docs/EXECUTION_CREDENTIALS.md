@@ -27,7 +27,7 @@ exception: already verified in
 | Provision workflow the executor plugs into | Designed only (capability-shaped graph, below) |
 | Approval gate (self-looping interrupt node, `approval_groups` policy, staleness rechecking) | Designed only |
 | Executor sub-graph (dispatch/acquire/invoke/poll/verify/record, `ExecutionRequest`, digest binding, failure taxonomy) | Designed only |
-| `CloudAccessAdapter` Protocol + AWS/Azure/GCP implementations | Designed only — recommended build order: contract + all-three fixtures first, real depth AWS-only |
+| `CloudAccessAdapter` Protocol + AWS/Azure/GCP implementations | Designed only — recommended build order: contract + all-three fixtures first, real depth AWS-only; AWS discovery half (`resolve_principal`/`resolve_execution_grants`) now has its own deep-dive doc, see [AWS_PROVIDER_DISCOVERY.md](AWS_PROVIDER_DISCOVERY.md) |
 | Contract-test fixtures (AWS/Azure/GCP, built from already-verified API response shapes) | Not implemented — buildable now, no live provider account needed |
 
 ## Identity timeline — which identity is active at each phase
