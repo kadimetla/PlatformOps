@@ -60,7 +60,12 @@ def resolve_scope(
     known_workspaces: list[Scope],
     execution_grants: list[ExecutionGrant],
 ) -> ScopeResolution:
-    """Resolve an exact, accessible workspace or request missing fields."""
+    """Resolve an exact, grant-visible workspace or request missing fields.
+
+    RESOLVED establishes target visibility only; it is not authorization to
+    plan or mutate. The dispatcher/workflow must still enforce composite
+    effective_access, including the workspace and org/BU policy ceilings.
+    """
 
     if hint.project is None or hint.workspace is None:
         return ScopeResolution(
