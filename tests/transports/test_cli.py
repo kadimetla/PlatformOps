@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from gateway.auth.claims import OIDCClaims
 from gateway.auth.cli import write_session
 from gateway.auth.sessions import build_actor_session
-from transports.cli import main
+from transports.cli import build_parser, main
 
 
 def _write_test_session(path):
@@ -53,6 +53,16 @@ def test_run_fails_clearly_instead_of_guessing_a_model(capsys):
 
     assert exit_code == 1
     assert "no model provider configured" in capsys.readouterr().err
+
+
+def test_run_parses_scope_as_structured_input():
+    args = build_parser().parse_args(
+        ["run", "deploy invoices", "--scope", "aiq:it/invoices/dev"]
+    )
+
+    assert args.scope.tenant.org_bu == "aiq:it"
+    assert args.scope.project == "invoices"
+    assert args.scope.workspace == "dev"
 
 
 def test_login_requires_issuer(capsys):

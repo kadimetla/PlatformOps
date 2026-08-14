@@ -29,7 +29,7 @@ from uuid import uuid4
 
 from gateway.auth.schemas import ActorRef
 from gateway.auth.sessions import ActorSession
-from gateway.schemas import IntakeRequest
+from gateway.schemas import IntakeRequest, ScopeHint
 from interaction.events import (
     EventKind,
     HITLEvent,
@@ -53,6 +53,7 @@ class _PendingClarification:
     request: IntakeRequest
     interrupt_id: str
     actor_id: str
+    scope_hint: ScopeHint | None
 
 
 class PlatformOpsHarness:
@@ -61,10 +62,16 @@ class PlatformOpsHarness:
         self._pending_intake: dict[str, _PendingClarification] = {}
 
     async def start_run(
-        self, actor: ActorSession, request_id: str, text: str
+        self,
+        actor: ActorSession,
+        request_id: str,
+        text: str,
+        scope_hint: ScopeHint | None = None,
     ) -> HITLEvent | PlatformOpsEvent:
         _require_active_session(actor)
-        return await self._classify(actor, request_id, IntakeRequest(raw_text=text))
+        return await self._classify(
+            actor, request_id, IntakeRequest(raw_text=text), scope_hint=scope_hint
+        )
 
     async def resume_clarification(
         self, actor: ActorSession, request_id: str, interrupt_id: str, answer: str
@@ -100,10 +107,16 @@ class PlatformOpsHarness:
             raw_text=f"{prior.raw_text}\n\nClarification: {answer}",
             clarification_round=prior.clarification_round + 1,
         )
-        return await self._classify(actor, request_id, request)
+        return await self._classify(
+            actor, request_id, request, scope_hint=pending.scope_hint
+        )
 
     async def _classify(
-        self, actor: ActorSession, request_id: str, request: IntakeRequest
+        self,
+        actor: ActorSession,
+        request_id: str,
+        request: IntakeRequest,
+        scope_hint: ScopeHint | None,
     ) -> HITLEvent | PlatformOpsEvent:
         decision = await intake_request(request, self._model)
         actor_ref = ActorRef(user_id=actor.actor.user_id, email=actor.actor.email)
@@ -112,7 +125,10 @@ class PlatformOpsHarness:
         if decision.clarification_questions:
             event_id = str(uuid4())
             self._pending_intake[request_id] = _PendingClarification(
-                request=request, interrupt_id=event_id, actor_id=actor.actor.user_id
+                request=request,
+                interrupt_id=event_id,
+                actor_id=actor.actor.user_id,
+                scope_hint=scope_hint,
             )
             return HITLEvent(
                 event_id=event_id,

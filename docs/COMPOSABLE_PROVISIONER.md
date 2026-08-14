@@ -1,5 +1,6 @@
 ## Status
-Designed only — no code, no directory restructuring performed. This doc
+Designed target with the first non-mutating foundation implemented
+2026-08-14; no directory restructuring or topology/IaC code exists. This doc
 captures the composable-provisioner shape converged on 2026-08-14 (a
 multi-round design discussion that evolved through three iterations —
 per-deployment units under `skills/provision-infra/`, then top-level
@@ -13,14 +14,16 @@ version, not assumed: `checkpointer=False` is a valid argument
 sharing the parent's state schema composes correctly across an approval
 interrupt without re-running on resume, and list edges are required for
 correct joins (see Step 6).
-Everything here is the *target* shape for `workflows/provision/` and a
-`skills/` reorganization; nothing below exists yet except the three
-current skill files, which are the migration *inputs*.
+Most of this remains the *target* shape for `workflows/provision/` and a
+`skills/` reorganization. The real first slice stops after deterministic
+scope resolution, reviewed-profile selection, and typed static-web request
+extraction; see `PROVISION_IMPLEMENTATION_PLAN.md`.
 
 ## Real vs. Designed
 | Area | Status |
 |---|---|
-| Per-run tenant context / `resolve_scope` | Not implemented — today's `ActorSession` correctly remains identity/grants only; the harness has no `RunContext`/`ScopeHint`, and intake carries no scope |
+| Per-run tenant context / `resolve_scope` | First slice implemented 2026-08-14: `ScopeHint` remains outside `ActorSession`, `gateway/scope.py` resolves exact targets against known workspaces plus execution grants, the harness preserves the hint across clarification, and CLI parses `--scope`; durable `RunContext` and a real workspace registry remain unbuilt |
+| `workflows/provision/` request-preparation graph | Implemented 2026-08-14 through `resolve_scope -> select_profile -> extract_profile_request -> END`; returns a non-executable `ProvisionDraft` and is deliberately not routed from intake |
 | `TOPOLOGY_UNIT_REGISTRY` / any unit graph | Not implemented |
 | `ResourceIntent` / `DeploymentPlan` models | Not implemented |
 | Deployment profiles (`aws-kubernetes-static-web`, ...) | Not implemented |

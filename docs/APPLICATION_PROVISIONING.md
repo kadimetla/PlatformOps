@@ -1,5 +1,6 @@
 ## Status
-Designed only — no code. This is the reference deployment contract for
+Designed target with its first non-mutating request-preparation slice
+implemented 2026-08-14. This is the reference deployment contract for
 the first real `workflows/provision/` slice: S3+CloudFront (static
 frontend) + an existing EKS cluster (API backend), AWS-only,
 `opentofu_local`-only. Per explicit instruction, **no code is written
@@ -20,10 +21,10 @@ unblocked for acceptance.
 ## Real vs. Designed
 | Area | Status |
 |---|---|
-| `workflows/provision/` (any node) | Does not exist — confirmed, only `workflows/intake/` exists |
-| Per-run tenant selection / provision `resolve_scope` | Does not exist — tenant selection deliberately belongs to thread/run context, not mutable `ActorSession`; the harness has no `RunContext`/`ScopeHint`, and intake carries no scope |
+| `workflows/provision/` | Request-preparation graph is real: deterministic scope resolution, `aws-static-web` profile selection, and `AwsStaticWebProvisionRequest` extraction; it stops before topology loading, IaC, credentials, approval, or execution and is not yet routed from intake |
+| Per-run tenant selection / provision `resolve_scope` | First slice implemented 2026-08-14 (`ScopeHint`, deterministic resolver, harness preservation, CLI parsing); tenant selection remains outside mutable `ActorSession`; durable `RunContext` and the real workspace registry do not exist, and intake still carries no scope |
 | `templates/aws/kubernetes-static-web/` | Does not exist |
-| `ApplicationProvisionRequest` schema | Does not exist |
+| `ApplicationProvisionRequest` schema | `AwsStaticWebProvisionRequest` is real; the Kubernetes profile contract and discriminated union remain designed only |
 | `security-review-checklist` skill's Kubernetes/`opentofu_local` section | Does not exist — confirmed by reading the skill: it has "Checks common to both paths" + `cdk` + `terraform` sections only, no `opentofu_local` awareness at all, let alone Kubernetes |
 | `infra/allowed-resource-types.json`'s Kubernetes-kind analog | Does not exist — confirmed the real file is CloudFormation-resource-type-shaped (`AWS::S3::Bucket`), and `infra/README.md` explicitly scopes it to "the CDK/CCAPI path" |
 | `skills/provision-infra/SKILL.md`'s Path C (`opentofu_local`) | Does not exist — matches `PROVISION_WORKFLOW.md`'s own Real-vs-Designed row; that skill is CDK/CCAPI + Terraform/HCP-shaped and predates the LangGraph workflow architecture |
@@ -336,10 +337,10 @@ reasoning trail):
 | 4 | `security-review-checklist`'s missing `opentofu_local`/Kubernetes section. | Confirmed as originally noted: extend the existing skill file with a third path-specific section following its own `cdk`/`terraform` pattern; no new skill file. |
 
 ## What should be implemented first
-1. Per-run `TenantRef`/`ScopeHint` plus deterministic `resolve_scope`.
-2. Reviewed profile catalog and profile selection.
-3. Profile-specific `ApplicationProvisionRequest` contracts.
-4. Request extraction + clarification.
+1. ~~Per-run `TenantRef`/`ScopeHint` plus deterministic `resolve_scope`.~~ Implemented 2026-08-14.
+2. Reviewed profile catalog (selection of the initial hard-bounded profile is implemented; trusted file-backed registry remains).
+3. Profile-specific `ApplicationProvisionRequest` contracts (static-web implemented; Kubernetes remains).
+4. ~~Static-web request extraction + clarification.~~ Implemented 2026-08-14.
 5. Topology loading, validation, compilation, and typed plan composition.
 6. Reviewed OpenTofu module rendering.
 7. `opentofu_local` plan-only execution.

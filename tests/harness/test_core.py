@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage
 
 from gateway.auth.claims import OIDCClaims
 from gateway.auth.sessions import build_actor_session
+from gateway.schemas import ScopeHint, TenantRef
 from harness.core import PlatformOpsHarness
 from interaction.events import EventKind, HITLEvent, HITLEventKind, PlatformOpsEvent
 
@@ -35,6 +36,14 @@ def _tool_call(**args):
     return AIMessage(
         content="", tool_calls=[{"name": "select_intent", "args": args, "id": "1"}]
     )
+
+
+class _DirectFake:
+    def __init__(self, *responses):
+        self.responses = list(responses)
+
+    async def ainvoke(self, _messages):
+        return self.responses.pop(0)
 
 
 def test_start_run_resolves_tier2_intent_with_zero_model_calls():
@@ -68,6 +77,52 @@ def test_start_run_returns_hitl_event_on_clarification():
     assert event.kind == HITLEventKind.CLARIFICATION_REQUIRED
     assert event.resume_mode == "reinvoke"
     assert event.payload.clarification_questions[0].question == "which app?"
+
+
+def test_scope_hint_is_preserved_across_intake_clarification():
+    harness = PlatformOpsHarness(
+        _DirectFake(
+            _tool_call(clarifying_question="which app?"),
+            _tool_call(clarifying_question="which operation?"),
+        )
+    )
+    hint = ScopeHint(
+        tenant=TenantRef(org="aiq", bu="it"),
+        project="invoices",
+        workspace="dev",
+    )
+    first = asyncio.run(
+        harness.start_run(_session(), "req-scope", "set this up", scope_hint=hint)
+    )
+
+    asyncio.run(
+        harness.resume_clarification(
+            _session(), "req-scope", first.event_id, "the invoices application"
+        )
+    )
+
+    assert harness._pending_intake["req-scope"].scope_hint == hint
+
+
+def test_parallel_pending_requests_keep_independent_scope_hints():
+    harness = PlatformOpsHarness(
+        _DirectFake(
+            _tool_call(clarifying_question="which app?"),
+            _tool_call(clarifying_question="which app?"),
+        )
+    )
+    dev = ScopeHint(
+        tenant=TenantRef(org="aiq", bu="it"),
+        project="invoices",
+        workspace="dev",
+    )
+    prod = dev.model_copy(update={"workspace": "prod"})
+
+    asyncio.run(harness.start_run(_session(), "req-dev", "set this up", dev))
+    asyncio.run(harness.start_run(_session(), "req-prod", "set this up", prod))
+
+    assert harness._pending_intake["req-dev"].scope_hint == dev
+    assert harness._pending_intake["req-prod"].scope_hint == prod
 
 
 def test_resume_clarification_reinvokes_with_combined_text():

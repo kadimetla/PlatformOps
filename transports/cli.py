@@ -21,6 +21,7 @@ from typing import Callable
 from gateway.auth.cli import DEFAULT_SESSION_PATH, load_grant_mapping, login_once
 from gateway.auth.login import OIDCDeviceClientConfig
 from gateway.auth.sessions import ActorSession, read_session
+from gateway.scope import parse_scope_hint
 from interaction.tui import render_session_detail, render_session_summary
 
 
@@ -100,6 +101,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = subparsers.add_parser("run", help="Run a request (not wired up yet)")
     run.add_argument("request", help="Freeform request text")
+    run.add_argument(
+        "--scope",
+        type=parse_scope_hint,
+        help="Structured target in org:bu/project/workspace form",
+    )
     run.set_defaults(handler=_handle_run)
 
     return parser

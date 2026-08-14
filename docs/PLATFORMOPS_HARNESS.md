@@ -1,7 +1,9 @@
 ## Status
 Designed and partially real as of 2026-07-31. `harness/core.py`'s
 `PlatformOpsHarness` is real, tested code (`start_run`/
-`resume_clarification` only). Multi-session/multi-actor invocation
+`resume_clarification` only). **Updated 2026-08-14:** `start_run`
+accepts an optional per-run `ScopeHint`, and clarification preserves it;
+durable thread/run storage is still absent. Multi-session/multi-actor invocation
 (`ThreadState`/`RunState`/`EventRecord`) is designed only, added same
 day — no persistence, no approval flow, no concurrency control exists
 yet. **Naming note**: this is unrelated to `docs/HARNESS_DESIGN.md`
@@ -22,6 +24,7 @@ contract as precedent for anything in this file.
 |---|---|
 | `PlatformOpsHarness.start_run()` | Real — session validation + intake classification, wrapped as `HITLEvent`/`PlatformOpsEvent` |
 | `PlatformOpsHarness.resume_clarification()` | Real — reinvokes intake with combined text, enforces the 2-round cap before asking a third question |
+| Per-run `ScopeHint` | Real in memory as of 2026-08-14 — accepted by `start_run` and preserved across intake clarification; not persisted and not yet consumed by dispatcher routing |
 | Routing past classification (`route.resolved` → an actual provision/inquiry/bootstrap workflow) | Not implemented — no dispatcher, no downstream workflow exists to route to |
 | Approval resume (`resume_mode="checkpoint_resume"`) | Not implemented — no `resume_approval()` method exists; would need a real LangGraph checkpointer behind a provision/inquiry workflow, neither of which exists |
 | Any transport actually calling the harness | Not implemented — `transports/cli.py`'s `run` command still fails clearly on "no model provider configured" rather than constructing a harness; wiring it in doesn't unblock that decision, it just moves where the same failure would happen |
@@ -62,14 +65,13 @@ class PlatformOpsHarness:
 - **`resume_clarification`** looks up the original `IntakeRequest` from an in-memory `dict[str, IntakeRequest]` keyed by `request_id` (the harness owns this — `HITLEvent`/`IntakeDecision` don't carry the original request text, so something has to remember it across the pause), appends the answer, increments `clarification_round`, and reinvokes. Enforces `docs/INTAKE_HITL_ROUTING.md`'s cap of 2 clarification rounds itself, before a third model call, not after.
 - **No `resume_approval`.** Would need to resume a real LangGraph checkpoint from a provision/inquiry workflow. Neither exists. Adding a method that can't actually do anything would be exactly the "declare a decision by accident" failure mode this doc set keeps calling out — left absent instead.
 
-## Per-Run Tenant And Scope Context — Designed, Not Built
+## Per-Run Tenant And Scope Context — First Slice Built
 `ActorSession` remains identity plus discovered grants. It must not carry
 a mutable `active_tenant`: one actor may run simultaneous threads against
 different org/BUs, and a session-level selection would let one tab change
 another tab's target.
 
-The future provision-capable harness boundary adds structured per-run
-context instead:
+The harness now accepts structured per-run context:
 
 ```python
 async def start_run(
@@ -77,18 +79,20 @@ async def start_run(
     actor: ActorSession,
     request_id: str,
     text: str,
-    scope_hint: ScopeHint,
+    scope_hint: ScopeHint | None = None,
 ) -> HITLEvent | PlatformOpsEvent: ...
 ```
 
-The transport obtains `ScopeHint` from a TUI/UI selector or CLI
-`--scope`; the harness binds it to the thread and actor. Intake still
+The CLI parses `ScopeHint` from `--scope`; a TUI/UI selector can supply
+the same contract later. The harness binds it to the in-memory request
+and actor across clarification. Intake still
 classifies intent only. A routed target workflow deterministically
 resolves the hint against registry and grants, calculates effective
 access from the resulting full `Scope`, and returns clarification rather
 than guessing when a mutation target is incomplete. Actor session/grants
 are supplied as runtime context and are not copied into LangGraph
-checkpoint state.
+checkpoint state. Durable thread binding and workspace-registry-backed
+resolution remain later slices; see `PROVISION_IMPLEMENTATION_PLAN.md`.
 
 ## OpenClaw Comparison — Verified, Naming Is Inverted
 Verified 2026-07-31 directly against OpenClaw's own docs (see

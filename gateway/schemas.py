@@ -41,6 +41,25 @@ class Scope(BaseModel):
         return f"{self.org}:{self.bu}"
 
 
+class TenantRef(BaseModel):
+    """Per-run tenant selection. This is deliberately not session state."""
+
+    org: str = Field(min_length=1)
+    bu: str = Field(min_length=1)
+
+    @property
+    def org_bu(self) -> str:
+        return f"{self.org}:{self.bu}"
+
+
+class ScopeHint(BaseModel):
+    """Structured target supplied by a trusted UI/CLI control."""
+
+    tenant: TenantRef
+    project: str | None = None
+    workspace: str | None = None
+
+
 class ClarificationQuestion(BaseModel):
     field: str
     question: str
