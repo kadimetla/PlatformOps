@@ -20,7 +20,7 @@ current skill files, which are the migration *inputs*.
 ## Real vs. Designed
 | Area | Status |
 |---|---|
-| Active-tenant context / `resolve_scope` | Not implemented — today's `ActorSession` has grants but no selected org/BU context, and intake carries no scope |
+| Per-run tenant context / `resolve_scope` | Not implemented — today's `ActorSession` correctly remains identity/grants only; the harness has no `RunContext`/`ScopeHint`, and intake carries no scope |
 | `TOPOLOGY_UNIT_REGISTRY` / any unit graph | Not implemented |
 | `ResourceIntent` / `DeploymentPlan` models | Not implemented |
 | Deployment profiles (`aws-kubernetes-static-web`, ...) | Not implemented |
@@ -54,6 +54,7 @@ User request
   -> resolve scope                  structured/canonical target -> registry
   -> calculate effective access    requires the resolved scope
   -> planner LLM tool call          select one reviewed profile
+  -> resolve profile registration  request model + topology path
   -> profile request extraction     use that profile's typed schema + HITL
   -> load topology.yaml             version-controlled TopologySpec
   -> topology policy validator      profile becomes executable only here
@@ -71,7 +72,7 @@ acquisition, plan checks, approval, apply, and evidence are never nodes
 the planner may add, remove, or reorder:
 
 ```
-FIXED: resolve actor/workspace -> calculate access -> validate prerequisites
+FIXED: resolve scope/workspace -> calculate access -> validate prerequisites
                                   |
                                   v
 DYNAMIC:                 [validated topology subgraph]
@@ -103,6 +104,7 @@ def merge_unit_results(left: dict, right: dict) -> dict:
 
 class ProvisionState(TypedDict):
     raw_text: str
+    run_context: RunContext
     scope: Scope | None
     auth_context: WorkflowAuthContext
     workspace: WorkspaceContext
@@ -124,14 +126,41 @@ nodes may read them but cannot update them. Credentials never appear in
 this state.
 
 Scope resolution is not performed by today's `IntakeDecision`: the real
-schema carries intent/routing fields only. The first provision slice adds
-a fixed `resolve_scope` node before access calculation. It accepts a
-structured scope hint from a TUI/UI selector or an exact canonical target
-such as `aiq:it/invoices/dev`, validates it against the workspace registry
-and actor grants, and emits a clarification when project/workspace is
-missing or ambiguous. Org/BU comes from the authenticated active-tenant
-context, never an unconstrained LLM guess. The resolved `Scope` is the
-input to effective-access calculation.
+schema carries intent/routing fields only. Active tenant is also **not a
+mutable `ActorSession` field**. A user may have simultaneous threads in
+different tenants, so session-level selection would let one tab change
+another tab's target. The harness instead supplies per-thread/run context:
+
+```python
+class TenantRef(BaseModel):
+    org: str
+    bu: str
+
+    @property
+    def org_bu(self) -> str:
+        return f"{self.org}:{self.bu}"
+
+class ScopeHint(BaseModel):
+    tenant: TenantRef
+    project: str | None = None
+    workspace: str | None = None
+
+class RunContext(BaseModel):
+    thread_id: str
+    actor_id: str
+    scope_hint: ScopeHint
+```
+
+The first provision slice adds a fixed `resolve_scope` node before access
+calculation. It accepts the structured hint from a TUI/UI selector or CLI
+`--scope aiq:it/invoices/dev`, resolves it against the workspace registry,
+and validates it against the actor's current execution grants. The actor
+session is supplied as runtime context, not copied into checkpointed graph
+state. Missing or ambiguous mutation scope produces return-and-reinvoke
+clarification; unknown and unauthorized targets use the same external
+response. Neither org/BU nor project/workspace is accepted from an
+unconstrained LLM guess. The resulting complete `Scope` is the input to
+effective-access calculation.
 
 ### Step 2 — define the graph-as-data schema stored by a profile
 The reviewed profile stores data, never Python, HCL, import paths, or
@@ -305,8 +334,7 @@ async def select_profile(state: ProvisionState, model):
     response = await planner.ainvoke(build_planner_messages(state))
     call = require_exactly_one_tool_call(response)
     selection = ProfileSelection.model_validate(call["args"]["selection"])
-    spec = load_reviewed_topology(selection.profile_id)
-    return {"profile_id": selection.profile_id, "topology_spec": spec}
+    return {"profile_id": selection.profile_id}
 ```
 
 This call only selects a reviewed graph-as-data artifact. It does not
@@ -333,12 +361,24 @@ class AwsStaticWebProvisionRequest(BaseModel):
     frontend_hostname: str
 ```
 
-`extract_profile_request` selects this schema from trusted profile
-registration, extracts and validates its fields, and emits bounded HITL
+`resolve_profile_registration` resolves the selected ID to trusted
+metadata containing its request model, topology path, and profile
+version. `extract_profile_request` uses that registered schema, extracts
+and validates its fields, and emits bounded HITL
 clarification for missing values. A later
 `aws-kubernetes-static-web` profile uses a different registered request
 model containing image, replica, CPU, and memory fields. Those fields do
 not become optional members of one flat universal model.
+
+Only after extraction succeeds does deterministic `load_topology` read
+and validate the reviewed YAML:
+
+```python
+def load_topology(state: ProvisionState):
+    registration = PROFILE_REGISTRY.resolve(state["profile_id"])
+    spec = load_reviewed_topology(registration.topology_path)
+    return {"topology_spec": spec}
+```
 
 ### Step 5 — validate the reviewed topology before compilation
 `validate_topology()` is deterministic and returns either a
@@ -463,8 +503,9 @@ async def run_topology(state: ProvisionState):
 The fixed parent graph is compiled once at application startup:
 
 ```text
-resolve_scope -> resolve_context -> select_profile -> extract_profile_request
-  -> run_topology -> compose_plan
+resolve_scope -> resolve_context -> select_profile
+  -> resolve_profile_registration -> extract_profile_request
+  -> load_topology -> run_topology -> compose_plan
   -> render_opentofu -> tofu_plan -> validate_plan -> approval_interrupt
   -> revalidate -> tofu_apply -> verify -> evidence -> END
 ```
@@ -845,29 +886,29 @@ autonomous agents."
 1. Classify intent; today's intake does not resolve scope.
 2. Resolve and validate scope, then load the workspace and calculate
    effective access.
-3. Have the LLM select an approved profile and load its reviewed
-   `TopologySpec`.
-4. Extract and clarify parameters against that profile's registered
-   request model.
-5. Resolve provider-qualified unit IDs against
+3. Have the LLM select an approved profile ID.
+4. Resolve its trusted registration and extract/clarify parameters
+   against the registered request model.
+5. Load and validate that registration's reviewed `TopologySpec`.
+6. Resolve provider-qualified unit IDs against
    `TOPOLOGY_UNIT_REGISTRY`.
-6. Validate unit inputs, output references, profile membership, and the
+7. Validate unit inputs, output references, profile membership, and the
    dependency DAG.
-7. Compile and invoke the stateless topology subgraph.
-8. Generate `ResourceIntent`s → `DeploymentPlan`.
-9. Render OpenTofu from reviewed templates only.
-10. Provider-specific plan checks (AWS: S3 public access blocked, OAC
+8. Compile and invoke the stateless topology subgraph.
+9. Generate `ResourceIntent`s → `DeploymentPlan`.
+10. Render OpenTofu from reviewed templates only.
+11. Provider-specific plan checks (AWS: S3 public access blocked, OAC
    in use, IAM actions allowed; Azure: public access disabled, role
    assignments allow-listed, private endpoint; GCP: uniform
    bucket-level access, IAM roles allow-listed, no public principals)
-11. Shared security checks (`security-review-checklist`).
-12. Approval (existing gate; `DeploymentPlan.topology_digest` is the
+12. Shared security checks (`security-review-checklist`).
+13. Approval (existing gate; `DeploymentPlan.topology_digest` is the
     artifact-provenance input and covers profile, unit, and template
     versions)
-13. Provider-specific short-lived credentials (`CloudAccessAdapter`).
-14. `tofu apply` of the saved plan.
-15. Provider-specific verification (registered unit verifiers).
-16. Normalized evidence.
+14. Provider-specific short-lived credentials (`CloudAccessAdapter`).
+15. `tofu apply` of the saved plan.
+16. Provider-specific verification (registered unit verifiers).
+17. Normalized evidence.
 
 ## Build order note
 **Refined 2026-08-14:** the earlier version deferred the registry until

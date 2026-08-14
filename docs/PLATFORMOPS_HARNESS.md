@@ -62,6 +62,34 @@ class PlatformOpsHarness:
 - **`resume_clarification`** looks up the original `IntakeRequest` from an in-memory `dict[str, IntakeRequest]` keyed by `request_id` (the harness owns this — `HITLEvent`/`IntakeDecision` don't carry the original request text, so something has to remember it across the pause), appends the answer, increments `clarification_round`, and reinvokes. Enforces `docs/INTAKE_HITL_ROUTING.md`'s cap of 2 clarification rounds itself, before a third model call, not after.
 - **No `resume_approval`.** Would need to resume a real LangGraph checkpoint from a provision/inquiry workflow. Neither exists. Adding a method that can't actually do anything would be exactly the "declare a decision by accident" failure mode this doc set keeps calling out — left absent instead.
 
+## Per-Run Tenant And Scope Context — Designed, Not Built
+`ActorSession` remains identity plus discovered grants. It must not carry
+a mutable `active_tenant`: one actor may run simultaneous threads against
+different org/BUs, and a session-level selection would let one tab change
+another tab's target.
+
+The future provision-capable harness boundary adds structured per-run
+context instead:
+
+```python
+async def start_run(
+    self,
+    actor: ActorSession,
+    request_id: str,
+    text: str,
+    scope_hint: ScopeHint,
+) -> HITLEvent | PlatformOpsEvent: ...
+```
+
+The transport obtains `ScopeHint` from a TUI/UI selector or CLI
+`--scope`; the harness binds it to the thread and actor. Intake still
+classifies intent only. A routed target workflow deterministically
+resolves the hint against registry and grants, calculates effective
+access from the resulting full `Scope`, and returns clarification rather
+than guessing when a mutation target is incomplete. Actor session/grants
+are supplied as runtime context and are not copied into LangGraph
+checkpoint state.
+
 ## OpenClaw Comparison — Verified, Naming Is Inverted
 Verified 2026-07-31 directly against OpenClaw's own docs (see
 Sources), not accepted secondhand. The spirit of "borrow the
@@ -87,8 +115,9 @@ against):
 
 **1. Same actor, multiple sessions** (e.g. Alice logged in via TUI and
 browser). Both may view Alice's own threads if policy allows. The
-harness must still enforce same `actor_id`, same tenant/org scope, and
-an unexpired session on whichever one resumes.
+harness must still enforce same `actor_id`, each thread's independently
+bound tenant/scope hint, and an unexpired session on whichever one
+resumes.
 
 **2. Different actors on the same thread — approval.** The case that
 actually matters: Alice starts a provision run, Bob approves it.

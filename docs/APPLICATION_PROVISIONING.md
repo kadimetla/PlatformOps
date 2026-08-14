@@ -21,7 +21,7 @@ unblocked for acceptance.
 | Area | Status |
 |---|---|
 | `workflows/provision/` (any node) | Does not exist — confirmed, only `workflows/intake/` exists |
-| Active-tenant selection / provision `resolve_scope` | Does not exist — `ActorSession` has no selected org/BU context and `IntakeRequest`/`IntakeDecision` carry no scope |
+| Per-run tenant selection / provision `resolve_scope` | Does not exist — tenant selection deliberately belongs to thread/run context, not mutable `ActorSession`; the harness has no `RunContext`/`ScopeHint`, and intake carries no scope |
 | `templates/aws/kubernetes-static-web/` | Does not exist |
 | `ApplicationProvisionRequest` schema | Does not exist |
 | `security-review-checklist` skill's Kubernetes/`opentofu_local` section | Does not exist — confirmed by reading the skill: it has "Checks common to both paths" + `cdk` + `terraform` sections only, no `opentofu_local` awareness at all, let alone Kubernetes |
@@ -207,11 +207,13 @@ already-designed mechanic or is **new**.
 2. **Intake classifies** `intent=provision` only — it does not resolve
    scope, choose a role, invent infrastructure, or execute anything.
    Provision is not in today's real route table yet.
-3. **Resolve scope** in the fixed provision path from a structured
-   TUI/UI scope hint or exact canonical target. Org/BU comes from the
-   authenticated active-tenant context; project/workspace are validated
-   against the registry and actor grants. Missing or ambiguous targets
-   produce HITL clarification.
+3. **Resolve scope** in the fixed provision path from a per-thread
+   `ScopeHint` supplied by a TUI/UI selector or CLI `--scope`. Tenant
+   selection is not mutable session state: simultaneous threads may
+   target different org/BUs safely. The canonical target is resolved
+   against the registry and actor grants; missing or ambiguous targets
+   produce HITL clarification, while unknown and unauthorized targets
+   are externally indistinguishable.
 4. **Resolve access** from that scope before exposing workspace context:
    ```
    effective_access = min(user_execution_grant,
@@ -226,15 +228,16 @@ already-designed mechanic or is **new**.
    at the `ceiling.py` level (see Real vs. Designed). Deployment
    requires `effective_access >= apply_limited`. Execution identity
    comes from the registry — the user never chooses it.
-5. **Select a reviewed profile** and load its `topology.yaml` plus its
-   registered request model. The model may select only a catalog entry;
-   it does not provide units, edges, or IaC.
+5. **Select a reviewed profile ID** and resolve its trusted registration
+   (request model, topology path, profile version). The model may select
+   only a catalog entry; it does not provide units, edges, or IaC.
 6. **Extract the profile-specific `ApplicationProvisionRequest`**,
    clarifying missing fields. The static-only profile never requires
    Kubernetes parameters.
-7. **Compile and run the reviewed topology**, producing typed resource
-   intents only. For the full profile this composes S3/CloudFront/ACM/
-   Route53/ECR/deployment/service/ingress units. No provider calls occur.
+7. **Load, validate, compile, and run the reviewed topology** only after
+   request extraction succeeds, producing typed resource intents. For
+   the full profile this composes S3/CloudFront/ACM/Route53/ECR/
+   deployment/service/ingress units. No provider calls occur.
 8. **Validate prerequisites** deterministically (account/region/
    cluster/namespace/runner-reachability/state-key/domain/image-digest-immutability/
    artifact-existence/template-version/naming/size-limits) — stops
@@ -333,7 +336,7 @@ reasoning trail):
 | 4 | `security-review-checklist`'s missing `opentofu_local`/Kubernetes section. | Confirmed as originally noted: extend the existing skill file with a third path-specific section following its own `cdk`/`terraform` pattern; no new skill file. |
 
 ## What should be implemented first
-1. Active-tenant selection plus deterministic `resolve_scope`.
+1. Per-run `TenantRef`/`ScopeHint` plus deterministic `resolve_scope`.
 2. Reviewed profile catalog and profile selection.
 3. Profile-specific `ApplicationProvisionRequest` contracts.
 4. Request extraction + clarification.

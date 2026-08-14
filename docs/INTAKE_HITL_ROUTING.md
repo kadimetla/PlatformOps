@@ -48,13 +48,13 @@ workflow per requesting team. The levels split into two kinds:
 
 | Level | Kind | Source | Rule |
 |---|---|---|---|
-| `<org>:<bu>` | Active tenant — governance boundary for this run | Authenticated active-tenant context selected from the actor's grants | Never inferred by an LLM from `raw_text` |
+| `<org>:<bu>` | Active tenant — governance boundary for this run | Per-thread/run `ScopeHint`, selected from the actor's grants | Never mutable session state and never inferred by an LLM from `raw_text` |
 | `project`, `workspace` | Target — where work lands | Structured TUI/UI hint or exact canonical target; target workflow may clarify | Deny by default: resolve against registry and actor grants before context/access is exposed |
 
 Shaping by team happens in deterministic code, keyed on the composite:
 
 ```text
-resolve_route: route = POLICY.get((scope.org_bu, intent))
+resolve_route: route = POLICY.get((run_context.scope_hint.tenant.org_bu, intent))
                no entry -> unsupported, fail closed
 
   (aiq:root, *)                -> full catalog
@@ -62,6 +62,14 @@ resolve_route: route = POLICY.get((scope.org_bu, intent))
   (efx:finance, provision)     -> no entry -> unsupported
   (efx:finance, inquiry)       -> allowed
 ```
+
+**Resolved 2026-08-14:** active tenant belongs to per-thread/run context,
+not `ActorSession`. Identity and discovered grants remain stable session
+facts; target selection may differ across simultaneous browser tabs, TUI
+threads, or CLI runs. A future harness input supplies `ScopeHint`; the
+target workflow resolves it against registry and grants before calculating
+effective access. For mutating requests, no tenant/project/workspace is
+silently defaulted when more than one candidate exists.
 
 The classifier's output never becomes permission — a BU with no policy
 entry for an intent cannot reach that workflow regardless of what the
@@ -197,8 +205,8 @@ class IntakeDecision(BaseModel):
 
 # Corrected:
 class Scope(BaseModel):
-    org: str                         # company: "aiq", "efx", ...  (identity — from
-    bu: str = "root"                 # session/config per A1, never from raw_text)
+    org: str                         # company: "aiq", "efx", ...; resolved from
+    bu: str = "root"                 # per-run ScopeHint and validated against grants
     project: str | None = None      # target; may come from text, validated
     workspace: str | None = None    # target; same
 
@@ -382,9 +390,26 @@ Rules:
 - setting `approval_required = true` is not an approval
 - provision workflows may produce plans before approval, but may not mutate without allow-list match and recorded approval
 
+Provision is added to the real route table only when a minimal
+`workflows/provision/` handler exists. `ready_to_route` then means a
+trusted handler can receive the request, not that the actor is authorized
+to apply. Two deterministic gates remain separate:
+
+```text
+tenant route gate: POLICY[(run_context.scope_hint.tenant.org_bu, intent)]
+target access gate: effective_access(resolved full Scope)
+```
+
+Adding that second real route is also the point where the current private
+`_ROUTE_TABLE` moves to `gateway/dispatcher.py`: a registry of trusted
+route IDs to callables plus tenant policy, never model-emitted module
+paths. Until the provision handler exists, the current fail-closed
+unsupported result is correct.
+
 ## Cloud Roles and Access Flow
-The intake model carries scope and intent, but it must not select or
-grant cloud permissions by itself. Cloud access is resolved later by
+Intake carries intent, not scope. The selected target workflow resolves
+scope from authenticated per-run context, but it must not select or grant
+cloud permissions by itself. Cloud access is resolved later by
 deterministic policy and used only after a downstream workflow has
 produced a concrete plan, deterministic checks have passed, and a
 human has approved the exact mutating action.
@@ -555,7 +580,7 @@ Use this path instead:
 
 ```text
 raw_text says "deploy to finance prod"
-  -> intake records requested target
+  -> intake classifies intent; provision resolve_scope validates target
   -> policy verifies requester can target finance/prod
   -> workflow builds plan
   -> deterministic checks validate resource/action allow-lists
