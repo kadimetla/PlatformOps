@@ -54,8 +54,8 @@ workflow per requesting team. The levels split into two kinds:
 Shaping by team happens in deterministic code, keyed on the composite:
 
 ```text
-resolve_route: route = POLICY.get((run_context.scope_hint.tenant.org_bu, intent))
-               no entry -> unsupported, fail closed
+tenant route gate: route = POLICY.get((run_context.scope_hint.tenant.org_bu, intent))
+                   no entry -> unsupported, fail closed
 
   (aiq:root, *)                -> full catalog
   (aiq:it, provision)          -> allowed, approval always required
