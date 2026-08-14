@@ -137,6 +137,7 @@ def test_missing_session_returns_401(tmp_path):
     response = client.post("/runs", json=_run_input("t-4", "r-1", text="compliance_check: x"))
 
     assert response.status_code == 401
+    assert response.json()["detail"] == "no session -- run 'platformops login' first"
 
 
 def test_expired_session_returns_401(tmp_path):
@@ -145,6 +146,7 @@ def test_expired_session_returns_401(tmp_path):
     response = client.post("/runs", json=_run_input("t-5", "r-1", text="compliance_check: x"))
 
     assert response.status_code == 401
+    assert response.json()["detail"] == "session expired -- run 'platformops login' again"
 
 
 def test_resume_with_no_pending_clarification_returns_400(tmp_path):

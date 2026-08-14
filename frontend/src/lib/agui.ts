@@ -90,6 +90,25 @@ function summarizeResult(result: unknown): string {
   return "Result received";
 }
 
+// @ag-ui/client's HttpAgent throws Error(`HTTP ${status}: ${body}`) on a
+// non-2xx response, with .status and .payload (parsed JSON body, when
+// the response is JSON) attached as extra properties -- verified
+// directly against the installed package
+// (node_modules/@ag-ui/client/dist/index.js). transports/http.py's
+// HTTPExceptions always carry a clean, actionable `detail` string (e.g.
+// "no session -- run 'platformops login' first"); prefer that over the
+// raw stringified-JSON message so a 401 reads as guidance, not a crash.
+function describeAgentError(err: unknown): string {
+  if (err && typeof err === "object" && "payload" in err) {
+    const payload = (err as { payload?: unknown }).payload;
+    if (payload && typeof payload === "object" && "detail" in payload) {
+      const detail = (payload as { detail?: unknown }).detail;
+      if (typeof detail === "string" && detail) return detail;
+    }
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 export interface ThreadClient {
   id: string;
   getState: () => PlatformOpsClientState;
@@ -190,7 +209,7 @@ export function createThreadClient(runsUrl: string, threadId: string): ThreadCli
     try {
       await run(subscriber);
     } catch (err) {
-      appendTurn({ kind: "error", text: err instanceof Error ? err.message : String(err) });
+      appendTurn({ kind: "error", text: describeAgentError(err) });
     } finally {
       setState({ isSubmitting: false });
     }
