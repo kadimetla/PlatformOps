@@ -48,8 +48,8 @@ workflow per requesting team. The levels split into two kinds:
 
 | Level | Kind | Source | Rule |
 |---|---|---|---|
-| `<org>:<bu>` | Identity — who's asking | Authenticated session; static config until an auth layer exists (none on this branch, verified by grep 2026-07-27) | Never parsed from `raw_text` |
-| `project`, `workspace` | Target — where work lands | May be stated in request text, or defaulted | Deny by default: a stated target must match the requester's allowed scope, never trusted as parsed |
+| `<org>:<bu>` | Active tenant — governance boundary for this run | Authenticated active-tenant context selected from the actor's grants | Never inferred by an LLM from `raw_text` |
+| `project`, `workspace` | Target — where work lands | Structured TUI/UI hint or exact canonical target; target workflow may clarify | Deny by default: resolve against registry and actor grants before context/access is exposed |
 
 Shaping by team happens in deterministic code, keyed on the composite:
 
@@ -178,8 +178,9 @@ handling in deterministic code.
 ## Intake Contract
 The output should be a Pydantic model, not prose (**corrected —
 C2/C3/C5 + A1**: `confidence` and `missing_fields` removed,
-`unsupported_reason` and scope added; original shape kept for the
-trail):
+`unsupported_reason` added; `Scope` remains a shared gateway model but
+is resolved after intent routing rather than carried by intake; original
+shape kept for the trail):
 
 ```python
 # Original (superseded):
@@ -207,7 +208,6 @@ class Scope(BaseModel):
         return f"{self.org}:{self.bu}"
 
 class IntakeRequest(BaseModel):
-    scope: Scope
     raw_text: str
     clarification_round: int = 0     # caller increments on re-invoke; caps at 2
 
@@ -402,9 +402,12 @@ The PlatformOps flow:
 
 ```text
 user request
-  -> intake resolves scope + intent
-  -> deterministic POLICY[(scope.org_bu, intent)] lookup
+  -> intake resolves intent only
+  -> deterministic POLICY[(active_org_bu, intent)] lookup
   -> route to known workflow or fail closed
+  -> target workflow resolves project/workspace from a structured hint
+     or canonical target and validates it against registry + actor grants
+  -> calculate effective access for the resolved full Scope
   -> workflow extracts target-specific structure and builds plan
   -> deterministic resource/action checks
   -> human approval for exact mutating plan

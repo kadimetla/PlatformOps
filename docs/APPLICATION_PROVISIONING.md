@@ -158,9 +158,16 @@ designed release workflow — named above as the third boundary category
 specifically so this doesn't get folded into provisioning by default
 later.
 
-## `ApplicationProvisionRequest`
+## Profile-specific provision requests
 ```python
-class ApplicationProvisionRequest(BaseModel):
+class AwsStaticWebProvisionRequest(BaseModel):
+    profile_id: Literal["aws-static-web"]
+    scope: Scope
+    frontend_artifact_uri: str
+    frontend_hostname: str
+
+class AwsKubernetesStaticWebProvisionRequest(BaseModel):
+    profile_id: Literal["aws-kubernetes-static-web"]
     scope: Scope                  # reuses gateway/schemas.py's real
                                    # Scope (org/bu/project/workspace)
                                    # directly -- no new model needed
@@ -170,38 +177,41 @@ class ApplicationProvisionRequest(BaseModel):
     replicas: int
     cpu_request: str
     memory_request: str
+
+ApplicationProvisionRequest = Annotated[
+    AwsStaticWebProvisionRequest | AwsKubernetesStaticWebProvisionRequest,
+    Field(discriminator="profile_id"),
+]
 ```
 Cluster, namespace, region, state key, and execution identity are derived
 from `scope` through the workspace registry, never supplied by the user.
 The requested hostname must fall under the registry's allowed DNS zone.
+The smaller `aws-static-web` first slice therefore never invents
+Kubernetes values. Profile selection occurs before request extraction;
+the selected trusted profile registration chooses the request model.
 Missing application values become clarification questions — this is
 exactly the workflow-specific Stage 2 extraction
 `INTAKE_HITL_ROUTING.md`'s C2 correction already deferred out of intake
 and into "each target workflow" (`PROVISION_WORKFLOW.md`'s
-`extract_desired_spec` step); intake itself only resolves
-`intent=provision` and the `Scope`, same as today.
+`extract_desired_spec` step). Today's intake resolves only intent and an
+intent-keyed route where implemented; it does not carry scope.
 
 ## End-to-end flow
-Numbered 1-16 below; each step notes whether it **reuses** an
+Numbered 1-18 below; each step notes whether it **reuses** an
 already-designed mechanic or is **new**.
 
 1. **User submits a request** (free text, org/bu/project/workspace/
    app name/artifact/image/hostname/replicas/limits). *New wording,
    same intake shape.*
-2. **Intake classifies** `intent=provision`, `target=Scope` — does not
-   choose a role, invent infrastructure, or execute anything. *Reuses
-   `workflows/intake/` exactly as it exists today.*
-3. **Provision workflow extracts `ApplicationProvisionRequest`**,
-   clarifying missing fields. *New schema, reuses the deferred-
-   clarification pattern.*
-4. **Match a reviewed template** — `templates/aws/kubernetes-static-web/`,
-   containing S3/CloudFront/ACM/Route53/ECR/deployment/
-   service/ingress modules. **Reuses `PROVISION_WORKFLOW.md`'s
-   template-first rule verbatim**: the runtime renders an
-   already-reviewed template with validated parameters — it never asks
-   an LLM to generate OpenTofu. A new template needs normal code
-   review before use, matching that doc's Level 1/2/3 split exactly.
-5. **Resolve access**:
+2. **Intake classifies** `intent=provision` only — it does not resolve
+   scope, choose a role, invent infrastructure, or execute anything.
+   Provision is not in today's real route table yet.
+3. **Resolve scope** in the fixed provision path from a structured
+   TUI/UI scope hint or exact canonical target. Org/BU comes from the
+   authenticated active-tenant context; project/workspace are validated
+   against the registry and actor grants. Missing or ambiguous targets
+   produce HITL clarification.
+4. **Resolve access** from that scope before exposing workspace context:
    ```
    effective_access = min(user_execution_grant,
                            workspace_max_capability,
@@ -215,7 +225,16 @@ already-designed mechanic or is **new**.
    at the `ceiling.py` level (see Real vs. Designed). Deployment
    requires `effective_access >= apply_limited`. Execution identity
    comes from the registry — the user never chooses it.
-6. **Validate prerequisites** deterministically (account/region/
+5. **Select a reviewed profile** and load its `topology.yaml` plus its
+   registered request model. The model may select only a catalog entry;
+   it does not provide units, edges, or IaC.
+6. **Extract the profile-specific `ApplicationProvisionRequest`**,
+   clarifying missing fields. The static-only profile never requires
+   Kubernetes parameters.
+7. **Compile and run the reviewed topology**, producing typed resource
+   intents only. For the full profile this composes S3/CloudFront/ACM/
+   Route53/ECR/deployment/service/ingress units. No provider calls occur.
+8. **Validate prerequisites** deterministically (account/region/
    cluster/namespace/runner-reachability/state-key/domain/image-digest-immutability/
    artifact-existence/template-version/naming/size-limits) — stops
    before any AWS contact if invalid. *Reuses `PROVISION_WORKFLOW.md`'s
@@ -223,27 +242,31 @@ already-designed mechanic or is **new**.
    with Kubernetes-specific checks (cluster/namespace) — see Open
    Question 1 below on what backs the resource-type-allowed check
    specifically.*
-7. **Render OpenTofu files** into `provision_artifacts/<request_id>/`
+9. **Render OpenTofu files** into `provision_artifacts/<request_id>/`
    (`main.tf`/`variables.tf`/`outputs.tf`/`backend.tf`/
    `terraform.tfvars.json`). **Exactly** the directory
    `PROVISION_WORKFLOW.md` already designed as
    `ExecutionRequest.artifact_path`'s target — no new shape. Same
    credential-never-in-these-files rule already stated there.
-8. **Acquire plan credentials** (STS AssumeRole → short-lived read/
-   plan-capable creds → `tofu init`/`validate`/`plan -out=plan.bin`,
-   discarded after). **Exactly** `PROVISION_WORKFLOW.md`'s
+10. **Acquire plan credentials** (STS AssumeRole → short-lived
+   plan-tier creds → `tofu init`/`validate`/`plan -out=plan.bin`,
+   discarded after). Plan-tier is **non-resource-mutating, not
+   read-only** — `tofu plan` locks state by default and this design's
+   backend sets `use_lockfile = true`, so the identity must be able to
+   write the lock object (corrected 2026-08-14, see
+   `PROVISION_WORKFLOW.md`'s plan-credential section). **Exactly** `PROVISION_WORKFLOW.md`'s
    `opentofu_local` two-credential-acquisition design — see Open
    Question 2 below on the Kubernetes-provider half specifically.
-9. **Build and inspect the plan** — reject unexpected deletes or
+11. **Build and inspect the plan** — reject unexpected deletes or
    changes outside the requested scope. *Reuses the existing
    `describe_current`/`build_plan` diff shape.*
-10. **Deterministic security checks** — resource types/region/cost/
+12. **Deterministic security checks** — resource types/region/cost/
     no-unapproved-deletes/state-key/cluster+namespace/IAM-changes-
     absent/public-S3-disabled/OAC-in-use/image-immutable/resource-
     limits-present. *Extends `security-review-checklist`, which today
     has no `opentofu_local` or Kubernetes section at all — confirmed by
     reading the skill file. See Open Question 4.*
-11. **Create an approval request** (scope, requester, IaC artifact
+13. **Create an approval request** (scope, requester, IaC artifact
     provenance (`topology_digest` for this composed deployment), plan
     digest, current-state fingerprint, policy snapshot, plain-
     English summary, required approval count). **Reuses**
@@ -251,24 +274,24 @@ already-designed mechanic or is **new**.
     `approval_digest` formula directly — no new fields needed, the plan
     digest already covers a Kubernetes-inclusive `plan.json`. No apply
     credential exists during the pause.
-12. **Revalidate on resume** — access, approver authority, digest
+14. **Revalidate on resume** — access, approver authority, digest
     match, policy/template drift, infrastructure drift, execution
     identity still exists. *Reuses the existing resume revalidation
     step verbatim.*
-13. **Acquire apply credentials**, scoped to the registered workspace
+15. **Acquire apply credentials**, scoped to the registered workspace
     and allow-list. *Reuses the existing apply-phase acquisition.*
-14. **Execute** — `tofu init -input=false` / `tofu apply -input=false
+16. **Execute** — `tofu init -input=false` / `tofu apply -input=false
     plan.bin`. Executor is non-intelligent: no resource/role choice, no
     plan modification, no destructive retries, no free text, no
     approval bypass. *Reuses `EXECUTION_CREDENTIALS.md`'s existing
     executor-non-intelligence rule, restated for this path.*
-15. **Verify independently** — CloudFront deployed, S3 private,
+17. **Verify independently** — CloudFront deployed, S3 private,
     CloudFront can read via OAC, DNS exists, Deployment available, pods
     ready, Service has endpoints, Ingress has an address, health
     endpoint responds. A clean OpenTofu exit code alone is not
     sufficient. *New verification list, same "verify, don't trust exit
     code" principle already used elsewhere in this design set.*
-16. **Record evidence and report** — request ID, actor, scope,
+18. **Record evidence and report** — request ID, actor, scope,
     template version, plan digest, approval IDs, execution role,
     credential expiry, OpenTofu version, state key, resources changed,
     outputs, verification results, failure details; user sees

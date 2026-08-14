@@ -49,8 +49,11 @@ with no execution authority until deterministic validation succeeds.
 
 ```
 User request
-  -> intake graph (exists today)
-  -> planner LLM tool call          select reviewed profile + extract params
+  -> intake graph                   classify intent only
+  -> resolve scope                  structured/canonical target -> registry
+  -> calculate effective access    requires the resolved scope
+  -> planner LLM tool call          select one reviewed profile
+  -> profile request extraction     use that profile's typed schema + HITL
   -> load topology.yaml             version-controlled TopologySpec
   -> topology policy validator      profile becomes executable only here
   -> topology unit registry         planning units only; no executor entries
@@ -98,9 +101,12 @@ def merge_unit_results(left: dict, right: dict) -> dict:
     return merged
 
 class ProvisionState(TypedDict):
-    request: ApplicationProvisionRequest
+    raw_text: str
+    scope: Scope | None
     auth_context: WorkflowAuthContext
     workspace: WorkspaceContext
+    profile_id: str | None
+    application_request: ApplicationProvisionRequest | None
     topology_spec: TopologySpec | None
     unit_results: Annotated[dict[str, UnitResult], merge_unit_results]
     deployment_plan: DeploymentPlan | None
@@ -111,9 +117,20 @@ class ProvisionState(TypedDict):
     verification: VerificationResult | None
 ```
 
-`auth_context` and `workspace` are produced before the dynamic subgraph.
-Unit nodes may read them but cannot update them. Credentials never appear
-in this state.
+`scope`, `auth_context`, `workspace`, and the profile-specific
+`application_request` are produced before the dynamic subgraph. Unit
+nodes may read them but cannot update them. Credentials never appear in
+this state.
+
+Scope resolution is not performed by today's `IntakeDecision`: the real
+schema carries intent/routing fields only. The first provision slice adds
+a fixed `resolve_scope` node before access calculation. It accepts a
+structured scope hint from a TUI/UI selector or an exact canonical target
+such as `aiq:it/invoices/dev`, validates it against the workspace registry
+and actor grants, and emits a clarification when project/workspace is
+missing or ambiguous. Org/BU comes from the authenticated active-tenant
+context, never an unconstrained LLM guess. The resolved `Scope` is the
+input to effective-access calculation.
 
 ### Step 2 — define the graph-as-data schema stored by a profile
 The reviewed profile stores data, never Python, HCL, import paths, or
@@ -257,11 +274,11 @@ approval, and evidence nodes live under `workflows/provision/` and are
 never imported into this registry. Metadata such as `phase="topology"`
 may remain as a consistency check, but it is not the security boundary.
 
-### Step 4 — let the LLM select a reviewed profile
+### Step 4 — select a reviewed profile, then extract its request
 Do not bind every unit or mutation-capable operation to the model. Bind
 one tool whose arguments select a profile from the catalog. Application
-parameters are produced by the workflow's typed request-extraction node,
-not copied into arbitrary per-unit input maps by the planner:
+parameters are produced afterward by a separate typed request-extraction
+node, not copied into arbitrary per-unit input maps by the planner:
 
 ```python
 class ProfileSelection(BaseModel):
@@ -279,7 +296,7 @@ and parses the call arguments into state; it does not execute a
 mutation-capable tool:
 
 ```python
-async def propose_topology(state: ProvisionState, model):
+async def select_profile(state: ProvisionState, model):
     planner = model.bind_tools(
         [select_deployment_profile],
         tool_choice="select_deployment_profile",
@@ -288,7 +305,7 @@ async def propose_topology(state: ProvisionState, model):
     call = require_exactly_one_tool_call(response)
     selection = ProfileSelection.model_validate(call["args"]["selection"])
     spec = load_reviewed_topology(selection.profile_id)
-    return {"topology_spec": spec}
+    return {"profile_id": selection.profile_id, "topology_spec": spec}
 ```
 
 This call only selects a reviewed graph-as-data artifact. It does not
@@ -297,6 +314,25 @@ compile a graph, run OpenTofu, or invoke provider APIs. Session identity,
 workspace target, account, region, cluster, namespace, state key, and
 execution identity remain hidden runtime context; they are never tool
 arguments the LLM chooses.
+
+Profile selection happens before parameter extraction because profiles
+have different contracts. The first profile requires only frontend
+fields:
+
+```python
+class AwsStaticWebProvisionRequest(BaseModel):
+    profile_id: Literal["aws-static-web"]
+    scope: Scope
+    frontend_artifact_uri: str
+    frontend_hostname: str
+```
+
+`extract_profile_request` selects this schema from trusted profile
+registration, extracts and validates its fields, and emits bounded HITL
+clarification for missing values. A later
+`aws-kubernetes-static-web` profile uses a different registered request
+model containing image, replica, CPU, and memory fields. Those fields do
+not become optional members of one flat universal model.
 
 ### Step 5 — validate the proposal before compilation
 `validate_topology()` is deterministic and returns either a
@@ -421,7 +457,8 @@ async def run_topology(state: ProvisionState):
 The fixed parent graph is compiled once at application startup:
 
 ```text
-resolve_context -> propose_topology -> run_topology -> compose_plan
+resolve_scope -> resolve_context -> select_profile -> extract_profile_request
+  -> run_topology -> compose_plan
   -> render_opentofu -> tofu_plan -> validate_plan -> approval_interrupt
   -> revalidate -> tofu_apply -> verify -> evidence -> END
 ```
@@ -799,28 +836,32 @@ unit granularity so "many small skills" never drifts into "many small
 autonomous agents."
 
 ## Execution flow (per provider, same spine)
-1. Resolve the authenticated workspace and its composition policy.
-2. Have the LLM select an approved profile and extract typed application
-   parameters; load that profile's reviewed `TopologySpec`.
-3. Resolve provider-qualified unit IDs against
+1. Classify intent; today's intake does not resolve scope.
+2. Resolve and validate scope, then load the workspace and calculate
+   effective access.
+3. Have the LLM select an approved profile and load its reviewed
+   `TopologySpec`.
+4. Extract and clarify parameters against that profile's registered
+   request model.
+5. Resolve provider-qualified unit IDs against
    `TOPOLOGY_UNIT_REGISTRY`.
-4. Validate unit inputs, output references, profile membership, and the
+6. Validate unit inputs, output references, profile membership, and the
    dependency DAG.
-5. Compile and invoke the stateless topology subgraph.
-6. Generate `ResourceIntent`s → `DeploymentPlan`.
-7. Render OpenTofu from reviewed templates only.
-8. Provider-specific plan checks (AWS: S3 public access blocked, OAC
+7. Compile and invoke the stateless topology subgraph.
+8. Generate `ResourceIntent`s → `DeploymentPlan`.
+9. Render OpenTofu from reviewed templates only.
+10. Provider-specific plan checks (AWS: S3 public access blocked, OAC
    in use, IAM actions allowed; Azure: public access disabled, role
    assignments allow-listed, private endpoint; GCP: uniform
    bucket-level access, IAM roles allow-listed, no public principals)
-9. Shared security checks (`security-review-checklist`).
-10. Approval (existing gate; `DeploymentPlan.topology_digest` is the
+11. Shared security checks (`security-review-checklist`).
+12. Approval (existing gate; `DeploymentPlan.topology_digest` is the
     artifact-provenance input and covers profile, unit, and template
     versions)
-11. Provider-specific short-lived credentials (`CloudAccessAdapter`).
-12. `tofu apply` of the saved plan.
-13. Provider-specific verification (registered unit verifiers).
-14. Normalized evidence.
+13. Provider-specific short-lived credentials (`CloudAccessAdapter`).
+14. `tofu apply` of the saved plan.
+15. Provider-specific verification (registered unit verifiers).
+16. Normalized evidence.
 
 ## Build order note
 **Refined 2026-08-14:** the earlier version deferred the registry until
