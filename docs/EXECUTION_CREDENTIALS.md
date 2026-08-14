@@ -604,11 +604,13 @@ also drift because someone else changed the live infrastructure while
 approval sat paused. That doc covers the mechanism (Terraform state
 serial/lineage vs. a CCAPI snapshot hash) and why it matters more for
 changes to existing stacks specifically. **Extended again** with a
-sixth input, `template_version` — binds approval to the template
-library's own version, catching a template-library change between
-plan and apply even in the rare case where the rendered `plan.json`
-happens to look unchanged. Full six-input formula and rationale live
-in that doc's "OpenTofu Local Runner" section — not repeated here.
+sixth artifact-provenance input — `template_version` for a monolithic
+template or `topology_digest` for a composed deployment. The latter
+covers the normalized topology plus profile, unit, and template
+versions. Both catch an IaC-library or composition change between plan
+and apply even when the rendered `plan.json` happens to look unchanged.
+The full six-input formula and rationale live in that doc's "OpenTofu
+Local Runner" section — not repeated here.
 
 ### The fork that matters: CCAPI is per-resource, Terraform is per-run
 Kept explicit rather than hidden behind a generic "execute tool" call,

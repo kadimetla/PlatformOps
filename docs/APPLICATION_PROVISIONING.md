@@ -59,6 +59,11 @@ must be requested in `us-east-1` regardless of where the API/EKS
 cluster runs — a CloudFront-specific constraint, not a general ACM
 one.
 
+In the composable design, that bucket policy is its own
+`aws.s3.cloudfront_oac_policy` join unit. It consumes both the bucket ID
+and distribution ARN; placing it inside either upstream unit would
+create a render-time dependency cycle.
+
 **EKS managed node groups, not Fargate, for the first target** —
 verified: Fargate doesn't support DaemonSets, privileged containers,
 `hostNetwork`/`hostPort`, and requires private subnets with NAT
@@ -238,8 +243,9 @@ already-designed mechanic or is **new**.
     limits-present. *Extends `security-review-checklist`, which today
     has no `opentofu_local` or Kubernetes section at all — confirmed by
     reading the skill file. See Open Question 4.*
-11. **Create an approval request** (scope, requester, template version,
-    plan digest, current-state fingerprint, policy snapshot, plain-
+11. **Create an approval request** (scope, requester, IaC artifact
+    provenance (`topology_digest` for this composed deployment), plan
+    digest, current-state fingerprint, policy snapshot, plain-
     English summary, required approval count). **Reuses**
     `EXECUTION_CREDENTIALS.md`/`PROVISION_WORKFLOW.md`'s six-input
     `approval_digest` formula directly — no new fields needed, the plan

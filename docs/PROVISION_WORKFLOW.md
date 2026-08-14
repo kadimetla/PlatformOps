@@ -25,7 +25,7 @@ against current docs 2026-07-30 — see Sources/Verify before build.
 | `skills/provision-infra/SKILL.md`'s Path A step 1 ("draft the CDK app") | Real, current, and now contradicted by this doc's template-first design — flagged, not yet updated |
 | `skills/provision-infra/SKILL.md`'s Path C (`opentofu_local`) | Not implemented — the file only has Paths A/B today; this toolchain has no skill entry yet |
 | `opentofu_local` runner (state backend, runner directory, two-phase credential acquisition) | Designed only, verified against current OpenTofu docs 2026-07-30 |
-| `template_version` in `approval_digest` | Designed only — sixth input, extends Gap 2's five-input formula, corrected there in place |
+| IaC artifact provenance in `approval_digest` | Designed only — sixth input is `template_version` for a monolithic template or `topology_digest` for a composed deployment |
 | `migrate_workspace_to_opentofu` admin workflow | Designed only |
 | Registry `iac_engine`/`state_owner`/`previous_state_owner`/`migrated_at` fields | Designed only — third incremental registry extension |
 | Backend-config-must-never-carry-credentials rule | Verified verbatim against current OpenTofu docs 2026-07-31; not previously violated but not previously stated as a rule either |
@@ -304,7 +304,7 @@ no credential-like strings in rendered files or tool output
 provider/account/region matches the registry entry
 ```
 
-### Approval digest gains a sixth input: template version
+### Approval digest gains a sixth input: IaC artifact provenance
 **Corrects `EXECUTION_CREDENTIALS.md`'s formula again, in place, not
 silently.** Gap 2 above extended the original four-input formula to
 five with `current_state_fingerprint`. This adds a sixth:
@@ -315,14 +315,17 @@ approval_digest = hash(
     policy_snapshot,
     allow_list_version,
     execution_identity,
-    template_version,
+    artifact_provenance,
 )
 ```
-Binding the template's own version means a template-library change
-between plan and apply (someone merges an updated `static_site`
-template mid-approval) is caught even in the edge case where the
-rendered `plan.json` happens to look unchanged — provenance, not just
-content, is part of what approval attaches to.
+For a monolithic reviewed template, `artifact_provenance` is its
+`template_version`. For a composed deployment it is the
+`topology_digest` defined by `COMPOSABLE_PROVISIONER.md`, covering the
+normalized topology, profile version, participating unit versions, and
+template digests. Either form catches a library or composition change
+between plan and apply even when the rendered `plan.json` happens to
+look unchanged — provenance, not just content, is part of what approval
+attaches to.
 
 ### Failure taxonomy — toolchain-specific examples, same three classes
 No new classes, matching `EXECUTION_CREDENTIALS.md`'s existing
@@ -603,8 +606,9 @@ missing a Path C for `opentofu_local` — neither applied yet, both
 pending `workflows/provision/`'s actual build. Shares the executor
 sub-graph and failure taxonomy with
 [EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md) unchanged — this
-doc adds a sixth input to the digest (`template_version`, extending
-Gap 2's fifth), an action dimension to the allow-list, the
+doc adds a sixth artifact-provenance input to the digest
+(`template_version` for one template; `topology_digest` for a composed
+deployment, extending Gap 2's fifth), an action dimension to the allow-list, the
 template-first IaC generation model, and the `opentofu_local`
 toolchain's two-phase credential acquisition, nothing about the shared
 execution mechanics themselves. Indexed from
