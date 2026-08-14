@@ -173,9 +173,13 @@ inject into the Terraform/CDK/CCAPI process environment
 This diagram shows one acquisition, which is accurate for
 `ccapi`/`hcp_terraform`/Azure/GCP as written — but not for the
 `opentofu_local` toolchain (`PROVISION_WORKFLOW.md`): running `tofu`
-locally means a plan-phase acquisition (read-only, discarded before
-the approval pause) and a separate apply-phase acquisition (after
-resume, apply-tier), not one acquisition at a single execution moment.
+locally means a plan-phase acquisition (plan-tier — non-resource-
+mutating, but **not** strictly read-only: `tofu plan` locks state by
+default, and with this design's `use_lockfile = true` backend that
+lock is an S3 object write; corrected 2026-08-14, see that doc's
+plan-credential section — discarded before the approval pause) and a
+separate apply-phase acquisition (after resume, apply-tier), not one
+acquisition at a single execution moment.
 That doc's "Two credential acquisitions, not one" covers the mechanism
 and why it doesn't apply to the toolchains above.
 

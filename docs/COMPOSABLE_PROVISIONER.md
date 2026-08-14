@@ -325,6 +325,38 @@ for at most two rounds, matching the harness's existing clarification cap.
 An invalid graph is never partially compiled or "best effort" executed.
 
 ### Step 6 — compile the validated unit DAG into a stateless subgraph
+
+**First, whether LangGraph is warranted here at all.** The *parent*
+graph unambiguously needs it: the approval gate is an `interrupt()`
+across a multi-day pause with checkpointed resume, which is exactly
+what LangGraph exists for. The *topology subgraph* is a judgment call
+and is recorded as one rather than assumed. It is compiled with
+`checkpointer=False`, contains no interrupts, and for the first
+profile is three pure functions producing typed intents — a
+topological sort plus `asyncio.gather` would cover that in far less
+machinery.
+
+```
+LangGraph earns the topology slot when:   a plain planner is enough when:
+  units run concurrently on real          the DAG is small, every unit is a
+    branch fan-out                          pure typed function, and nothing
+  the reducer's conflict check is           needs tracing beyond a log line
+    load-bearing
+  a unit is itself multi-step
+    (registered planner is a graph,
+    not a function)
+  per-node tracing/observability
+    matters operationally
+```
+Decision: use LangGraph, because unit planners are already allowed to
+*be* compiled graphs when a unit has real multi-step behavior (Step 3),
+and one execution model for both cases beats two. But the compiler
+below must stay roughly this size — a few dozen lines wiring registered
+builders. **If it grows conditional edges, retries, or per-unit control
+flow, that is the signal the topology slot has taken on lifecycle
+responsibilities that belong in the fixed parent**, not a reason to
+extend the compiler.
+
 The parent graph is already fixed. Its `run_topology` node compiles and
 invokes a per-request subgraph:
 

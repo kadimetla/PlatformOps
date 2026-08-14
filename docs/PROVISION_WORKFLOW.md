@@ -246,7 +246,10 @@ exist for `hcp_terraform`, where HCP does that read internally.
 
 ```
 PLAN PHASE:
-  acquire a short-lived, READ/plan-capable credential
+  acquire a short-lived, plan-tier credential -- non-resource-mutating,
+  but NOT strictly read-only: it must be able to write the state
+  lock object (see the correction under "the credential tier for
+  each phase", below)
   tofu init -input=false
   tofu validate -no-color
   tofu plan -input=false -lock-timeout=5m -out=plan.bin
@@ -277,18 +280,45 @@ The credential tier for each phase follows the same rule
 different workflows:
 
 ```
-requester has describe:      plan credential = read-only; no apply phase reached
-requester has plan:          plan credential = read-only/plan-tier; no apply phase
-requester has apply_limited: plan credential = read-only/plan-tier (NOT
+requester has describe:      plan credential = plan-tier; no apply phase reached
+requester has plan:          plan credential = plan-tier; no apply phase
+requester has apply_limited: plan credential = plan-tier (NOT
                               apply-tier, even though the requester
                               could go higher) -> after approval,
                               apply credential = apply-tier
 ```
 For MVP, one `apply_limited` role may serve both phases in dev if a
 separate planner identity doesn't exist yet; prod should use a
-strictly read-only/plan-tier identity for the plan phase regardless of
-what the requester's own grant allows — same per-request-not-per-actor
+plan-tier identity for the plan phase regardless of what the
+requester's own grant allows — same per-request-not-per-actor
 discipline as the inquiry design.
+
+**Corrected 2026-08-14 — "plan-tier" is NOT "strictly read-only", and
+writing that IAM policy literally would break `tofu plan`.** Earlier
+wording here and in
+[EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md) called the
+plan-phase credential "read-only". Verified against current OpenTofu
+docs: `tofu plan` **acquires a state lock by default** (`-lock=false`
+is the opt-out, and `-lock-timeout` exists precisely because locking is
+on), and this design's own backend block sets `use_lockfile = true` —
+so the lock is an **S3 object write**, not a metadata operation. Plan
+also refreshes against live provider APIs by default (`-refresh=false`
+opts out) and writes `plan.bin`/`plan.json` to local disk.
+
+The accurate property is **non-resource-mutating**: the plan identity
+never creates, updates, or deletes a managed resource, but it does
+need
+```
+read  on the target resources being refreshed
+read  on the state object
+WRITE on the lock object in the state bucket (s3:PutObject +
+      s3:DeleteObject on the .tflock path)
+KMS decrypt/encrypt if the state bucket uses SSE-KMS
+```
+A policy built from `Get*`/`List*`/`Describe*` alone fails at lock
+acquisition before it ever produces a plan. Left as an explicit
+correction rather than a silent reword because "read-only" is the
+natural thing to write into a real IAM policy from the old wording.
 
 ### Deterministic checks, extended for a local plan.json
 In addition to the existing action-verb allow-list (Gap 3, below):
