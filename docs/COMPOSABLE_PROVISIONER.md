@@ -20,6 +20,7 @@ current skill files, which are the migration *inputs*.
 ## Real vs. Designed
 | Area | Status |
 |---|---|
+| Active-tenant context / `resolve_scope` | Not implemented — today's `ActorSession` has grants but no selected org/BU context, and intake carries no scope |
 | `TOPOLOGY_UNIT_REGISTRY` / any unit graph | Not implemented |
 | `ResourceIntent` / `DeploymentPlan` models | Not implemented |
 | Deployment profiles (`aws-kubernetes-static-web`, ...) | Not implemented |
@@ -315,6 +316,11 @@ workspace target, account, region, cluster, namespace, state key, and
 execution identity remain hidden runtime context; they are never tool
 arguments the LLM chooses.
 
+If more than one reviewed profile matches the request, profile selection
+returns a clarification rather than guessing. Scope clarification and
+profile clarification use the same bounded return-and-reinvoke HITL
+pattern as intake; neither reaches the mutation approval checkpoint.
+
 Profile selection happens before parameter extraction because profiles
 have different contracts. The first profile requires only frontend
 fields:
@@ -334,7 +340,7 @@ clarification for missing values. A later
 model containing image, replica, CPU, and memory fields. Those fields do
 not become optional members of one flat universal model.
 
-### Step 5 — validate the proposal before compilation
+### Step 5 — validate the reviewed topology before compilation
 `validate_topology()` is deterministic and returns either a
 `ValidatedTopology` or a list of precise errors. It checks:
 

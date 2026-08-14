@@ -21,6 +21,7 @@ unblocked for acceptance.
 | Area | Status |
 |---|---|
 | `workflows/provision/` (any node) | Does not exist — confirmed, only `workflows/intake/` exists |
+| Active-tenant selection / provision `resolve_scope` | Does not exist — `ActorSession` has no selected org/BU context and `IntakeRequest`/`IntakeDecision` carry no scope |
 | `templates/aws/kubernetes-static-web/` | Does not exist |
 | `ApplicationProvisionRequest` schema | Does not exist |
 | `security-review-checklist` skill's Kubernetes/`opentofu_local` section | Does not exist — confirmed by reading the skill: it has "Checks common to both paths" + `cdk` + `terraform` sections only, no `opentofu_local` awareness at all, let alone Kubernetes |
@@ -332,20 +333,22 @@ reasoning trail):
 | 4 | `security-review-checklist`'s missing `opentofu_local`/Kubernetes section. | Confirmed as originally noted: extend the existing skill file with a third path-specific section following its own `cdk`/`terraform` pattern; no new skill file. |
 
 ## What should be implemented first
-1. `ApplicationProvisionRequest`.
-2. The reviewed OpenTofu template contract.
-3. Request extraction + clarification.
-4. Template rendering.
-5. `opentofu_local` plan-only execution.
-6. Deterministic plan checks using the resolved global + template +
+1. Active-tenant selection plus deterministic `resolve_scope`.
+2. Reviewed profile catalog and profile selection.
+3. Profile-specific `ApplicationProvisionRequest` contracts.
+4. Request extraction + clarification.
+5. Topology loading, validation, compilation, and typed plan composition.
+6. Reviewed OpenTofu module rendering.
+7. `opentofu_local` plan-only execution.
+8. Deterministic plan checks using the resolved global + template +
    namespace controls from Question 1.
-7. Approval pause/resume.
-8. AWS short-lived plan credentials, with the Kubernetes provider using
+9. Approval pause/resume.
+10. AWS short-lived plan credentials, with the Kubernetes provider using
    the resolved exec-token path from Question 2.
-9. Apply credentials + apply.
-10. Post-apply verification.
-11. Evidence reporting.
-12. EKS/VPC/bootstrap workflows — later, separate.
+11. Apply credentials + apply.
+12. Post-apply verification.
+13. Evidence reporting.
+14. EKS/VPC/bootstrap workflows — later, separate.
 
 ## Sources
 - [AWS: Restrict access to an Amazon S3 origin (OAC vs. OAI)](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html) — verified 2026-08-14: OAC explicitly recommended over legacy OAI; bucket-policy `AWS:SourceArn` condition scopes access to one distribution
