@@ -61,9 +61,6 @@ body {
   flex-shrink: 0;
   padding: 0.75rem 1.25rem;
   border-bottom: 1px solid var(--pops-border);
-}
-
-.app-header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -75,18 +72,7 @@ body {
   flex: 1;
 }
 
-.thread-view-header h1 {
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: var(--pops-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.new-thread-button,
-.back-button,
-.close-thread-button {
+.new-thread-button {
   padding: 0.4rem 0.8rem;
   border: 1px solid var(--pops-border);
   border-radius: 6px;
@@ -97,9 +83,7 @@ body {
   white-space: nowrap;
 }
 
-.new-thread-button:hover,
-.back-button:hover,
-.close-thread-button:hover {
+.new-thread-button:hover {
   background: rgba(127, 127, 127, 0.1);
 }
 
@@ -127,6 +111,19 @@ body {
 
 .thread-card:hover {
   border-color: var(--pops-accent);
+}
+
+.thread-card:focus-visible,
+.new-thread-button:focus-visible,
+.thread-card-close:focus-visible,
+.floating-panel-action:focus-visible,
+.floating-panel-close:focus-visible,
+.floating-panel-drag-handle:focus-visible,
+.turn-header:focus-visible,
+.input-bar input:focus-visible,
+.input-bar button:focus-visible {
+  outline: 2px solid var(--pops-accent);
+  outline-offset: 2px;
 }
 
 .thread-card[data-status="working"] {
@@ -331,4 +328,138 @@ body {
 .input-bar button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Floating session panel -- opens over the grid (App.tsx renders both
+   together, grid stays interactive underneath), position controlled by
+   lib/useDraggable.ts and persisted to localStorage, not the backend. */
+.floating-panel {
+  position: fixed;
+  width: 400px;
+  height: 560px;
+  max-height: calc(100vh - 3rem);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--pops-border);
+  border-radius: 10px;
+  background: var(--pops-bg);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  z-index: 100;
+}
+
+.floating-panel[data-pinned] {
+  left: auto !important;
+  top: 0 !important;
+  right: 0;
+  width: min(420px, 100vw);
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.floating-panel[data-dragging] {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+  user-select: none;
+}
+
+.floating-panel-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.5rem 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--pops-border);
+  background: var(--pops-block-bg);
+}
+
+.floating-panel[data-dragging] .floating-panel-header {
+  cursor: grabbing;
+}
+
+.floating-panel-drag-handle {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pops-muted);
+  cursor: grab;
+}
+
+.floating-panel-drag-handle:hover {
+  background: rgba(127, 127, 127, 0.1);
+}
+
+.floating-panel[data-dragging] .floating-panel-drag-handle {
+  cursor: grabbing;
+}
+
+.floating-panel-grip {
+  width: 0.9rem;
+  height: 0.7rem;
+  opacity: 0.7;
+  background: radial-gradient(circle, currentColor 1px, transparent 1.5px) 0 0 / 5px 5px;
+}
+
+.floating-panel-label {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floating-panel-close {
+  border: none;
+  background: none;
+  color: var(--pops-muted);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.2rem 0.4rem;
+}
+
+.floating-panel-action {
+  border: 1px solid var(--pops-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pops-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.45rem;
+}
+
+.floating-panel-action[aria-pressed="true"] {
+  border-color: var(--pops-accent);
+  color: var(--pops-accent);
+}
+
+.floating-panel-close:hover {
+  color: var(--pops-error);
+}
+
+.floating-panel .turn-stream {
+  padding: 0.5rem 0.9rem;
+}
+
+.floating-panel .input-bar {
+  padding: 0.6rem 0.9rem;
+}
+
+@media (max-width: 480px) {
+  .floating-panel {
+    width: calc(100vw - 1.5rem);
+    height: calc(100vh - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+    left: 0.75rem !important;
+    top: 0.75rem !important;
+  }
 }
