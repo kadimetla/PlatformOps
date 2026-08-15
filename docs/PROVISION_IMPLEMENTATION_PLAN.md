@@ -29,6 +29,7 @@ them, never earlier.
 | 10 | Plan JSON policy checks, topology digest, current-state fingerprint, approval request | Deletes/unlisted resources fail; any bound-input drift changes approval digest | Pending |
 | 11 | Checkpointed approval, resume revalidation, fresh apply credentials, exact saved-plan apply | Resume cannot self-approve, use stale policy/grants, or modify `plan.bin` | Pending |
 | 12 | Independent verification, evidence persistence, reporting, failure taxonomy | Applied resources are read back; partial failure records facts and requires a new plan | Pending |
+| 13 | Optional: LangGraph-native free-composition planner (`create_agent`/`ToolNode`, read-only catalog tools, `ToolStrategy(TopologyProposal)`) as an alternative `topology_spec` source alongside Slice 5's reviewed-`topology.yaml` loader | Unknown/forbidden unit proposals fail validation identically to a malformed reviewed profile; agent never reaches credentials, approval, or apply nodes; disabled by policy (same registry-gated shape as any profile) until its own acceptance decision | Pending, not a dependency of 5-12 — evaluated and rejected a Node/Pi sidecar and Pydantic AI Harness first, see `COMPOSABLE_PROVISIONER.md`'s "Free-composition planner" section |
 
 ## Slice 1 contract
 

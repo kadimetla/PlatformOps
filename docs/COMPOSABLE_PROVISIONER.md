@@ -17,7 +17,13 @@ correct joins (see Step 6).
 Most of this remains the *target* shape for `workflows/provision/` and a
 `skills/` reorganization. The real first slice stops after deterministic
 scope resolution, reviewed-profile selection, and typed static-web request
-extraction; see `PROVISION_IMPLEMENTATION_PLAN.md`.
+extraction; see `PROVISION_IMPLEMENTATION_PLAN.md`. **2026-08-15**: added
+the free-composition planner section (LangGraph-native `create_agent`/
+`ToolNode`, after evaluating and rejecting a Pi/Node sidecar and Pydantic
+AI Harness — both verified against their own current docs, not assumed),
+the progressive-disclosure section, and the Kubernetes-skill-neutrality
+split rule (`kubernetes.*` stays provider-neutral; cluster access/identity/
+registry integration lives in `aws.eks.*`/`azure.aks.*`/`gcp.gke.*`).
 
 ## Real vs. Designed
 | Area | Status |
@@ -653,15 +659,23 @@ skills/
   aws/
     s3/          # private_bucket, bucket_policy, artifact_upload
     vpc/         # vpc, subnets, nat_gateway, security_groups
-    eks/         # cluster, managed_node_group, access_entry, addons
+    eks/         # cluster, managed_node_group, access, workload_identity,
+                 # load_balancer, ecr_auth -- see "Kubernetes is a shared
+                 # layer" below for why cluster access lives here, not
+                 # under kubernetes/
     cloudfront/  # origin_access_control, distribution
     acm/  route53/  ecr/
   azure/
-    storage_account/  virtual_network/  aks/  front_door/  container_registry/
+    storage_account/  virtual_network/
+    aks/         # cluster, access, workload_identity, ingress, acr_auth
+    front_door/  container_registry/
   gcp/
-    cloud_storage/  vpc/  gke/  cloud_cdn/  cloud_dns/  artifact_registry/
+    cloud_storage/  vpc/
+    gke/         # cluster, access, workload_identity, ingress,
+                 # artifact_registry_auth
+    cloud_cdn/  cloud_dns/  artifact_registry/
   kubernetes/    # namespace, service_account, deployment, service,
-                 # ingress, hpa -- the shared layer, see below
+                 # ingress, hpa -- provider-NEUTRAL, see below
   opentofu/      # init, validate, plan, apply, state_read
   security-review-checklist/   # existing skill, gains an
                                # opentofu_local/Kubernetes section
@@ -694,6 +708,61 @@ trusted registration, and profiles name unit IDs explicitly. Progressive
 disclosure remains how a *human or LLM* finds and reads the procedure;
 the registry is how the *workflow* executes it. One folder serves both
 readers.
+
+## Progressive disclosure — context, not authority
+LangGraph has no built-in `load_skill()` primitive — every graph in
+this codebase, including this one, is explicit `add_node`/`add_edge`
+calls (confirmed hands-on across this whole design set; there is
+nothing else to import). Progressive disclosure here is an
+**application pattern built from ordinary nodes and state**, narrowing
+what context the model sees at each step rather than a framework
+feature:
+
+```
+classify_intent
+  -> discover_skill_summaries   catalog of profile IDs + one-line
+                                descriptions, not full contracts
+  -> select_profile             LLM picks one ID (Step 4, above);
+                                today's catalog has exactly one entry
+  -> load_skill_contracts       resolve_profile_registration + the
+                                registered request model (Step 4)
+  -> validate_composition       load_topology + validate_topology
+                                (Steps 4-5)
+  -> provision_workflow         everything from Step 6 onward
+```
+
+This is the same five real steps already designed above, named as a
+disclosure sequence rather than repeated: the catalog step exists
+today only as a `Literal["aws-static-web"]` on `ProfileSelection`
+(`workflows/provision/schemas.py`) — a real `discover_skill_summaries`
+node becomes necessary once a second profile exists, not before
+(`MEMORY_ARCHITECTURE.md`'s anti-build discipline again).
+
+**The boundary that matters**: progressive disclosure controls
+*context*, never *authority*. Loading `skills/aws/s3/private_bucket/`
+can explain how to shape an S3 unit; it cannot grant AWS access,
+choose a credential, or bypass approval — those stay fixed
+parent-graph stages regardless of what's loaded (verified: LangChain
+documents a tool as "callable functions with well-defined inputs and
+outputs... executed through `ToolNode`" — the model decides *when* to
+call one, never what the call is permitted to do). A skill loader
+therefore returns only trusted, already-registered content:
+
+```python
+def load_skill(skill_id: str) -> SkillContract:
+    registration = registry.get(skill_id)
+    if registration is None:
+        raise UnknownSkill(skill_id)
+    return registration.load()
+```
+
+Never an arbitrary filesystem path, Python import string, or graph
+node/edge — the same "the LLM selects an ID, trusted code resolves it"
+shape `select_deployment_profile`/`TOPOLOGY_UNIT_REGISTRY` already use
+throughout this doc, restated at the loader level so a future
+`discover_skill_summaries`/`load_skill_contracts` pair doesn't
+reintroduce a path-injection surface this design has otherwise closed
+everywhere else.
 
 ## Earlier conceptual contract, refined by the walkthrough above
 The first design pass represented every unit as a four-method object.
@@ -873,6 +942,35 @@ For AWS specifically (verified this session, both sources):
   role itself); the application workflow only *consumes* that access
   and never creates cluster-wide bindings dynamically.
 
+### The split rule, stated once
+**Decided 2026-08-15:** `kubernetes.*` units stay provider-neutral by
+default; do not fork `kubernetes/deployment` into per-cloud copies. A
+Deployment/Service/ConfigMap/HPA manifest is materially the same shape
+on EKS, AKS, and GKE — forking it three ways to handle differences that
+live elsewhere would mean maintaining three near-identical copies of
+every workload unit forever. The actual per-cloud divergence is cluster
+*access and integration*, which already has its own namespace
+(`aws.eks.*`/`azure.aks.*`/`gcp.gke.*`, per the repository shape above):
+
+```
+kubernetes skill = the workload resource (provider-neutral)
+cloud skill      = cluster, identity, registry, networking, and
+                    provider integration (provider-specific)
+profile          = the approved composition of both
+```
+
+A provider-specific *Kubernetes* skill is warranted only when the
+manifest content itself genuinely differs, not just the surrounding
+cloud plumbing — concretely: AWS Load Balancer Controller vs. Azure
+Application Gateway vs. GKE Ingress/Gateway annotations on the same
+`Ingress` object, and IRSA vs. Azure Workload Identity vs. GKE
+Workload Identity service-account annotations on the same
+`ServiceAccount` object. Those stay `aws.eks.load_balancer`/
+`aws.eks.workload_identity` (and Azure/GCP equivalents) — annotation
+*producers* the profile composes alongside the neutral
+`kubernetes.ingress`/`kubernetes.service_account` units, not forks of
+those units themselves.
+
 ## What units must never do
 A unit may say "create a Kubernetes Deployment with these bounded
 fields." It must not: choose or assume an IAM role, acquire
@@ -913,6 +1011,158 @@ autonomous agents."
 16. Provider-specific verification (registered unit verifiers).
 17. Normalized evidence.
 
+## Free-composition planner — LangGraph-native, deferred, not enabled
+This is the mechanism for "free composition" the core-idea section
+above defers to "a later authority expansion with a bounded repair
+loop." It plugs in as an *alternative* source for `topology_spec`
+alongside `load_topology` (Step 4) — everything from Step 5 onward
+(validate → compile → render → plan → approve → apply) is identical
+and does not know or care which source produced the spec.
+
+### Rejected: a Node/Pi sidecar
+An external coding-agent SDK (`@earendil-works/pi-coding-agent`,
+independently maintained by Earendil Inc. — not an Anthropic product,
+despite an early web summary asserting otherwise) was evaluated and
+rejected, not because its isolation model is unsound but because it
+buys nothing this repository needs badly enough to justify a second
+language runtime, a supervised subprocess, and a cross-language IPC
+protocol. Its `noTools`/`resourceLoader` controls do work as
+documented (verified against its own docs) but require two separate
+settings to jointly hold for tool isolation, and its default resource
+loader walks up from `cwd` for context files — in this repository that
+means auto-ingesting this project's own `AGENTS.md` unless explicitly
+overridden. All of that complexity is structural cost with no
+capability this repo lacks otherwise.
+
+### Rejected: Pydantic AI Harness
+Considered as the closest feature-for-feature Python equivalent
+(skills, planning, memory, guardrails, tool search, spend limits — see
+its own docs). Rejected for three verified reasons: it would run
+alongside LangGraph as a second agent/graph runtime rather than
+inside it; it uses 0.x versioning with its own docs stating APIs "may
+still move between minor releases... renamed parameters, changed
+defaults, restructured APIs"; and its Skills capability's declared
+restriction fields are non-enforcing — its own docs list `allowed-tools`,
+`disallowed-tools`, `disable-model-invocation`, `shell`, `hooks`, and
+`tools` together as "accepted for compatibility, but their behavior is
+not implemented." That list rules out Harness Skills as a security
+boundary broadly, not just on the one field most likely to be reached
+for. Separately, `transports/http.py`'s `_build_model()` already
+resolves a multi-provider model via `ChatLiteLLM` (a LangChain
+`BaseChatModel`) from `PLATFORMOPS_MODEL`/`PLATFORMOPS_LITELLM_API_BASE`
+— the provider construction is reusable by a LangChain-native planner,
+but the returned model is **not** reusable as-is: the current transport
+binds the intake-only `select_intent` tool before returning it. A planner
+must receive the unbound provider model and bind only its own read-only
+catalog tools. This split is required to prevent intake tool schemas from
+leaking into the topology-planning agent. It is not reusable by Harness,
+whose `Agent` takes its own model abstraction and would need that
+provider selection re-implemented in a second dialect.
+
+### Recommended: `create_agent`, or plain `LangGraph` + `ToolNode` if the dependency is unwanted
+`langgraph` and `langchain-core` are already dependencies; `langchain`
+(which exposes `create_agent`) is not (`import langchain` fails against
+this repo's `.venv` — checked directly, not assumed). Two options,
+same shape either way:
+
+```python
+from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
+
+topology_planner = create_agent(
+    model=model,                    # unbound ChatLiteLLM from the shared
+                                     # provider factory; do not pass the
+                                     # intake model already bound to
+                                     # select_intent
+    tools=[
+        search_provisioning_units,      # read-only catalog search
+        get_unit_contract,              # read-only: inputs/outputs/
+                                        # allowed_resources for one ID
+        get_profile_constraints,        # read-only: required/forbidden
+                                        # unit categories for a profile
+    ],
+    system_prompt=TOPOLOGY_PLANNER_PROMPT,
+    response_format=ToolStrategy(TopologyProposal),
+    middleware=[bounded_model_calls, bounded_tool_calls],
+)
+```
+The transport should therefore expose two deliberate layers rather than
+one overloaded factory:
+
+```python
+chat_model = build_chat_model()                         # provider only
+intake_model = chat_model.bind_tools([select_intent])   # intake contract
+planner_model = chat_model.bind_tools(planner_tools)    # planner contract
+```
+
+The exact factory names are implementation detail, but the invariant is
+not: a workflow owns the tools bound to its model. LangGraph's tool pattern
+binds the model to the workflow's tool set before `ToolNode` executes those
+calls; a topology planner must never inherit the intake tool binding.
+
+If adding `langchain` is undesirable, the identical shape is a few
+dozen lines of plain `StateGraph` + `ToolNode`: `call_model` → tool
+calls exist? loop back through a **read-only** `ToolNode`; no tool
+calls? → validate structured output → `END`. Either way the planner
+gets exactly the same three read-only tools this doc's "What units
+must never do" section already forbids extending: no shell, no
+filesystem, no credentials, no approval, no apply. `get_profile_constraints`
+is advisory context only — it explains a rule in prose; it is never
+asked and never allowed to answer whether execution is permitted, the
+same restraint `get_policy_guidance` already needed in the rejected
+Pi design and which survives the pivot unchanged.
+
+The parent node re-asserts Python authority over whatever the agent
+loop produced:
+
+```python
+async def plan_topology(state: ProvisionState) -> dict:
+    request = PlanningRequest.from_state(state)   # sanitized: no
+                                                    # credentials, no
+                                                    # approval records,
+                                                    # no full ActorSession
+    result = await topology_planner.ainvoke(
+        {"messages": [{"role": "user", "content": request.model_dump_json()}]}
+    )
+    structured = result.get("structured_response")
+    if structured is None:
+        raise TopologyPlanningFailed("agent loop ended without a proposal")
+
+    proposal = TopologyProposal.model_validate(structured)
+    validated = validate_topology(
+        proposal,
+        profile=state["profile_registration"],
+        workspace=state["workspace"],
+        registry=TOPOLOGY_UNIT_REGISTRY,
+    )
+    if not validated.ok:
+        # bounded repair: return validated.public_errors to the planner,
+        # matching harness/core.py's existing _MAX_CLARIFICATION_ROUNDS = 2
+        # cap -- not a new number invented for this path
+        ...
+    return {"topology_spec": validated.spec}
+```
+Two things stated explicitly because they're easy to drop silently:
+the `structured is None` check exists because `ToolStrategy` does not
+guarantee the agent calls its structured-output tool before the loop
+ends (e.g., it exhausts `bounded_tool_calls` first) — an unhandled
+`model_validate(None)` would otherwise raise inside the node instead of
+producing a clean planning-failed outcome. And `bounded_model_calls`/
+`bounded_tool_calls` need real numbers before this ships — **not fixed
+here**, left as an explicit open parameter rather than an invented
+default, the same way this design set treats every other undecided
+policy value.
+
+### Migration order, unchanged from the rejected design's own conclusion
+1. Reviewed-profile loading and validation, no agent at all — the
+   current real slice.
+2. The unit registry and compiler (Steps 3, 6-8 above).
+3. This planner as an alternative `topology_spec` source.
+4. Keep it disabled by policy (`PROFILE_REGISTRY`-gated, same as any
+   other profile) until its own tests and acceptance decision land —
+   not a code flag, the same reviewed-artifact gate every profile
+   already goes through.
+
 ## Build order note
 **Refined 2026-08-14:** the earlier version deferred the registry until
 a second profile reused a unit. The graph-as-data design now makes the
@@ -930,6 +1180,11 @@ their first profiles are implemented.
 - [LangChain: Tools](https://docs.langchain.com/oss/python/langchain/tools) — verified 2026-08-14: model-visible name/description/input schema, structured tool calls, and `ToolNode` execution boundary; this design captures the forced tool call as structured proposal data rather than exposing execution authority
 - [Kubernetes provider docs (hashicorp/terraform-provider-kubernetes)](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs) — verified 2026-08-14 via the provider repo's `docs/index.md`: exec-based credential plugin for short-lived cloud tokens, `aws eks get-token` example, `client.authentication.k8s.io/v1`, warning against mixing exec with static credential attributes
 - [AWS: EKS access entries](https://docs.aws.amazon.com/eks/latest/userguide/access-entries.html) — verified 2026-08-14: "the best way to grant users access to the Kubernetes API," IAM role ↔ Kubernetes permissions/groups association, `aws-auth` ConfigMap successor
+- [LangChain: Agents / `create_agent`](https://docs.langchain.com/oss/python/langchain/agents) — verified 2026-08-15: `create_agent` from `langchain.agents`, tool-calling loop, subgraph-embeddable via identifier
+- [LangChain: Structured output](https://docs.langchain.com/oss/python/langchain/structured-output) — verified 2026-08-15: `response_format=ToolStrategy(PydanticModel)`, `result["structured_response"]`
+- [Pi SDK docs](https://pi.dev/docs/latest/sdk), [RPC](https://pi.dev/docs/latest/rpc), [extensions](https://pi.dev/docs/latest/extensions), [skills](https://pi.dev/docs/latest/skills) — verified 2026-08-14/15 (evaluated, rejected — see "Free-composition planner" above); `noTools:"builtin"` leaves extension tools enabled, `resourceLoader` controls extensions/skills/prompts/context (not just system prompt) and defaults to walking `cwd` for `AGENTS.md`; extensions "run with your full system permissions," skills "may include executable code the model invokes"
+- [Pydantic AI Harness](https://pydantic.dev/docs/ai/harness/) and its [Skills](https://pydantic.dev/docs/ai/harness/skills/) page — verified 2026-08-15 (evaluated, rejected): 0.x version-stability caveat quoted verbatim above; `allowed-tools`/`disallowed-tools`/`disable-model-invocation`/`shell`/`hooks`/`tools` all listed as accepted-but-unenforced
+- `npm` registry for `@earendil-works/pi-coding-agent` — checked directly 2026-08-14 to correct a first-pass web summary's "Anthropic's official SDK" misattribution; real maintainers/publisher are Earendil Inc.
 
 ## How this relates to the existing docs
 Refines [APPLICATION_PROVISIONING.md](APPLICATION_PROVISIONING.md)
