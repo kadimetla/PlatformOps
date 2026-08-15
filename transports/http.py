@@ -47,7 +47,7 @@ from interaction.agui import hitl_event_to_run_finished, platformops_event_to_ru
 from interaction.events import HITLEvent, PlatformOpsEvent
 from workflows.intake.tools import select_intent
 
-_DEFAULT_MODEL_ID = "claude-haiku-4-5"
+_DEFAULT_MODEL_ID = "openai/gpt-4o-mini"
 
 
 def _session_path_default() -> Path:
@@ -55,10 +55,23 @@ def _session_path_default() -> Path:
 
 
 def _build_model() -> Any:
-    from langchain_anthropic import ChatAnthropic
+    from langchain_litellm import ChatLiteLLM
 
-    model_id = os.environ.get("PLATFORMOPS_ANTHROPIC_MODEL") or _DEFAULT_MODEL_ID
-    return ChatAnthropic(model=model_id).bind_tools([select_intent])
+    model_id = os.environ.get("PLATFORMOPS_MODEL")
+    if not model_id:
+        legacy_anthropic_model = os.environ.get("PLATFORMOPS_ANTHROPIC_MODEL")
+        model_id = (
+            f"anthropic/{legacy_anthropic_model}"
+            if legacy_anthropic_model
+            else _DEFAULT_MODEL_ID
+        )
+
+    kwargs: dict[str, Any] = {}
+    api_base = os.environ.get("PLATFORMOPS_LITELLM_API_BASE")
+    if api_base:
+        kwargs["api_base"] = api_base
+
+    return ChatLiteLLM(model=model_id, **kwargs).bind_tools([select_intent])
 
 
 def _extract_text(messages: list) -> str:

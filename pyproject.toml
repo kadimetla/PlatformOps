@@ -15,7 +15,7 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "ag-ui-protocol",
-    "langchain-anthropic",
+    "langchain-litellm",
 ]
 # Note: boto3 is no longer a direct dependency — provisioning now routes
 # through external MCP servers (awslabs.aws-iac-mcp-server, awslabs.ccapi-mcp-server,

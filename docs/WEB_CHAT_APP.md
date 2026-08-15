@@ -149,13 +149,20 @@ ever called.
 constructs a model provider -- `workflows/intake/graph.py` and
 `harness/core.py` both deliberately refuse to, by design, so a transport
 that genuinely needs one is where that decision belongs.
-`langchain-anthropic`'s `ChatAnthropic`, default model id
-`claude-haiku-4-5` (single bound-tool-call ternary classification is a
-Haiku-tier workload, not a reason to reach for Opus/Sonnet by default),
-override via `PLATFORMOPS_ANTHROPIC_MODEL`. Construction doesn't require
-`ANTHROPIC_API_KEY` eagerly (confirmed against the installed package --
-validation happens at the first real `.ainvoke()` call), so importing
-`transports.http` or running its test suite never needs a real key.
+`langchain-litellm`'s `ChatLiteLLM`, with the provider selected by the
+`PLATFORMOPS_MODEL` identifier. The default is `openai/gpt-4o-mini`; LiteLLM
+model prefixes select other providers, for example `anthropic/...`,
+`ollama/...`, or an OpenAI-compatible local endpoint. Set
+`PLATFORMOPS_LITELLM_API_BASE` when the selected provider needs a custom base
+URL. The old `PLATFORMOPS_ANTHROPIC_MODEL` variable remains a compatibility
+fallback and is translated to an `anthropic/...` identifier.
+
+Provider credentials stay in the process environment (`OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, or the provider's equivalent) and are never put into
+LangGraph state, events, or generated artifacts. Model construction does not
+make a provider request; the first real `.ainvoke()` does. Therefore importing
+`transports.http` and running its tests do not require a live provider key.
+The selected model must support the tool-calling behavior required by intake.
 
 ## Verification Performed
 - `.venv/bin/python -m pytest tests/interaction/ tests/transports/ -q`
@@ -170,14 +177,15 @@ validation happens at the first real `.ainvoke()` call), so importing
   `CUSTOM` (`a2ui.createSurface`/`a2ui.updateComponents`) -> `RUN_FINISHED`
   frames end to end.
 - **Not performed**: an actual browser rendering `frontend/`'s UI and a
-  real Tier-3 (LLM-backed) clarification round-trip with a live
-  `ANTHROPIC_API_KEY` -- this environment has no browser and no key
-  configured. Both remain manual acceptance steps before this milestone
-  is considered fully proven end-to-end.
+  real Tier-3 (LLM-backed) clarification round-trip with a live provider
+  credential -- this environment has no browser and no key configured. Both
+  remain manual acceptance steps before this milestone is considered fully
+  proven end-to-end.
 
 ## Sources
 - [AG-UI: Introduction](https://docs.ag-ui.com/introduction), [Events](https://docs.ag-ui.com/concepts/events), [Interrupts](https://docs.ag-ui.com/concepts/interrupts)
 - [A2UI](https://a2ui.org/), [renderer ecosystem](https://a2ui.org/ecosystem/renderers/), [v0.9.1 specification](https://a2ui.org/specification/v0.9.1-a2ui/)
+- [LiteLLM](https://docs.litellm.ai/), [LangChain LiteLLM integration](https://docs.langchain.com/oss/python/integrations/providers/litellm)
 - [CopilotKit: AG-UI introduction](https://docs.copilotkit.ai/ag-ui/introduction), [self-managed agents](https://docs.copilotkit.ai/backend/self-managed-agents), [connecting a custom AG-UI backend](https://docs.copilotkit.ai/backend/ag-ui)
 - [`ag-ui-protocol` on PyPI](https://pypi.org/project/ag-ui-protocol/), [`ag-ui-langgraph` on PyPI](https://pypi.org/project/ag-ui-langgraph/) (evaluated, not used -- see Scope Decision in `openspec/changes/build-agui-a2ui-transport/design.md`)
 - Installed package inspection (this session, 2026-08-07): `ag_ui.core`'s

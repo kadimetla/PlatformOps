@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage
 from gateway.auth.cli import write_session
 from gateway.auth.claims import OIDCClaims
 from gateway.auth.sessions import build_actor_session
-from transports.http import create_app
+from transports.http import _build_model, create_app
 
 
 def _session_path(tmp_path, *, expired=False):
@@ -62,6 +62,26 @@ def _run_input(thread_id, run_id, *, text=None, resume=None):
     if resume is not None:
         body["resume"] = resume
     return body
+
+
+def test_model_factory_uses_provider_qualified_model_and_base_url(monkeypatch):
+    monkeypatch.setenv("PLATFORMOPS_MODEL", "ollama/qwen3:8b")
+    monkeypatch.setenv("PLATFORMOPS_LITELLM_API_BASE", "http://localhost:11434")
+
+    bound = _build_model()
+
+    assert bound.bound.model == "ollama/qwen3:8b"
+    assert bound.bound.api_base == "http://localhost:11434"
+
+
+def test_model_factory_keeps_anthropic_compatibility_fallback(monkeypatch):
+    monkeypatch.delenv("PLATFORMOPS_MODEL", raising=False)
+    monkeypatch.delenv("PLATFORMOPS_LITELLM_API_BASE", raising=False)
+    monkeypatch.setenv("PLATFORMOPS_ANTHROPIC_MODEL", "claude-haiku-4-5")
+
+    bound = _build_model()
+
+    assert bound.bound.model == "anthropic/claude-haiku-4-5"
 
 
 def test_info_endpoint(tmp_path):
