@@ -1152,7 +1152,7 @@ The fit decision is therefore split by use case:
 | Reviewed profile | No agent | Deterministic loading is already sufficient |
 | Slice 13 reviewed-unit composition | Plain `create_agent`/`ToolNode` first | Deep context, files, delegation, and memory add no demonstrated value |
 | Slice 14 raw-resource topology authoring | Deep Agents is an A/B candidate | It may earn its cost when catalogs, diagnostics, and provider context become genuinely long-horizon |
-| Level 2 module/renderer authoring PR | Strong Deep Agents fit | Sandboxed files, shell, tests, skills, planning, and review subagents are the job rather than capabilities to remove |
+| Slice 15 Level 2 module/renderer authoring PR | Strong Deep Agents fit | Sandboxed files, shell, tests, skills, planning, and review subagents are the job rather than capabilities to remove |
 | Approval/apply | Never | Remains fixed parent-graph authority |
 
 #### Runtime use — one stripped topology-author node
@@ -1222,9 +1222,10 @@ revision-local state rule in Step 1. Mandatory architecture/security critics
 also remain fixed parent nodes — never optional `task` delegation chosen by
 the model.
 
-#### Offline use — sandboxed Level 2 authoring
+#### Offline use — Slice 15 sandboxed Level 2 authoring
 The stronger first adoption candidate is the existing "no reviewed module
-matches" authoring path, outside the runtime provision request:
+matches" authoring path, outside the runtime provision request. It is tracked
+as Slice 15, independently from runtime composition Slices 13 and 14:
 
 ```text
 no reviewed module -> isolated Deep Agent sandbox
@@ -1260,8 +1261,8 @@ Compare valid-topology rate, requirement coverage, forbidden-resource
 rejection, repair success within the same two-round cap, deterministic
 revision output, tool/model calls, tokens, latency, and the final visible tool
 set. Adopt it for runtime only if context/delegation materially improves those
-outcomes without exposing any extra capability. The offline authoring decision
-is separate and may pass even when the runtime comparison does not.
+outcomes without exposing any extra capability. Slice 15's offline authoring
+decision is separate and may pass even when the runtime comparison does not.
 
 ### Recommended now: `create_agent`, or plain `LangGraph` + `ToolNode` if the dependency is unwanted
 `langgraph` and `langchain-core` are already dependencies; `langchain`

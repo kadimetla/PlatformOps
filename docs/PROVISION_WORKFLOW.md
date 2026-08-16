@@ -100,6 +100,18 @@ enough for code nobody has reviewed yet. Only after merge does the
 template become Level-1-renderable. **The executor never runs freshly
 generated, unreviewed IaC — not "capped," never.**
 
+The concrete designed mechanism for this coder role is
+`COMPOSABLE_PROVISIONER.md`'s "Offline use — Slice 15 sandboxed Level 2
+authoring": an isolated Deep Agent may inspect trusted provider contracts and
+reviewed authoring skills, edit a module/renderer and its contract tests, and
+run formatting, `tofu validate`, pytest, and deterministic compliance checks.
+It receives no cloud credentials and cannot merge, push, approve, or apply;
+it exports only a patch or PR artifact for normal human review. This is an
+optional authoring-time tool, not a node in the provision graph and not a
+runtime dependency of composition Slices 13 or 14. Only a human-reviewed,
+merged result can enter the runtime registry. Slice 15 in
+`PROVISION_IMPLEMENTATION_PLAN.md` tracks its independent acceptance.
+
 **Modified 2026-08-16, not silently**: the hard stop above gains a
 designed (not enabled) alternative ending.
 `COMPOSABLE_PROVISIONER.md`'s "Resource-primitive authoring" level lets
