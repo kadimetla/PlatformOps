@@ -1127,7 +1127,143 @@ leaking into the topology-planning agent. It is not reusable by Harness,
 whose `Agent` takes its own model abstraction and would need that
 provider selection re-implemented in a second dialect.
 
-### Recommended: `create_agent`, or plain `LangGraph` + `ToolNode` if the dependency is unwanted
+### Evaluated: Deep Agents — same runtime, conditional fit
+**Evaluated 2026-08-16 against current official docs and PyPI.** Deep
+Agents is materially different from the two rejected harnesses above: it
+is an opinionated harness over LangChain `create_agent`, returns a compiled
+LangGraph state graph, accepts a LangChain `BaseChatModel`, and supports a
+Pydantic `response_format`. It therefore would not introduce a second
+language or orchestration runtime, and it can consume the same *unbound*
+`ChatLiteLLM` provider model required below.
+
+It is not automatically the right runtime planner. Its bare harness normally
+adds filesystem middleware, a general-purpose subagent/`task` tool,
+summarization, and context-management behavior. Those defaults target long-
+horizon work; Slice 13 is a bounded catalog search plus at most two repair
+rounds. Removing every unneeded capability leaves something close to plain
+`create_agent`, while adding `deepagents` and full `langchain` — neither is a
+current dependency (`uv run` checked 2026-08-16; the repo has
+`langgraph==1.2.10` and `langchain-core==1.5.3`).
+
+The fit decision is therefore split by use case:
+
+| Use | Decision | Why |
+|---|---|---|
+| Reviewed profile | No agent | Deterministic loading is already sufficient |
+| Slice 13 reviewed-unit composition | Plain `create_agent`/`ToolNode` first | Deep context, files, delegation, and memory add no demonstrated value |
+| Slice 14 raw-resource topology authoring | Deep Agents is an A/B candidate | It may earn its cost when catalogs, diagnostics, and provider context become genuinely long-horizon |
+| Level 2 module/renderer authoring PR | Strong Deep Agents fit | Sandboxed files, shell, tests, skills, planning, and review subagents are the job rather than capabilities to remove |
+| Approval/apply | Never | Remains fixed parent-graph authority |
+
+#### Runtime use — one stripped topology-author node
+If the Slice 14 evaluation selects Deep Agents, it occupies only the same
+`plan_topology` slot already designed below. At process startup PlatformOps
+registers a harness profile for **every model-provider key it supports**;
+Deep Agents has no wildcard profile. The exact synthesized key for the
+preconfigured `ChatLiteLLM` instance must be verified in the spike rather
+than assumed. That profile:
+
+```python
+HarnessProfile(
+    excluded_tools={
+        "ls", "read_file", "write_file", "edit_file", "delete",
+        "glob", "grep", "execute", "task", "write_todos",
+    },
+    general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),
+)
+```
+
+The call site then uses a fresh, in-state backend only as required harness
+scaffolding, with an explicit deny-all filesystem rule as defence in depth:
+
+```python
+topology_author = create_deep_agent(
+    model=unbound_chat_model,
+    tools=[
+        search_provisioning_units,
+        get_unit_contract,
+        search_provider_resources,
+        get_resource_contract,
+        get_provider_constraints,
+        get_previous_diagnostics,
+    ],
+    system_prompt=TOPOLOGY_PLANNER_PROMPT,
+    response_format=TopologyProposal,
+    backend=StateBackend(),
+    permissions=[
+        FilesystemPermission(
+            operations=["read", "write"],
+            paths=["/**"],
+            mode="deny",
+        )
+    ],
+    subagents=[],                # profile also disables the auto-added one
+    skills=None,
+    memory=None,
+    # no sandbox, Store, independent checkpointer, or interrupt_on
+)
+```
+
+Only the six explicit read-only domain tools are intended to remain model-
+visible. The profile exclusion is the visibility boundary; the deny-all
+filesystem rule catches an accidental built-in file-tool leak. Deep Agents'
+own documentation is explicit that filesystem permissions do not constrain
+custom/MCP tools and do not constrain sandbox `execute`, so every domain tool
+still enforces scope and the runtime author receives no sandbox at all.
+
+The fixed parent invokes this graph with sanitized requirements and the last
+revision's public diagnostics, requires `structured_response`, validates it
+again as `TopologyProposal`, and creates the next immutable
+`TopologyRevision`. Deep Agents owns none of the revision counter, two-round
+cap, registry/allow-list decision, rendering, plan, sealing, approval, or
+execution state. Its `StateBackend` files/messages/todos are not copied into
+`ProvisionState`; each automatic repair invocation starts fresh, matching the
+revision-local state rule in Step 1. Mandatory architecture/security critics
+also remain fixed parent nodes — never optional `task` delegation chosen by
+the model.
+
+#### Offline use — sandboxed Level 2 authoring
+The stronger first adoption candidate is the existing "no reviewed module
+matches" authoring path, outside the runtime provision request:
+
+```text
+no reviewed module -> isolated Deep Agent sandbox
+  -> inspect trusted provider contracts and authoring skills
+  -> create renderer/module + contract tests
+  -> run fmt, tofu validate, pytest, deterministic compliance checks
+  -> export a patch/PR artifact
+  -> normal human code review and merge
+  -> only then can runtime registries import it
+```
+
+This agent may use sandbox filesystem and `execute` because those capabilities
+are useful there, but it receives no cloud credentials, cannot change runtime
+registries in the deployed process, cannot approve, merge, push, or apply, and
+its output never enters the executor before normal code review. Only trusted,
+reviewed skill libraries are mounted; `skills/provision-infra/SKILL.md`'s
+known `allowed-tools` schema bug must still be fixed before any loader is
+wired, and skill instructions never become policy authority.
+
+#### Acceptance gate — A/B before dependency adoption
+Do not add `deepagents` on architectural appeal alone. Pin the evaluated
+version (`0.7.6` as of 2026-08-16; PyPI classifies it Beta) in an isolated
+spike and run the same cases through plain `create_agent` and the stripped
+Deep Agent:
+
+```text
+valid static topology; missing TLS/DNS/logging; invalid provider region;
+unknown and forbidden resources; cross-resource constraint failure;
+repair that adds/removes a node; catalog too large for one prompt
+```
+
+Compare valid-topology rate, requirement coverage, forbidden-resource
+rejection, repair success within the same two-round cap, deterministic
+revision output, tool/model calls, tokens, latency, and the final visible tool
+set. Adopt it for runtime only if context/delegation materially improves those
+outcomes without exposing any extra capability. The offline authoring decision
+is separate and may pass even when the runtime comparison does not.
+
+### Recommended now: `create_agent`, or plain `LangGraph` + `ToolNode` if the dependency is unwanted
 `langgraph` and `langchain-core` are already dependencies; `langchain`
 (which exposes `create_agent`) is not (`import langchain` fails against
 this repo's `.venv` — checked directly, not assumed). Two options,
@@ -1509,6 +1645,10 @@ their first profiles are implemented.
 - [AWS: EKS access entries](https://docs.aws.amazon.com/eks/latest/userguide/access-entries.html) — verified 2026-08-14: "the best way to grant users access to the Kubernetes API," IAM role ↔ Kubernetes permissions/groups association, `aws-auth` ConfigMap successor
 - [LangChain: Agents / `create_agent`](https://docs.langchain.com/oss/python/langchain/agents) — verified 2026-08-15: `create_agent` from `langchain.agents`, tool-calling loop, subgraph-embeddable via identifier
 - [LangChain: Structured output](https://docs.langchain.com/oss/python/langchain/structured-output) — verified 2026-08-15: `response_format=ToolStrategy(PydanticModel)`, `result["structured_response"]`
+- [LangChain: Deep Agents overview](https://docs.langchain.com/oss/python/deepagents/overview) and [customization](https://docs.langchain.com/oss/python/deepagents/customization) — verified 2026-08-16: Deep Agents is an opinionated harness over LangChain using the LangGraph runtime; `create_deep_agent` returns a compiled state graph, accepts `BaseChatModel`, custom tools/state/context, and structured `response_format`; bare stack includes filesystem, default general-purpose subagent, summarization, and context middleware
+- [LangChain: Deep Agents profiles](https://docs.langchain.com/oss/python/deepagents/profiles) — verified 2026-08-16: `excluded_tools` filters harness-injected tools; disabling the general-purpose subagent plus passing no synchronous subagents removes `task`; profiles have no wildcard provider key, so every supported provider/model key needs deliberate registration
+- [LangChain: Deep Agents permissions](https://docs.langchain.com/oss/python/deepagents/permissions) and [sandboxes](https://docs.langchain.com/oss/python/deepagents/sandboxes) — verified 2026-08-16: unmatched filesystem permission rules allow by default; rules cover built-in filesystem tools only, not custom/MCP tools or sandbox `execute`; sandbox backends expose isolated files plus command execution
+- [PyPI: `deepagents`](https://pypi.org/project/deepagents/) — checked 2026-08-16: latest `0.7.6`, Python 3.11+, Beta classifier; project security statement says tool capability is the enforcement boundary
 - [Pi SDK docs](https://pi.dev/docs/latest/sdk), [RPC](https://pi.dev/docs/latest/rpc), [extensions](https://pi.dev/docs/latest/extensions), [skills](https://pi.dev/docs/latest/skills) — verified 2026-08-14/15 (evaluated, rejected — see "Free-composition planner" above); `noTools:"builtin"` leaves extension tools enabled, `resourceLoader` controls extensions/skills/prompts/context (not just system prompt) and defaults to walking `cwd` for `AGENTS.md`; extensions "run with your full system permissions," skills "may include executable code the model invokes"
 - [Pydantic AI Harness](https://pydantic.dev/docs/ai/harness/) and its [Skills](https://pydantic.dev/docs/ai/harness/skills/) page — verified 2026-08-15 (evaluated, rejected): 0.x version-stability caveat quoted verbatim above; `allowed-tools`/`disallowed-tools`/`disable-model-invocation`/`shell`/`hooks`/`tools` all listed as accepted-but-unenforced
 - `npm` registry for `@earendil-works/pi-coding-agent` — checked directly 2026-08-14 to correct a first-pass web summary's "Anthropic's official SDK" misattribution; real maintainers/publisher are Earendil Inc.
