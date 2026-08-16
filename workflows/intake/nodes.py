@@ -7,23 +7,12 @@ design.md -- once resolve_route exists after classification, the
 prefix-skip becomes a real second step, matching
 docs/INTAKE_HITL_ROUTING.md's original two-node sketch.
 """
+from gateway.dispatcher import resolve_route_id
 from gateway.schemas import ClarificationQuestion, Intent, IntakeDecision
 from workflows.intake.state import IntakeState
 from workflows.intake.tools import match_tier2_prefix
 
 _CANDIDATES = tuple(intent.value for intent in Intent)
-
-# Static, intent-keyed only -- no scope/org_bu dimension, because no
-# scope exists on IntakeRequest yet and no per-org_bu POLICY YAML
-# exists anywhere in the repo (see build-intake-dispatcher/design.md's
-# Non-Goals). compliance_check is the only real routable target today
-# (spec/check_compliance.py); provision/inquiry have no workflow
-# package to route to yet. This table moves into a real
-# gateway/dispatcher.py once per-org_bu routing policy is built --
-# until then it isn't worth a separate module for one entry.
-_ROUTE_TABLE: dict[Intent, str] = {
-    Intent.COMPLIANCE_CHECK: "compliance_check",
-}
 
 
 def _clarification(question: str | None = None) -> ClarificationQuestion:
@@ -85,8 +74,11 @@ def build_classify_workflow(model):
 async def resolve_route(state: IntakeState) -> dict:
     """Deterministic, no model call. Reads the intent classify_workflow
     already resolved and decides route/ready_to_route/mutation_requested/
-    approval_required/unsupported_reason from _ROUTE_TABLE alone -- see
-    that table's comment for why scope/policy don't factor in yet.
+    approval_required/unsupported_reason from gateway.dispatcher's route
+    table alone -- intent-keyed only, no scope/org_bu dimension here
+    (that's the tenant route gate, checked downstream in harness/core.py
+    once a scope_hint exists -- INTAKE_HITL_ROUTING.md's "two deterministic
+    gates remain separate").
     """
     decision = state["result"]
 
@@ -95,14 +87,14 @@ async def resolve_route(state: IntakeState) -> dict:
         # "unsupported", just not yet routable. Pass through unchanged.
         return {"result": decision}
 
-    route = _ROUTE_TABLE.get(decision.intent)
+    route = resolve_route_id(decision.intent)
     if route is not None:
         return {
             "result": decision.model_copy(
                 update={
                     "route": route,
                     "ready_to_route": True,
-                    "mutation_requested": False,
+                    "mutation_requested": decision.intent == Intent.PROVISION,
                     "approval_required": False,
                     "evidence": [
                         *decision.evidence,

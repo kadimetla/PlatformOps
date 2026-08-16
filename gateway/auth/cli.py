@@ -105,7 +105,7 @@ def login_once(
             time.sleep(interval)
 
     jwks = fetch_json(metadata.jwks_uri)
-    claims = parse_device_id_token(token_set, jwks, config)
+    claims = parse_device_id_token(token_set, jwks, config, issuer=metadata.issuer)
     grants = resolve_group_grants(claims.groups, mapping)
     session = build_actor_session(
         claims, grants.execution_grants, grants.approval_grants

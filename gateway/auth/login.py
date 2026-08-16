@@ -148,10 +148,15 @@ def parse_device_id_token(
     token_set: TokenSet,
     jwks: dict,
     config: OIDCDeviceClientConfig,
+    *,
+    issuer: str | None = None,
 ) -> OIDCClaims:
     return parse_id_token(
         token_set.id_token,
         jwks,
-        issuer=config.issuer.rstrip("/"),
+        # Use the provider's discovery value when available. OIDC issuer
+        # comparison is exact; Authentik's canonical issuer includes the
+        # trailing slash even when the CLI input was normalized.
+        issuer=issuer or config.issuer,
         audience=config.audience,
     )

@@ -7,10 +7,12 @@ from gateway.auth.login import (
     DeviceAuthorizationPending,
     DeviceAuthorizationSlowDown,
     OIDCDeviceClientConfig,
+    TokenSet,
     authentik_device_endpoint,
     authentik_token_endpoint,
     begin_device_authorization,
     discover_oidc_metadata,
+    parse_device_id_token,
     poll_device_token,
 )
 
@@ -44,6 +46,34 @@ def test_discover_oidc_metadata_uses_well_known_configuration():
     assert seen == [f"{ISSUER}/.well-known/openid-configuration"]
     assert metadata.issuer == ISSUER
     assert metadata.device_authorization_endpoint.endswith("/application/o/device/")
+
+
+def test_parse_device_id_token_uses_discovered_canonical_issuer(monkeypatch):
+    seen = {}
+
+    def fake_parse_id_token(token, jwks, issuer, audience):
+        seen.update(issuer=issuer, audience=audience)
+        return "claims"
+
+    monkeypatch.setattr("gateway.auth.login.parse_id_token", fake_parse_id_token)
+    config = OIDCDeviceClientConfig(
+        issuer="http://localhost:9000/application/o/platformops",
+        client_id="platformops",
+        audience="platformops",
+    )
+
+    result = parse_device_id_token(
+        TokenSet(access_token="access", id_token="id", token_type="Bearer"),
+        {"keys": []},
+        config,
+        issuer="http://localhost:9000/application/o/platformops/",
+    )
+
+    assert result == "claims"
+    assert seen == {
+        "issuer": "http://localhost:9000/application/o/platformops/",
+        "audience": "platformops",
+    }
 
 
 def test_begin_device_authorization_posts_client_and_scope():

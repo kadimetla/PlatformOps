@@ -88,12 +88,18 @@ def test_compliance_check_resolves_a_real_route():
     assert decision.evidence  # audit trail line recording the resolution
 
 
-def test_provision_has_no_route_yet_and_is_marked_unsupported():
+def test_provision_resolves_a_route_at_the_intake_graph_level():
+    # gateway/dispatcher.py (Slice 4) registers a real provision handler --
+    # intake-level resolve_route now resolves the route; whether it's
+    # actually dispatched still depends on the tenant/access gates
+    # harness/core.py checks afterward (see tests/harness/test_core.py's
+    # provision dispatch tests) -- this test only covers intake's own
+    # node, unchanged in scope from before.
     decision = _run("provision: deploy invoices to dev", _fake())
-    assert decision.route is None
-    assert decision.ready_to_route is False
-    assert decision.mutation_requested is True  # provision implies mutation
-    assert decision.unsupported_reason is not None
+    assert decision.route == "provision"
+    assert decision.ready_to_route is True
+    assert decision.mutation_requested is False
+    assert decision.unsupported_reason is None
 
 
 def test_inquiry_has_no_route_yet_and_is_marked_unsupported():

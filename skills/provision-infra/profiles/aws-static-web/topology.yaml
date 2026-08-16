@@ -1,0 +1,36 @@
+schema_version: "1"
+name: aws-static-web
+profile: aws-static-web
+provider: aws
+units:
+  - id: assets
+    uses: aws.s3.private_bucket
+    inputs:
+      bucket_name:
+        kind: workspace
+        field: asset_bucket_name
+  - id: cdn
+    uses: aws.cloudfront.s3_distribution
+    inputs:
+      bucket_id:
+        kind: unit_output
+        unit_id: assets
+        output_name: bucket_id
+  - id: origin_policy
+    uses: aws.s3.cloudfront_oac_policy
+    inputs:
+      bucket_id:
+        kind: unit_output
+        unit_id: assets
+        output_name: bucket_id
+      distribution_arn:
+        kind: unit_output
+        unit_id: cdn
+        output_name: distribution_arn
+edges:
+  - from: assets
+    to: cdn
+  - from: assets
+    to: origin_policy
+  - from: cdn
+    to: origin_policy
