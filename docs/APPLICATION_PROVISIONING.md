@@ -3,7 +3,9 @@ Designed target with its first non-mutating request-preparation slice
 implemented 2026-08-14. This is the reference deployment contract for
 the first real `workflows/provision/` slice: S3+CloudFront (static
 frontend) + an existing EKS cluster (API backend), AWS-only,
-`opentofu_local`-only. Per explicit instruction, **no code is written
+`opentofu_local`-only for the MVP. `terraform_local` is a separately
+registered later adapter over the same local-runner contract, not a runtime
+fallback. Per explicit instruction, **no code is written
 until this contract is accepted** — this doc exists to make that
 acceptance a reviewable decision, not a verbal one. Three AWS claims
 verified against current docs 2026-08-14 (OAC-over-OAI, EKS Fargate
@@ -28,6 +30,7 @@ unblocked for acceptance.
 | `security-review-checklist` skill's Kubernetes/`opentofu_local` section | Does not exist — confirmed by reading the skill: it has "Checks common to both paths" + `cdk` + `terraform` sections only, no `opentofu_local` awareness at all, let alone Kubernetes |
 | `infra/allowed-resource-types.json`'s Kubernetes-kind analog | Does not exist — confirmed the real file is CloudFormation-resource-type-shaped (`AWS::S3::Bucket`), and `infra/README.md` explicitly scopes it to "the CDK/CCAPI path" |
 | `skills/provision-infra/SKILL.md`'s Path C (`opentofu_local`) | Does not exist — matches `PROVISION_WORKFLOW.md`'s own Real-vs-Designed row; that skill is CDK/CCAPI + Terraform/HCP-shaped and predates the LangGraph workflow architecture |
+| `skills/provision-infra/SKILL.md`'s Path D (`terraform_local`) | Does not exist — the existing Terraform path means HCP Terraform, not a local Terraform binary |
 | `effective_access` composite ceiling this doc's step 5 depends on | Designed 2026-08-14 in `BOOTSTRAP_WORKFLOW.md`, not implemented — `ceiling.py` still only reads `org_bu_policy.yaml` |
 
 ## Reference architecture
@@ -135,7 +138,7 @@ namespace: invoices-dev
 cluster_endpoint_mode: private
 runner_ref: platformops-executor-vpc
 toolchain: opentofu_local
-state_key: aiq/it/invoices/dev/tofu.tfstate
+state_key: aiq/it/invoices/dev/iac.tfstate
 ```
 
 ## What the application workflow creates
@@ -274,8 +277,9 @@ already-designed mechanic or is **new**.
 13. **Create an approval request** (scope, requester, IaC artifact
     provenance (`topology_digest` for this composed deployment), plan
     digest, current-state fingerprint, policy snapshot, plain-
-    English summary, required approval count). **Reuses**
-    `EXECUTION_CREDENTIALS.md`/`PROVISION_WORKFLOW.md`'s six-input
+    English summary, required approval count, and resolved
+    `toolchain_identity_digest`). **Reuses**
+    `EXECUTION_CREDENTIALS.md`/`PROVISION_WORKFLOW.md`'s seven-input
     `approval_digest` formula directly — no new fields needed, the plan
     digest already covers a Kubernetes-inclusive `plan.json`. No apply
     credential exists during the pause.
@@ -334,7 +338,7 @@ reasoning trail):
 | 1 | **What backs the Kubernetes "resource types are allowed" check?** Original options: (a) a parallel Kubernetes allow-list file, or (b) template-scoping alone. This doc originally leaned (b). | **Resolved: both controls, not (b) alone — template matching is not sufficient by itself.** New `infra/kubernetes-allowed-resources.json` (parallel to the existing CloudFormation-shaped file, entries shaped `{"api_version", "kind", "actions"}`), initial entries: Deployment/Service/Ingress/HPA/ConfigMap, `create`+`update` only — **deletes denied by default** (same action-verb extension `PROVISION_WORKFLOW.md`'s Gap 3 already designed for the AWS list). Namespace is cluster-scoped and therefore bootstrap-owned; Secrets, RBAC, CRDs, other cluster-wide resources, and IAM changes are excluded from the first application template entirely. Additionally the template declares its own expected resources, and the plan validator checks **three** things per resource: globally allowed, allowed by this template, and inside the target namespace/scope — preserving deny-by-default at every layer. |
 | 2 | **How does OpenTofu's `kubernetes` provider authenticate to the EKS API?** Flagged as a potential credential-leak surface. | **Resolved and verified** (see `COMPOSABLE_PROVISIONER.md`'s Kubernetes-layer section for the full mechanics + sources): the provider's `exec` block runs `aws eks get-token`, which inherits the same short-lived STS credentials from the process environment — the documented mechanism for short-lived cloud tokens per the provider's own docs; no bearer token ever lands in variables/state/plan/LangGraph state. The two permission planes stay distinct: the AWS credential authorizes AWS-provider resources; cluster authorization comes from an **EKS access entry** (verified: AWS's stated successor to `aws-auth`) mapping the execution role to namespace-scoped RBAC. **The namespace, access entry, and namespace RBAC are bootstrap outputs** — added to the prerequisites list above; the application workflow only consumes them and never creates cluster access dynamically. |
 | 3 | **Does `provision-application` retire `skills/provision-infra/SKILL.md`?** | **Resolved: no second top-level provisioning entry point.** `skills/provision-infra/SKILL.md` stays the single catalog trigger, rewritten around the real workflow (select profile → select template → render → plan → security review → approval → apply → verify), with deployment profiles and reusable units under the provider-namespaced structure `COMPOSABLE_PROVISIONER.md` defines. This doc's "Skill composition" tree above is **superseded** by that structure — kept below unedited for the reasoning trail, but `COMPOSABLE_PROVISIONER.md`'s repository shape is the target. |
-| 4 | `security-review-checklist`'s missing `opentofu_local`/Kubernetes section. | Confirmed as originally noted: extend the existing skill file with a third path-specific section following its own `cdk`/`terraform` pattern; no new skill file. |
+| 4 | `security-review-checklist`'s missing local-IaC/Kubernetes section. | Confirmed as originally noted: extend the existing skill with explicit `opentofu_local` and `terraform_local` checks sharing one local-runner policy section; do not reuse its current `terraform` label, which means HCP. No new skill file. |
 
 ## What should be implemented first
 1. ~~Per-run `TenantRef`/`ScopeHint` plus deterministic `resolve_scope`.~~ Implemented 2026-08-14.
@@ -362,7 +366,8 @@ reasoning trail):
 ## How this relates to the existing docs
 Reuses, doesn't duplicate: `PROVISION_WORKFLOW.md`'s template-first IaC
 rule, `provision_artifacts/<request_id>/` directory shape,
-`opentofu_local`'s two-phase credential acquisition, and the six-input
+the local-runner two-phase credential contract (`opentofu_local` for this
+MVP, `terraform_local` later), and the seven-input
 `approval_digest` formula; `EXECUTION_CREDENTIALS.md`'s executor-
 non-intelligence rule and no-secrets-in-state rule (extended here to
 Kubernetes manifests); `BOOTSTRAP_WORKFLOW.md`'s 2026-08-14 composite

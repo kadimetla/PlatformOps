@@ -171,12 +171,14 @@ inject into the Terraform/CDK/CCAPI process environment
 ```
 
 This diagram shows one acquisition, which is accurate for
-`ccapi`/`hcp_terraform`/Azure/GCP as written — but not for the
-`opentofu_local` toolchain (`PROVISION_WORKFLOW.md`): running `tofu`
+`ccapi`/`hcp_terraform`/Azure/GCP as written — but not for the local
+toolchains (`opentofu_local`/`terraform_local` in
+`PROVISION_WORKFLOW.md`): running either engine
 locally means a plan-phase acquisition (plan-tier — non-resource-
-mutating, but **not** strictly read-only: `tofu plan` locks state by
-default, and with this design's `use_lockfile = true` backend that
-lock is an S3 object write; corrected 2026-08-14, see that doc's
+mutating, but **not** strictly read-only: a locked plan writes state
+coordination data, and with this design's `use_lockfile = true` backend
+that lock is an S3 object write; corrected 2026-08-14 and generalized
+to both local engines 2026-08-16, see that doc's
 plan-credential section — discarded before the approval pause) and a
 separate apply-phase acquisition (after resume, apply-tier), not one
 acquisition at a single execution moment.
@@ -264,6 +266,14 @@ opentofu_local:
   apply:     acquire_apply_credentials    (fresh after resume)
   describe:  describe_current
 
+terraform_local:
+  login:     resolve_principal, resolve_execution_grants
+  plan:      acquire_plan_credentials     (discarded before approval)
+  apply:     acquire_apply_credentials    (fresh after resume)
+  describe:  describe_current
+  -- same credential phases as opentofu_local, different sealed
+     engine/version/state-owner identity; never a fallback alias
+
 ccapi:
   login:     resolve_principal, resolve_execution_grants
   execute:   acquire_apply_credentials    (one call, no separate plan
@@ -294,7 +304,7 @@ Azure/GCP account needed):
     tenant_id/subscription_id/resource_group/client_id;
     project_id/region/service_account_email)
   - credential-acquisition METHOD SIGNATURES (not live calls)
-  - OpenTofu env-injection shape per provider (AWS_*; ARM_*;
+  - local IaC env-injection shape per provider (AWS_*; ARM_*;
     GOOGLE_*/impersonation config)
   - all via CONTRACT TESTS against STATIC FIXTURES built from the
     already-verified real API response shapes -- no live provider
@@ -431,8 +441,8 @@ class ApprovalRequest(BaseModel):
     intent: str
     capability_required: Capability    # e.g. apply_limited
     plan_digest: str                   # identifies the plan artifact alone
-    approval_digest: str               # hash(plan + policy_snapshot +
-                                       # execution_identity + allow_list_version)
+    approval_digest: str               # full seven-input hash; see
+                                       # PROVISION_WORKFLOW.md for current formula
                                        # — THIS is what approval actually binds
                                        # to; see Digest Binding under Executor Node
     vibe_diff: str                     # human-readable plan summary — reused
@@ -494,6 +504,10 @@ include the policy snapshot, execution identity, and allow-list
 version — not just the plan bytes. A `required_approvals` change is
 then just one more kind of drift the *existing* digest-mismatch check
 already catches:
+
+The following is the historical four-input base used to explain this
+specific policy-drift correction; it is not the current implementation
+contract. The canonical seven-input form appears under "Digest Binding."
 
 ```
 approval_digest = hash(plan + policy_snapshot + execution_identity
@@ -574,21 +588,30 @@ class ExecutionRequest(BaseModel):
                                       # see Digest Binding below
     execution_identity: ExecutionIdentityRef
     provider: CloudProvider
-    toolchain: Toolchain              # ccapi | hcp_terraform | opentofu_local
+    toolchain: Toolchain              # ccapi | hcp_terraform |
+                                      # opentofu_local | terraform_local
                                       # -- see PROVISION_WORKFLOW.md's
-                                      # "Three toolchains" for why hcp_terraform
-                                      # and opentofu_local have different
-                                      # credential footprints, and why
-                                      # opentofu_local needs TWO acquisitions
-                                      # (plan phase, apply phase), not one
+                                      # "Four toolchains"
+    toolchain_identity_digest: str    # seventh approval-digest input;
+                                      # recomputed before execution
+    local_engine_identity: LocalEngineIdentity | None
+                                      # required only for a local toolchain;
+                                      # must exactly match the sealed plan
     artifact_path: str
     approval_records: list[ApprovalRecord]
 ```
 
-### Digest Binding — one mechanism covers five kinds of drift
+### Digest Binding — one mechanism covers every bound drift input
 ```python
-approval_digest = hash(plan + policy_snapshot + execution_identity
-                        + allow_list_version)
+approval_digest = hash(
+    plan_json,
+    current_state_fingerprint,
+    policy_snapshot,
+    allow_list_version,
+    execution_identity,
+    artifact_provenance,
+    toolchain_identity_digest,
+)
 ```
 
 Binding the approval to this broader hash, rather than the plan bytes
@@ -600,23 +623,29 @@ needing a separate live-recompute rule per kind of drift. Any mismatch
 means: stop, no partial credit, a fresh plan and a fresh approval
 cycle from zero.
 
-**Extended by [PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md)** with a
-fifth input, `current_state_fingerprint` — the four kinds above are
+The fifth through seventh inputs are specified by
+[PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md). The fifth,
+`current_state_fingerprint`, covers a kind of drift outside the first
+four inputs — those four are
 all drift in PlatformOps's *own* state; existing-stack changes (as
 opposed to new-stack creation, which has nothing to drift from) can
 also drift because someone else changed the live infrastructure while
 approval sat paused. That doc covers the mechanism (Terraform state
 serial/lineage vs. a CCAPI snapshot hash) and why it matters more for
-changes to existing stacks specifically. **Extended again** with a
-sixth artifact-provenance input — `template_version` for a monolithic
+changes to existing stacks specifically. The sixth is an
+artifact-provenance input — `template_version` for a monolithic
 template or `topology_digest` for a composed deployment. The latter
 covers the normalized topology plus profile, unit, and template
 versions. Both catch an IaC-library or composition change between plan
 and apply even when the rendered `plan.json` happens to look unchanged.
-The full six-input formula and rationale live in that doc's "OpenTofu
-Local Runner" section — not repeated here.
+The seventh is `toolchain_identity_digest`:
+the canonical toolchain plus its trusted resolved adapter identity. For local
+runs that includes exact engine/version/platform and dependency-lock/backend
+digests, preventing cross-engine or version-drift apply. The full seven-input
+formula and rationale live in that doc's "Local IaC Runners" section — not
+repeated here.
 
-### The fork that matters: CCAPI is per-resource, Terraform is per-run
+### The fork that matters: CCAPI is per-resource, plan engines are per-run
 Kept explicit rather than hidden behind a generic "execute tool" call,
 because their failure semantics genuinely differ:
 
@@ -712,6 +741,7 @@ mechanics, not the audit database.
 
 ```
 request_id, approval_id(s), approval_digest, provider, toolchain,
+toolchain_identity_digest, local_engine_identity (for local runs),
 execution_identity, credential_expiry, started_at, ended_at, status,
 resource_ids_touched (ARNs/IDs actually created/updated/deleted —
   matters for audit, reconciliation, and future teardown),

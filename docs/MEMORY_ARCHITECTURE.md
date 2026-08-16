@@ -151,7 +151,8 @@ harness/                PlatformOpsHarness  -- runtime-core analog: prepares
 workflows/              intake, provision, inquiry
   |
   v
-executors/               opentofu_local, hcp_terraform, ccapi  -- OpenClaw-
+executors/               opentofu_local, terraform_local,
+                         hcp_terraform, ccapi  -- OpenClaw-
                                                                    harness analog:
                                                                    runs the concrete
                                                                    attempt
@@ -168,7 +169,7 @@ Explicit, not implied:
 - **Do not implement `memory/{working,episodic,semantic,procedural,policy,evidence}.py`** as a uniform package.
 - **Do not add `behavior/*.yaml`** or a `PlatformOpsIdentity` config loader.
 - **Do not build `context/project_memory.py`, `context/evidence_store.py`, or `workspace_context/`.**
-- **Do not build `executors/`** (`opentofu_local`/`hcp_terraform`/`ccapi`) — sketched above as the target shape, not a next step.
+- **Do not build `executors/`** (`opentofu_local`/`terraform_local`/`hcp_terraform`/`ccapi`) as a speculative package — sketched above as the target shape; the Slice 9 local-runner protocol lands only when the real provision workflow needs it.
 - **Do not turn any of this doc into runtime config until a workflow needs it.**
 
 None of the above has a second workflow, dispatcher, or executor yet

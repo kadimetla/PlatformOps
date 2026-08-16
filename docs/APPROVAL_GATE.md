@@ -80,7 +80,7 @@ them:
 
 | Sketch | Real (`gateway/approval.py:43`) | Note |
 |---|---|---|
-| `artifact_provenance=topology_digest` | `approval_digest` | **Conceptual, not cosmetic**: `artifact_provenance` is *one of six inputs* to `approval_digest` ([PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md)), not the digest itself. The request carries the digest; the topology digest feeds it. |
+| `artifact_provenance=topology_digest` | `approval_digest` | **Conceptual, not cosmetic**: `artifact_provenance` is one of seven inputs to `approval_digest` ([PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md)); `toolchain_identity_digest` is separate. The request carries the combined digest. |
 | `summary` | `vibe_diff` | Named for what it is across the whole doc set |
 | `expires_at` | `approval_expires_at` | AG-UI's `Interrupt` separately has a native `expires_at` — see below |
 | — | `intent`, `capability_required` | Required, and load-bearing for authority evaluation |
@@ -218,6 +218,7 @@ re-execution hazard. Sits after
 topology slot in the fixed parent chain. Extends
 [WEB_CHAT_APP.md](WEB_CHAT_APP.md)'s single-`POST /runs` resume
 convention to approvals. Consumes
-[PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md)'s six-input
-`approval_digest` including its artifact-provenance term. Indexed from
+[PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md)'s seven-input
+`approval_digest`, including artifact-provenance and resolved-toolchain
+identity terms. Indexed from
 [HARNESS_DESIGN.md](HARNESS_DESIGN.md).

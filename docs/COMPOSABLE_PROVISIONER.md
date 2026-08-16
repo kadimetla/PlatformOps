@@ -134,7 +134,7 @@ class CandidateArtifacts(BaseModel):
     revision_id: str
     unit_results: dict[str, UnitResult]
     rendered_artifact: RenderedArtifact | None = None
-    plan_result: TofuPlanResult | None = None
+    plan_result: LocalPlanResult | None = None
     policy_result: PolicyResult | None = None
 
 class TopologyRunState(TypedDict):
@@ -596,13 +596,25 @@ result, resolves output wiring, and creates the orchestration IR:
 
 ```python
 class DeploymentPlan(BaseModel):
+    revision_id: str
     topology_digest: str
-    profile: str
+    profile_id: str
     scope: Scope
-    units: list[ResolvedUnit]
+    resources: list[ResourceIntent]
     dependency_order: list[str]
     template_digests: dict[str, str]
 ```
+
+**Corrected 2026-08-16 after tracing every handoff:** this is the one
+canonical `DeploymentPlan`. An earlier version of this section used
+`units: list[ResolvedUnit]`, while the later IR section independently
+defined the same class name with `resources: list[ResourceIntent]` and a
+`policy_snapshot` but no `scope`. Unit results belong to
+`CandidateArtifacts`; `compose_plan` deterministically converts them into
+the `ResourceIntent` list above. Plan-policy evaluation has not happened at
+this point, so its snapshot/result belongs to the later `PolicyResult`, not
+this pre-render IR. `revision_id` and `scope` remain explicit so every
+artifact can be checked against the current revision and target.
 
 The topology digest covers the normalized `TopologySpec`, profile version,
 registry unit versions, and every participating template digest. It
@@ -619,7 +631,7 @@ node, not embedded into the parent at compile time. Independent persistence
 is still required for approval revalidation, audit, and recovery if the
 checkpoint store is unavailable.
 
-### Step 9 — render reviewed OpenTofu modules
+### Step 9 — render reviewed IaC modules
 Each unit result identifies a reviewed module already present in its
 skill folder. The renderer writes a root module containing only `module`
 blocks and typed wiring:
@@ -642,11 +654,16 @@ module "origin_policy" {
 }
 ```
 
-The renderer cannot emit a raw `resource` block from model text. Direct
-LLM-generated OpenTofu remains an authoring-time PR path only.
+The renderer cannot emit a raw `resource` block from model text. The same
+reviewed HCL artifact may feed `opentofu_local`, `terraform_local`, or the
+HCP upload path, but the workspace registry—not the renderer or model—selects
+the toolchain. Direct LLM-generated Terraform/OpenTofu remains an authoring-
+time PR path only.
 
-### Step 10 — validate the real OpenTofu plan
-`tofu show -json plan.bin` is the authoritative diff. The plan validator
+### Step 10 — validate the real local-engine plan
+For the MVP, `tofu show -json plan.bin` is the authoritative diff; the
+`terraform_local` adapter uses `terraform show -json plan.bin` through the
+same `LocalPlanResult` contract. The plan validator
 maps every resource address back to exactly one unit and checks:
 
 ```text
@@ -663,11 +680,12 @@ validation proves the rendered provider resources actually match it.
 ### Step 11 — approval and apply remain fixed
 The parent graph pauses with an approval payload bound to the saved plan,
 topology digest, policy snapshot, current-state fingerprint, execution
-identity, and allow-list version. The topology digest already covers all
-unit and template versions. On resume it rechecks
+identity, allow-list version, and resolved toolchain-identity digest. The
+topology digest already covers all unit and template versions. On resume it rechecks
 all of them, obtains a fresh apply credential, and runs only
-`tofu apply plan.bin`. The model cannot regenerate or modify anything
-between approval and apply.
+the same sealed local engine identity/version's `apply plan.bin`. It cannot
+apply a Terraform plan with OpenTofu or an OpenTofu plan with Terraform, and
+the model cannot regenerate or modify anything between approval and apply.
 
 ### Step 12 — verify units and store evidence
 After apply, each registered verifier receives only its declared outputs
@@ -744,9 +762,10 @@ skills/
     cloud_cdn/  cloud_dns/  artifact_registry/
   kubernetes/    # namespace, service_account, deployment, service,
                  # ingress, hpa -- provider-NEUTRAL, see below
-  opentofu/      # init, validate, plan, apply, state_read
+  local-iac/     # fixed lifecycle adapters: opentofu_local first,
+                 # terraform_local second; not topology units
   security-review-checklist/   # existing skill, gains an
-                               # opentofu_local/Kubernetes section
+                               # local-IaC/Kubernetes section
 ```
 Each capability unit:
 ```
@@ -894,24 +913,34 @@ Skill graphs return **`ResourceIntent`, not Terraform**. The renderer
 maps intents to reviewed templates deterministically:
 
 ```python
-class ResourceIntent(BaseModel):
-    provider: Literal["aws", "azure", "gcp", "kubernetes"]
-    kind: str
+class AwsS3PrivateBucketIntent(BaseModel):
+    kind: Literal["aws.s3.private_bucket"]
     logical_name: str
-    inputs: dict            # serialized only AFTER the unit-specific
-                            # Pydantic model validates provider fields
+    config: AwsS3PrivateBucketConfig
     dependencies: list[str]
     allowed_actions: list[str]
     verification_checks: list[str]
 
-class DeploymentPlan(BaseModel):
-    topology_digest: str
-    profile: str
-    resources: list[ResourceIntent]
-    dependency_order: list[str]
-    policy_snapshot: str
-    template_digests: dict[str, str]
+# The other two first-profile members follow the same exact shape with
+# AwsCloudFrontDistributionConfig and AwsCloudFrontOacPolicyConfig.
+ResourceIntent = Annotated[
+    AwsS3PrivateBucketIntent
+    | AwsCloudFrontDistributionIntent
+    | AwsCloudFrontOacPolicyIntent,
+    Field(discriminator="kind"),
+]
 ```
+
+**Corrected 2026-08-16:** the earlier sketch stored `inputs: dict` after
+validation. That still leaves an untyped persisted boundary and conflicts
+with the exact unit contracts required by Step 5. The first implementation
+uses only the three-member discriminated union above; later providers extend
+the closed union deliberately rather than widening it to a generic bag.
+
+The canonical `DeploymentPlan` is defined once in Step 8 above. The policy
+snapshot digest is produced when the real OpenTofu plan is checked and is
+carried by `PolicyResult`/the sealed approval inputs; it is not guessed or
+pre-populated while composing resource intents.
 The IR exists **only for orchestration**: dependency ordering, scope
 validation, plan-risk calculation, approval summaries, evidence. It is
 not a cloud-abstraction layer.
@@ -1065,7 +1094,9 @@ autonomous agents."
    dependency DAG.
 8. Compile and invoke the stateless topology subgraph.
 9. Generate `ResourceIntent`s → `DeploymentPlan`.
-10. Render OpenTofu from reviewed templates only.
+10. Render engine-neutral reviewed HCL modules only; resolve the workspace's
+    trusted toolchain (`ccapi`, `hcp_terraform`, `opentofu_local`, or
+    `terraform_local`) outside the topology registry.
 11. Provider-specific plan checks (AWS: S3 public access blocked, OAC
    in use, IAM actions allowed; Azure: public access disabled, role
    assignments allow-listed, private endpoint; GCP: uniform
@@ -1075,7 +1106,8 @@ autonomous agents."
     artifact-provenance input and covers profile, unit, and template
     versions)
 14. Provider-specific short-lived credentials (`CloudAccessAdapter`).
-15. `tofu apply` of the saved plan.
+15. Apply through the selected executor; local runs use the exact same sealed
+    engine identity/version that produced the saved plan.
 16. Provider-specific verification (registered unit verifiers).
 17. Normalized evidence.
 

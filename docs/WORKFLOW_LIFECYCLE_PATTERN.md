@@ -6,21 +6,22 @@ over five already-designed docs (`INTAKE_HITL_ROUTING.md`,
 plus one genuinely new rule (steps may be skipped, never reordered).
 No doc previously named this sequence; grounded against actual repo
 state 2026-07-31 to correct several claims that were more/less built,
-or in one case entirely invented, than first stated.
+or in one case entirely invented, than first stated. Runtime-status rows
+were refreshed 2026-08-16 after intake routing and provision preflight landed.
 
 ## Real vs. Designed
 | Item | Status |
 |---|---|
 | The 7-step lifecycle as a named sequence | New synthesis, not previously written down anywhere |
-| `intake` (classification only) | Real — `workflows/intake/graph.py:22-26`, a one-node graph (`classify_workflow -> END`) |
-| `intake` (routing: `resolve_route`, scope/policy, clarification loop) | Designed only — `workflows/intake/nodes.py:1-5` explicitly scopes `resolve_route` out; full pipeline in `INTAKE_HITL_ROUTING.md:147-151` |
+| `intake` classification and intent routing | Real — a two-node `classify_workflow -> resolve_route -> END` graph; scope/policy dispatch remains outside intake |
+| provision request preflight | Real — `resolve_scope -> select_profile -> extract_profile_request`, with fail-closed conditional exits, produces `ProvisionDraft` only |
 | `context` (grant/ceiling resolution, login/provider-discovery, state fingerprint) | Each piece designed separately (see table below); "context" as a unifying name is new here |
 | `plan` / `approval` / `executor` | Designed only, per-workflow docs below |
 | `evidence` — `ExecutionRecord` | Designed only — `EXECUTION_CREDENTIALS.md` |
 | `evidence` — `InquiryRecord` | Designed only — `INQUIRY_WORKFLOW.md:177-186` |
 | `evidence` — a bootstrap-specific record | **Not designed at all** — no `BootstrapRecord` or equivalent exists in `BOOTSTRAP_WORKFLOW.md` or anywhere else; this doc does not invent one |
 | `reporting` | Not designed at all — no aggregation/metrics/dashboard-over-evidence concept exists anywhere in `docs/` |
-| `workflows/provision`, `workflows/inquiry`, `workflows/bootstrap` | Do not exist — only `workflows/intake/` exists on disk |
+| `workflows/inquiry`, `workflows/bootstrap` | Do not exist; `workflows/intake/` and the partial `workflows/provision/` do exist |
 
 ## The Pattern
 Every PlatformOps workflow — provision, inquiry, bootstrap, and any
@@ -36,11 +37,11 @@ intake -> context -> plan -> approval? -> executor? -> evidence -> reporting
 
 | Step | What it means | Where it's actually designed |
 |---|---|---|
-| **intake** | Classify intent, ask clarification, route | `INTAKE_HITL_ROUTING.md` — classification real (`workflows/intake/`), routing designed only |
+| **intake** | Classify intent, ask clarification, route | `INTAKE_HITL_ROUTING.md` — classification and intent routing are real in `workflows/intake/`; scope/policy dispatch remains downstream |
 | **context** | Resolve actor grants/ceiling, load policy + project registry, snapshot current stack state | `resolve_route`'s `effective_access = min(grant, ceiling)` (`INTAKE_HITL_ROUTING.md:90`); login/provider-discovery flow (`ACCESS_POLICY_AND_IAM_DISCOVERY.md:151-199`); `current_state_fingerprint` (`PROVISION_WORKFLOW.md:21,310,501,565`) — three separately-designed mechanisms, grouped under one name here |
 | **plan** | Generate/render an IaC plan, or produce an inquiry answer | `PROVISION_WORKFLOW.md`'s `build_plan`/toolchains; `INQUIRY_WORKFLOW.md`'s answer-shape logic |
 | **approval** | Human gate for risky/mutating work | `EXECUTION_CREDENTIALS.md`'s interrupt-based approval node; policy-driven `required_approvals` (`BOOTSTRAP_WORKFLOW.md:133-142`) |
-| **executor** | Run the approved action | `PROVISION_WORKFLOW.md`'s toolchains (`ccapi`/`hcp_terraform`/`opentofu_local`); read-only describe calls for inquiry |
+| **executor** | Run the approved action | `PROVISION_WORKFLOW.md`'s toolchains (`ccapi`/`hcp_terraform`/`opentofu_local`/`terraform_local`); the local pair shares one runner contract but seals different engine/version/state-owner identities; read-only describe calls for inquiry |
 | **evidence** | Record what happened | `ExecutionRecord`, `InquiryRecord` (both designed); no bootstrap-specific record exists yet |
 | **reporting** | Aggregate outcomes over time | Not designed at all, any workflow |
 
