@@ -1,6 +1,8 @@
 ## Status
 Designed target with the first non-mutating foundation implemented
-2026-08-14; no directory restructuring or topology/IaC code exists. This doc
+2026-08-14. A basic `TopologySpec` loader and structural DAG validator now
+exist in `workflows/provision/topology.py`; no unit registry, topology
+compiler, renderer, or IaC execution code exists. This doc
 captures the composable-provisioner shape converged on 2026-08-14 (a
 multi-round design discussion that evolved through three iterations —
 per-deployment units under `skills/provision-infra/`, then top-level
@@ -15,9 +17,11 @@ sharing the parent's state schema composes correctly across an approval
 interrupt without re-running on resume, and list edges are required for
 correct joins (see Step 6).
 Most of this remains the *target* shape for `workflows/provision/` and a
-`skills/` reorganization. The real first slice stops after deterministic
+`skills/` reorganization. The real provision handler stops after deterministic
 scope resolution, reviewed-profile selection, and typed static-web request
-extraction; see `PROVISION_IMPLEMENTATION_PLAN.md`. **2026-08-15**: added
+extraction; the reviewed profile registry/`topology.yaml` loader and basic
+structural validator exist but are not invoked by that handler. See
+`PROVISION_IMPLEMENTATION_PLAN.md`. **2026-08-15**: added
 the free-composition planner section (LangGraph-native `create_agent`/
 `ToolNode`, after evaluating and rejecting a Pi/Node sidecar and Pydantic
 AI Harness — both verified against their own current docs, not assumed),
@@ -29,7 +33,8 @@ registry integration lives in `aws.eks.*`/`azure.aks.*`/`gcp.gke.*`).
 | Area | Status |
 |---|---|
 | Per-run tenant context / `resolve_scope` | First slice implemented 2026-08-14: `ScopeHint` remains outside `ActorSession`, `gateway/scope.py` resolves exact targets against known workspaces plus execution grants, the harness preserves the hint across clarification, and CLI parses `--scope`; durable `RunContext` and a real workspace registry remain unbuilt |
-| `workflows/provision/` request-preparation graph | Implemented 2026-08-14 through `resolve_scope -> select_profile -> extract_profile_request -> END`; returns a non-executable `ProvisionDraft` and is deliberately not routed from intake |
+| `workflows/provision/` request-preparation graph | Implemented through `resolve_scope -> select_profile -> extract_profile_request -> END`; registered through the deterministic dispatcher but returns only a non-executable `ProvisionDraft` |
+| `TopologySpec` loader / structural DAG validation | Basic foundation implemented in `workflows/provision/topology.py`; exact unit contracts, binding/allow-list policy validation, compilation, and execution remain unbuilt |
 | `TOPOLOGY_UNIT_REGISTRY` / any unit graph | Not implemented |
 | `ResourceIntent` / `DeploymentPlan` models | Not implemented |
 | Deployment profiles (`aws-kubernetes-static-web`, ...) | Not implemented |
@@ -96,12 +101,18 @@ stored, what the LLM sees, what gets compiled, and what runs. The first
 worked example is the reviewed `aws-static-web` profile; Kubernetes
 units use the same mechanism once the smaller path works.
 
-### Step 1 — define one fixed state for the parent and dynamic subgraphs
-Do not generate a new state schema from every model proposal. Every unit
-writes its result under its instance ID into one reducer-backed map:
+### Step 1 — define fixed parent state and revision-local topology state
+Do not generate a new state schema from every model proposal. The parent
+stores one replaceable candidate, while every topology invocation starts
+fresh child state and writes unit results under instance IDs into one
+reducer-backed map:
 
 ```python
 from typing import Annotated, TypedDict
+
+# Closed union of the reviewed-unit TopologySpec and the enabled provider-
+# resource topology models; never BaseModel, Any, or a bare dict.
+TopologyDefinition = ...
 
 def merge_unit_results(left: dict, right: dict) -> dict:
     merged = dict(left)
@@ -111,6 +122,29 @@ def merge_unit_results(left: dict, right: dict) -> dict:
         merged[unit_id] = result
     return merged
 
+class TopologyRevision(BaseModel):
+    revision_id: str
+    parent_revision_id: str | None
+    spec: TopologyDefinition  # reviewed unit DAG or provider-resource topology
+    topology_digest: str
+    created_by: Literal["profile", "planner", "repair_agent", "user"]
+    change_reason: str
+
+class CandidateArtifacts(BaseModel):
+    revision_id: str
+    unit_results: dict[str, UnitResult]
+    rendered_artifact: RenderedArtifact | None = None
+    plan_result: TofuPlanResult | None = None
+    policy_result: PolicyResult | None = None
+
+class TopologyRunState(TypedDict):
+    revision_id: str
+    scope: Scope
+    auth_context: WorkflowAuthContext
+    workspace: WorkspaceContext
+    application_request: ApplicationProvisionRequest
+    unit_results: Annotated[dict[str, UnitResult], merge_unit_results]
+
 class ProvisionState(TypedDict):
     raw_text: str
     run_context: RunContext
@@ -119,11 +153,9 @@ class ProvisionState(TypedDict):
     workspace: WorkspaceContext
     profile_id: str | None
     application_request: ApplicationProvisionRequest | None
-    topology_spec: TopologySpec | None
-    unit_results: Annotated[dict[str, UnitResult], merge_unit_results]
+    topology_revision: TopologyRevision | None
+    candidate_artifacts: CandidateArtifacts | None
     deployment_plan: DeploymentPlan | None
-    artifact_path: str | None
-    plan_result: TofuPlanResult | None
     approval: ApprovalRecord | None
     execution_result: ExecutionResult | None
     verification: VerificationResult | None
@@ -133,6 +165,21 @@ class ProvisionState(TypedDict):
 `application_request` are produced before the dynamic subgraph. Unit
 nodes may read them but cannot update them. Credentials never appear in
 this state.
+
+**Refined 2026-08-16 for fluid composition:** the reducer-backed
+`TopologyRunState.unit_results` is scratch state for exactly one topology-
+subgraph invocation. It must not survive into a revised topology. Slices
+13/14 therefore invoke each validated revision with fresh child state and
+return one replacement candidate bundle to the parent.
+
+The parent stores the current `TopologyRevision` and its whole
+`CandidateArtifacts`; it does not merge results across revision IDs. A
+removed unit must disappear, a changed unit may reuse the same instance ID
+without conflicting with its predecessor revision, and every downstream
+artifact is attributable to exactly one topology digest. The existing
+`merge_unit_results` conflict check remains useful *within* one parallel
+invocation, where any second write to an instance ID is an error even if
+the value happens to be identical.
 
 Scope resolution is not performed by today's `IntakeDecision`: the real
 schema carries intent/routing fields only. Active tenant is also **not a
@@ -386,7 +433,14 @@ and validate the reviewed YAML:
 def load_topology(state: ProvisionState):
     registration = PROFILE_REGISTRY.resolve(state["profile_id"])
     spec = load_reviewed_topology(registration.topology_path)
-    return {"topology_spec": spec}
+    return {
+        "topology_revision": make_topology_revision(
+            spec=spec,
+            parent=None,
+            created_by="profile",
+            change_reason="selected reviewed profile",
+        )
+    }
 ```
 
 ### Step 5 — validate the reviewed topology before compilation
@@ -453,7 +507,7 @@ invokes a per-request subgraph:
 
 ```python
 def compile_topology(spec: ValidatedTopology, registry: UnitRegistry):
-    builder = StateGraph(ProvisionState)
+    builder = StateGraph(TopologyRunState)
 
     for unit in spec.units:
         registration = registry.resolve(unit.uses)
@@ -499,14 +553,27 @@ parent therefore invokes the newly compiled topology from one node:
 
 ```python
 async def run_topology(state: ProvisionState):
+    revision = state["topology_revision"]
     validated = validate_topology(
-        state["topology_spec"],
+        revision.spec,
         workspace=state["workspace"],
         registry=TOPOLOGY_UNIT_REGISTRY,
     )
     topology = compile_topology(validated, TOPOLOGY_UNIT_REGISTRY)
-    result = await topology.ainvoke(state)
-    return {"unit_results": result["unit_results"]}
+    result = await topology.ainvoke({
+        "revision_id": revision.revision_id,
+        "scope": state["scope"],
+        "auth_context": state["auth_context"],
+        "workspace": state["workspace"],
+        "application_request": state["application_request"],
+        "unit_results": {},
+    })
+    return {
+        "candidate_artifacts": CandidateArtifacts(
+            revision_id=revision.revision_id,
+            unit_results=result["unit_results"],
+        )
+    }
 ```
 
 The fixed parent graph is compiled once at application startup:
@@ -514,7 +581,7 @@ The fixed parent graph is compiled once at application startup:
 ```text
 resolve_scope -> resolve_context -> select_profile
   -> resolve_profile_registration -> extract_profile_request
-  -> load_topology -> run_topology -> compose_plan
+  -> load_topology_revision -> run_topology -> compose_plan
   -> render_opentofu -> tofu_plan -> validate_plan -> approval_interrupt
   -> revalidate -> tofu_apply -> verify -> evidence -> END
 ```
@@ -523,8 +590,9 @@ resolve_scope -> resolve_context -> select_profile
 registered topology units and cannot appear in `TopologySpec`.
 
 ### Step 8 — merge unit results into a deployment plan
-`compose_plan` verifies that every expected unit produced exactly one
-typed result, resolves output wiring, and creates the orchestration IR:
+`compose_plan` verifies that `candidate_artifacts.revision_id` matches the
+current revision and that every expected unit produced exactly one typed
+result, resolves output wiring, and creates the orchestration IR:
 
 ```python
 class DeploymentPlan(BaseModel):
@@ -1014,8 +1082,8 @@ autonomous agents."
 ## Free-composition planner — LangGraph-native, deferred, not enabled
 This is the mechanism for "free composition" the core-idea section
 above defers to "a later authority expansion with a bounded repair
-loop." It plugs in as an *alternative* source for `topology_spec`
-alongside `load_topology` (Step 4) — everything from Step 5 onward
+loop." It plugs in as an *alternative* source for `topology_revision`
+alongside `load_topology_revision` (Step 4) — everything from Step 5 onward
 (validate → compile → render → plan → approve → apply) is identical
 and does not know or care which source produced the spec.
 
@@ -1140,7 +1208,17 @@ async def plan_topology(state: ProvisionState) -> dict:
         # matching harness/core.py's existing _MAX_CLARIFICATION_ROUNDS = 2
         # cap -- not a new number invented for this path
         ...
-    return {"topology_spec": validated.spec}
+    return {
+        "topology_revision": make_topology_revision(
+            spec=validated.spec,
+            parent=state["topology_revision"],
+            created_by="planner",
+            change_reason="free-composition proposal",
+        ),
+        "candidate_artifacts": None,
+        "deployment_plan": None,
+        "approval": None,
+    }
 ```
 Two things stated explicitly because they're easy to drop silently:
 the `structured is None` check exists because `ToolStrategy` does not
@@ -1157,11 +1235,260 @@ policy value.
 1. Reviewed-profile loading and validation, no agent at all — the
    current real slice.
 2. The unit registry and compiler (Steps 3, 6-8 above).
-3. This planner as an alternative `topology_spec` source.
+3. This planner as an alternative `topology_revision` source.
 4. Keep it disabled by policy (`PROFILE_REGISTRY`-gated, same as any
    other profile) until its own tests and acceptance decision land —
    not a code flag, the same reviewed-artifact gate every profile
    already goes through.
+
+## Resource-primitive authoring — the third composition level, designed 2026-08-16, not enabled
+The user's stated target goes one level finer than free unit
+composition: **provider-specific topology specs assembled on the fly
+from raw resource primitives, with a coding agent authoring and
+repairing the composition** — for requests no reviewed module covers.
+This section pins that shape so it doesn't fork into a parallel
+undocumented design. The authority ladder now has three runtime levels
+plus the authoring path, each a separate acceptance decision:
+
+```
+A. reviewed profile           FOUNDATION -- registry/topology.yaml loader
+                                            implemented; handler stops before it
+B. free unit composition      DISABLED  -- Slice 13, planner over
+                                          registered units
+C. resource-primitive         DISABLED  -- Slice 14 (this section),
+   authoring                              planner over raw provider
+                                          resources, strictest checks
+D. Level 2 authoring PR       unchanged -- new reviewed modules land
+                                          via normal code review
+```
+
+### Provider-specific specs, not one generic schema
+Provider topologies are structurally different and stay that way — a
+discriminated envelope, the same reasoning the `ResourceIntent` IR
+section already states ("not a cloud-abstraction layer"):
+
+```python
+class AwsTopologyEnvelope(BaseModel):
+    provider: Literal["aws"]
+    topology: AwsTopologySpec
+
+class AzureTopologyEnvelope(BaseModel):
+    provider: Literal["azure"]
+    topology: AzureTopologySpec
+
+class GcpTopologyEnvelope(BaseModel):
+    provider: Literal["gcp"]
+    topology: GcpTopologySpec
+
+TopologyEnvelope = Annotated[
+    AwsTopologyEnvelope | AzureTopologyEnvelope | GcpTopologyEnvelope,
+    Field(discriminator="provider"),
+]
+
+class AwsS3BucketSpec(BaseModel):
+    id: str
+    resource_type: Literal["aws_s3_bucket"]
+    configuration: S3BucketConfiguration
+    depends_on: list[str] = Field(default_factory=list)
+
+class AwsCloudFrontSpec(BaseModel):
+    id: str
+    resource_type: Literal["aws_cloudfront_distribution"]
+    configuration: CloudFrontConfiguration
+    depends_on: list[str] = Field(default_factory=list)
+
+class AwsOriginAccessControlSpec(BaseModel):
+    id: str
+    resource_type: Literal["aws_cloudfront_origin_access_control"]
+    configuration: OriginAccessControlConfiguration
+    depends_on: list[str] = Field(default_factory=list)
+
+AwsResourceSpec = Annotated[
+    AwsS3BucketSpec | AwsCloudFrontSpec | AwsOriginAccessControlSpec,
+    Field(discriminator="resource_type"),
+]
+```
+
+Both levels are discriminated. The provider tag selects the provider
+topology, and `resource_type` selects its exact configuration schema. A
+parallel `resource_type` field plus an unrelated union-valued
+`configuration` field is insufficient: it could pair a CloudFront type
+with an S3 configuration unless an additional validator coupled them.
+Configuration is never a bare dictionary.
+
+Per-provider resource registries mirror `TOPOLOGY_UNIT_REGISTRY`'s
+shape one level down — exact config schema + **reviewed renderer
+function** per resource type, explicit imports, unknown types fail:
+
+```python
+AWS_RESOURCE_REGISTRY = {
+    "aws_s3_bucket": RegisteredResource(
+        schema=S3BucketConfiguration,
+        renderer=render_s3_bucket,      # reviewed code, not LLM output
+    ),
+    ...
+}
+```
+
+### Terminology, reconciled — three layers now
+```
+resource primitive   aws_s3_bucket                    NEW bottom layer
+unit / module        aws.s3.private_bucket            unchanged (this doc)
+profile              aws-static-web                   unchanged
+```
+`ResourceIntent` remains the orchestration IR; the new
+`AwsResourceSpec`-style models are *authoring inputs* upstream of it.
+The composition preference is fixed: **prefer reviewed modules for
+known patterns; assemble raw primitives only when no module fits** —
+and raw composition gets strictly more validation, because a full
+resource configuration surface (bucket policies, ACLs, distribution
+configs) is categorically larger than a purpose-built unit input model
+like `{"private": true}`.
+
+### Why this does NOT break the never-unreviewed-IaC rule — and what it DOES change
+The executor invariant survives intact: the LLM emits **typed resource
+data**, never HCL; HCL comes only from the registry's reviewed renderer
+functions fed schema-validated configuration. What genuinely changes is
+`PROVISION_WORKFLOW.md`'s no-match behavior: "no template match → stop,
+open a Level 2 PR, END" gains an alternative ending when Level C is
+enabled — assemble primitives at runtime instead of stopping. That is a
+real authority expansion, corrected in `PROVISION_WORKFLOW.md` in place
+(dated note there), not silently absorbed here.
+
+### Authority split — the agent is advisory, everywhere
+```
+coding agent          composes, interprets diagnostics, proposes repairs
+Pydantic              structural authority (specs, config schemas)
+resource registry     resource authority (what may exist at all)
+tofu validate/plan    provider syntax + dependency authority
+policy engine         organizational authority (allow-lists, ceilings)
+human approval        mutation authority
+```
+
+### The bounded repair loop — native tooling as the oracle
+New relative to Slice 13's planner: `tofu validate` diagnostics feed
+back to the agent as structured errors, max **2 repair attempts**
+(reusing `_MAX_CLARIFICATION_ROUNDS`' cap, not a new number), then fail
+closed:
+
+```
+compose -> Pydantic -> registry -> render -> tofu validate
+   ^                                             |
+   |          structured diagnostic              | failure
+   +---------------------------------------------+   (≤2 rounds)
+                                success -> tofu plan -> checks
+                                        -> approval -> apply
+```
+**Verify before build**: the repair loop must run *pre-credential* —
+`tofu init -backend=false` should allow `validate` without backend/state
+access (provider plugin download needs network, not cloud credentials).
+Confirm against current OpenTofu docs before wiring; if validate turns
+out to need more, the loop moves after plan-credential acquisition and
+the credential-lifetime story in `PROVISION_WORKFLOW.md` gets revisited.
+
+**Failure-origin triage (added 2026-08-16)**: not every `validate`
+failure is repair input. The loop must classify before routing:
+
+```
+invalid topology/configuration   -> feed diagnostics to the repair agent
+renderer implementation defect   -> STOP; internal compiler error --
+                                    the agent must never "fix" a trusted
+                                    renderer mid-run; that's a code bug
+                                    fixed via normal review, not a
+                                    runtime repair
+environmental/provider failure   -> stop or retry per explicit policy,
+                                    never routed to the agent
+```
+Feeding a renderer bug to the agent would ask it to work around trusted
+code — the exact inversion of the authority table above. Schema validity
+alone is not a sufficient discriminator: a failure may instead expose a
+cross-resource constraint, an invalid combination not captured by one
+resource schema, or an incomplete provider-constraint model. Renderers
+must emit provenance-tagged blocks and diagnostics must be classified
+against renderer contract tests plus the resource/path that failed; an
+unclassified failure stops closed rather than being guessed into a repair
+category.
+
+### Two graphs, kept conceptually separate
+The **LangGraph workflow graph** (compose → validate → repair → render →
+plan → policy → approval) stays fixed — same rule as everywhere else in
+this doc. The **infrastructure topology graph** (bucket → distribution →
+DNS) is runtime data. Executing the latter through a dynamically
+compiled subgraph (Step 6) is an implementation choice, not what makes
+the infrastructure declarative — the declarative property lives in the
+spec, not the executor.
+
+### Fluid topology lifecycle — revise freely, approve one sealed revision
+"Fluid" means a sequence of immutable, content-addressed graph revisions,
+not in-place mutation of one `TopologySpec`. The coding agent, a human, or
+deterministic diagnostics may change nodes, edges, bindings, or resource
+configuration by producing a complete successor revision:
+
+```text
+r1  bucket -> distribution
+     rejected: private-origin control missing
+
+r2  bucket -> origin-access -> distribution
+     rejected: requested DNS/TLS absent
+
+r3  bucket -----------+
+    origin-access ----+-> distribution -> DNS
+    certificate ------+
+     plan accepted: seal r3 for approval
+```
+
+Each automatic repair returns a complete replacement snapshot. Patch-like
+operations may be retained as audit events or UI presentation, but only the
+materialized full snapshot crosses the validation boundary. This prevents
+partially-applied graph edits and makes every validation result reproducible.
+
+The fixed parent graph contains the revision loop; conditional repair edges
+never move into the dynamically compiled topology graph:
+
+```text
+author revision -> architecture review -> schema/registry/DAG checks
+       ^                                             |
+       |                                             v
+       +-- change required <- plan reconciliation <- render/validate/plan
+                                                        |
+                                                        v
+                                               seal -> approval -> apply
+```
+
+The architecture/coding-agent review checks semantic completeness — every
+stated requirement is represented, expected dependencies exist, and the
+shape is not needlessly complex — but remains advisory. Pydantic, registry,
+allow-list, provider-plan, and policy checks remain authoritative. Automatic
+repair is bounded at two rounds for one candidate attempt; an explicit human
+change creates a new revision rather than silently extending that model loop.
+
+The lifecycle is monotonic per revision:
+
+| State | Meaning | Shape change |
+|---|---|---|
+| `draft` | Agent/human is composing graph data | Produce a successor revision |
+| `structurally_valid` | Schema, registry, binding, scope, and DAG checks passed | Successor invalidates derived work |
+| `materialized` | Planning units produced typed resource intents | Successor invalidates unit results |
+| `rendered` / `tool_validated` | Reviewed renderers emitted IaC and native validation passed | Successor invalidates the artifact |
+| `planned` / `policy_valid` | A real provider plan and deterministic policy result exist | Successor discards the plan and planning credential |
+| `sealed` / `approval_pending` | Exact revision, artifact, plan, policy, identity, state fingerprint, and allow-list version are bound | No in-place change; successor supersedes approval |
+| `approved` | Required approvers accepted that exact digest | Immutable; mismatch requires a fresh plan/approval |
+| `applied` / `verified` | Exact saved plan ran and evidence was read back | A later change is a new provision request |
+
+Any topology change atomically invalidates its compiled graph, unit results,
+rendered artifact, native-validation result, saved plan, policy result, and
+pending approval. Compilation may be cached only by the full topology digest.
+Transient retries that do not change content may reuse a revision; a repair
+always creates a new one.
+
+Sealing happens when a plan/policy-valid candidate is submitted for approval,
+not when the first graph or IaC artifact is built. An `ApprovalRequest` names
+`revision_id`, `topology_digest`, artifact/plan digests, and the combined
+`approval_digest`. A requested change creates `r(n+1)`, marks the old request
+`superseded`, and starts render/plan/check again. Old approval records stay
+immutable for audit but authorize nothing in the successor revision. Resume
+still recomputes every digest and current-state fingerprint before obtaining
+fresh apply credentials.
 
 ## Build order note
 **Refined 2026-08-14:** the earlier version deferred the registry until

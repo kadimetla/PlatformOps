@@ -1,9 +1,11 @@
 ## Status
 
-Implementation plan. Slices 1-3 are now represented in code; they stop
-after producing a typed, non-executable provision draft. No intake route,
-topology compiler, OpenTofu command, credential acquisition, approval gate,
-or provider mutation is enabled by this slice.
+Implementation plan. Slices 1-5 and the structural-validation subset of
+Slice 7 are represented in code. Runtime execution still stops after routing
+to a handler that produces a typed, non-executable provision draft; the
+profile registry/loader is not yet called by that graph. No topology compiler,
+OpenTofu command, credential acquisition, approval gate, or provider mutation
+is enabled.
 
 ## Delivery rule
 
@@ -21,15 +23,16 @@ them, never earlier.
 | 2 | Carry optional `ScopeHint` in per-run harness input and preserve it across intake clarification; add CLI `--scope` parsing | Two simultaneous calls can carry different hints; clarification cannot replace the original hint | Implemented for in-memory harness/CLI parsing; no durable run context |
 | 3 | Minimal `workflows/provision/` graph: resolve scope, select one reviewed profile, extract its typed request, then stop | Static-web request becomes `AwsStaticWebProvisionRequest`; unresolved scope stops before the model; no provider/tool execution exists | Implemented |
 | 4 | Register the provision handler and add deterministic dispatcher wiring | Intake routes provision only when a handler is registered; unsupported behavior remains unchanged otherwise | Implemented (`gateway/dispatcher.py`, `harness/core.py`) -- tenant-policy gate + `ROUTE_REGISTRY` fixture-backed pending Phase 2's real workspace registry; discovered a real cost while testing: resuming a provision clarification reruns the whole graph from `resolve_scope`, so `select_profile` is called again too, not just the node that asked |
-| 5 | Trusted profile registry plus reviewed `topology.yaml` loader | Unknown profile/path fails closed; model can select only registered IDs | Pending |
+| 5 | Trusted profile registry plus reviewed `topology.yaml` loader | Unknown profile/path fails closed; model can select only registered IDs | Implemented (`workflows/provision/profiles.py`, reviewed `aws-static-web/topology.yaml`, loader tests); not invoked by the request-preparation graph yet |
 | 6 | Typed unit contracts and planning-only unit registry | Duplicate/unknown unit IDs and execution-capable registrations fail validation | Pending |
-| 7 | Deterministic topology validator/compiler and first S3/CloudFront/OAC planning units | DAG joins run once; output bindings validate; no unit calls a provider | Pending |
+| 7 | Deterministic topology validator/compiler and first S3/CloudFront/OAC planning units | DAG joins run once; output bindings validate; no unit calls a provider | Partial: `TopologySpec` plus duplicate/unknown/self-edge/cycle structural validation and tests are implemented; exact binding contracts, compiler, registry, and planning units remain pending |
 | 8 | Deterministic OpenTofu renderer from reviewed modules | Golden artifacts contain expected module blocks and no secrets | Pending |
 | 9 | Read-only/current-state context plus plan credentials and `tofu init/validate/plan` | Fake runner verifies command/env boundary; real sandbox smoke test is opt-in | Pending |
 | 10 | Plan JSON policy checks, topology digest, current-state fingerprint, approval request | Deletes/unlisted resources fail; any bound-input drift changes approval digest | Pending |
 | 11 | Checkpointed approval, resume revalidation, fresh apply credentials, exact saved-plan apply | Resume cannot self-approve, use stale policy/grants, or modify `plan.bin` | Pending |
 | 12 | Independent verification, evidence persistence, reporting, failure taxonomy | Applied resources are read back; partial failure records facts and requires a new plan | Pending |
 | 13 | Optional: LangGraph-native free-composition planner (`create_agent`/`ToolNode`, read-only catalog tools, `ToolStrategy(TopologyProposal)`) as an alternative `topology_spec` source alongside Slice 5's reviewed-`topology.yaml` loader | Unknown/forbidden unit proposals fail validation identically to a malformed reviewed profile; agent never reaches credentials, approval, or apply nodes; disabled by policy (same registry-gated shape as any profile) until its own acceptance decision | Pending, not a dependency of 5-12 — evaluated and rejected a Node/Pi sidecar and Pydantic AI Harness first, see `COMPOSABLE_PROVISIONER.md`'s "Free-composition planner" section |
+| 14 | Optional, after 13: resource-primitive authoring — per-provider resource registries (exact discriminated config schemas + reviewed renderers), immutable `TopologyRevision` chain, coding-agent architecture review plus compose/repair loop bounded at 2 automatic rounds, revision-scoped unit/artifact state, and seal/supersede lifecycle | Unknown resource types and out-of-schema configurations fail closed; LLM output is typed resource data only, never HCL; every changed node/edge/config creates a successor revision and atomically invalidates compiled results/artifact/plan/policy/approval; `tofu validate` repair runs pre-credential (`init -backend=false`, verify before build); plan reconciliation may revise only before sealing; approval binds one exact revision and any later change requires a fresh plan/approval; modifies `PROVISION_WORKFLOW.md`'s no-match hard stop (noted there in place) | Pending, strictest checks of any composition level — see `COMPOSABLE_PROVISIONER.md`'s "Resource-primitive authoring" and "Fluid topology lifecycle" sections |
 
 ## Slice 1 contract
 

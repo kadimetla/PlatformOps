@@ -17,6 +17,7 @@ version (2026-08-14), because it changes the node decomposition — see
 | Piece | Status |
 |---|---|
 | `ApprovalRequest`/`ApprovalRecord`/`ApprovalVerdict` schemas | **Real** — `gateway/approval.py` |
+| Topology revision/digest fields and `superseded` request status | Designed only — required by `COMPOSABLE_PROVISIONER.md`'s fluid-topology lifecycle; absent from the real schemas/store |
 | `HITLEventKind.APPROVAL_REQUIRED`, `HITLStatus` | **Real** — `interaction/events.py:52` |
 | `hitl_event_to_interrupt` + approval `responseSchema` | **Real** — `interaction/agui.py:45,75`; already emits `{verdict, approval_digest}` |
 | Approval gate node (`interrupt()`, quorum loop) | Not implemented — no checkpointed workflow exists to host it |
@@ -141,7 +142,8 @@ every check before any record is written.
 2. re-fetch current approval grants (never trust the session snapshot)
 3. verify authority for THIS scope
 4. reject requester self-approval
-5. verify the request is pending and unexpired
+5. verify the request is pending, unexpired, and still names the current
+   sealed topology revision
 6. verify the submitted approval_digest matches
 7. enforce idempotency -- one approver cannot approve twice
 8. persist an immutable ApprovalRecord
@@ -157,6 +159,24 @@ Steps 2-4 are the runtime half of `EXECUTION_CREDENTIALS.md`'s
 authority model; step 6 is its digest binding; the "approval permission
 changed mid-flight" case is that doc's staleness section. Not repeated
 here.
+
+## Topology revision supersession
+**Extended 2026-08-16:** resource-primitive authoring makes a provision
+request fluid before approval, but never makes an approval target mutable.
+The future approval-request schema therefore also carries the sealed
+`topology_revision_id`, `topology_digest`, and rendered-artifact digest in
+addition to its existing `plan_digest`/`approval_digest`. These are designed
+fields; `gateway/approval.py` does not contain them yet.
+
+Once an approval request is pending, an agent or human change creates a new
+immutable topology revision. `ApprovalRequestStore` atomically marks the old
+request `superseded`; it never edits the request's digests or accumulated
+decisions. The successor must render, validate, plan, pass policy, seal, and
+create a fresh approval request. Old `ApprovalRecord` values remain evidence
+but cannot count toward the successor's quorum. An approver submitting to a
+superseded request receives the same non-authorizing outcome as any request
+that is no longer pending, and resume-time digest revalidation remains the
+last backstop.
 
 ## Quorum and rejection
 ```

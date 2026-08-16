@@ -100,6 +100,20 @@ enough for code nobody has reviewed yet. Only after merge does the
 template become Level-1-renderable. **The executor never runs freshly
 generated, unreviewed IaC — not "capped," never.**
 
+**Modified 2026-08-16, not silently**: the hard stop above gains a
+designed (not enabled) alternative ending.
+`COMPOSABLE_PROVISIONER.md`'s "Resource-primitive authoring" level lets
+a coding agent assemble raw provider resources at runtime when no
+reviewed module matches — under strictly more validation (exact
+per-resource config schemas, per-provider resource allow-lists, a
+bounded `tofu validate` repair loop, then the unchanged
+plan/policy/approval chain). The executor invariant itself is intact:
+the LLM emits typed resource data only; HCL still comes exclusively
+from reviewed renderer functions in a trusted registry. What changes is
+solely that "no match" may compose primitives instead of terminating —
+an explicit authority expansion with its own acceptance gate (Slice 14),
+disabled by policy until accepted.
+
 The coder role in Level 2 inherits every constraint already designed
 for anything outside the executor: no credentials, no execution
 authority, no choice of execution role, no allow-list bypass — it
@@ -356,6 +370,16 @@ template digests. Either form catches a library or composition change
 between plan and apply even when the rendered `plan.json` happens to
 look unchanged — provenance, not just content, is part of what approval
 attaches to.
+
+**Refined 2026-08-16 for fluid topology authoring:** approval attaches to
+one sealed, immutable topology revision, not to a mutable provision request.
+Before sealing, an agent or human may produce successor revisions; every
+change invalidates the prior rendered artifact, saved plan, policy result,
+and planning credential. Once an `ApprovalRequest` exists, a requested
+topology change marks it `superseded` and creates a new revision followed by
+a fresh render/plan/check/approval cycle. Historical approval records remain
+immutable evidence but cannot authorize the successor. Resume-time digest
+and current-state-fingerprint checks remain the final enforcement backstop.
 
 ### Failure taxonomy — toolchain-specific examples, same three classes
 No new classes, matching `EXECUTION_CREDENTIALS.md`'s existing
