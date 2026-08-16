@@ -98,7 +98,9 @@ def test_provision_resolves_a_route_at_the_intake_graph_level():
     decision = _run("provision: deploy invoices to dev", _fake())
     assert decision.route == "provision"
     assert decision.ready_to_route is True
-    assert decision.mutation_requested is False
+    # mutation_requested reflects the intent, not routability -- provision
+    # implies mutation whether or not a handler ends up dispatching it.
+    assert decision.mutation_requested is True
     assert decision.unsupported_reason is None
 
 
