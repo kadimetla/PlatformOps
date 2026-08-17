@@ -35,6 +35,7 @@ registry integration lives in `aws.eks.*`/`azure.aks.*`/`gcp.gke.*`).
 | Per-run tenant context / `resolve_scope` | First slice implemented 2026-08-14: `ScopeHint` remains outside `ActorSession`, `gateway/scope.py` resolves exact targets against known workspaces plus execution grants, the harness preserves the hint across clarification, and CLI parses `--scope`; durable `RunContext` and a real workspace registry remain unbuilt |
 | `workflows/provision/` request-preparation graph | Implemented through `resolve_scope -> select_profile -> extract_profile_request -> END`; registered through the deterministic dispatcher but returns only a non-executable `ProvisionDraft` |
 | `TopologySpec` loader / structural DAG validation | Basic foundation implemented in `workflows/provision/topology.py`; exact unit contracts, binding/allow-list policy validation, compilation, and execution remain unbuilt |
+| Cloud Stack Registry/catalog | Designed in `CLOUD_STACK_CATALOG.md`; current `PROFILE_REGISTRY` plus reviewed `topology.yaml` is the compatibility seed, not a parallel registry |
 | `TOPOLOGY_UNIT_REGISTRY` / any unit graph | Not implemented |
 | `ResourceIntent` / `DeploymentPlan` models | Not implemented |
 | Deployment profiles (`aws-kubernetes-static-web`, ...) | Not implemented |
@@ -152,6 +153,7 @@ class ProvisionState(TypedDict):
     auth_context: WorkflowAuthContext
     workspace: WorkspaceContext
     profile_id: str | None
+    cloud_stack_publication: CloudStackPublicationRef | None
     application_request: ApplicationProvisionRequest | None
     topology_revision: TopologyRevision | None
     candidate_artifacts: CandidateArtifacts | None
@@ -598,7 +600,7 @@ result, resolves output wiring, and creates the orchestration IR:
 class DeploymentPlan(BaseModel):
     revision_id: str
     topology_digest: str
-    profile_id: str
+    cloud_stack_publication: CloudStackPublicationRef
     scope: Scope
     resources: list[ResourceIntent]
     dependency_order: list[str]
@@ -616,7 +618,14 @@ this point, so its snapshot/result belongs to the later `PolicyResult`, not
 this pre-render IR. `revision_id` and `scope` remain explicit so every
 artifact can be checked against the current revision and target.
 
-The topology digest covers the normalized `TopologySpec`, profile version,
+`cloud_stack_publication` replaces `profile_id` in the canonical downstream IR
+and contains the exact immutable release reference plus its authorized
+publication identity.
+The current `ProfileRegistration` adapter constructs this exact reference for
+`aws-static-web`; profile IDs remain a request-preflight compatibility detail,
+not a second reusable-content identity.
+
+The topology digest covers the normalized `TopologySpec`, Cloud Stack release,
 registry unit versions, and every participating template digest. It
 replaces the old single `template_version` approval input for composed
 deployments, so changing a node, edge, binding, unit implementation, or
@@ -624,7 +633,8 @@ template invalidates approval.
 
 Persist a `TopologyExecutionRecord` independently of the LangGraph
 checkpoint before planning. It contains the normalized spec, topology
-digest, profile version, unit versions, and template digests. The fixed
+digest, exact Cloud Stack release reference, unit versions, and template
+digests. The fixed
 parent graph does not need the topology to rebuild on resume because the
 dynamic subgraph is invoked inside the already-completed `run_topology`
 node, not embedded into the parent at compile time. Independent persistence
@@ -681,8 +691,11 @@ validation proves the rendered provider resources actually match it.
 The parent graph pauses with an approval payload bound to the saved plan,
 topology digest, policy snapshot, current-state fingerprint, execution
 identity, allow-list version, and resolved toolchain-identity digest. The
-topology digest already covers all unit and template versions. On resume it rechecks
-all of them, obtains a fresh apply credential, and runs only
+artifact-provenance input also binds an originating `CloudStackRelease`'s
+exact version/content/publication digests when the topology came from the
+catalog; the topology digest covers the request-local revision plus all unit
+and template versions. On resume it rechecks all of them, obtains a fresh
+apply credential, and runs only
 the same sealed local engine identity/version's `apply plan.bin`. It cannot
 apply a Terraform plan with OpenTofu or an OpenTofu plan with Terraform, and
 the model cannot regenerate or modify anything between approval and apply.
@@ -703,16 +716,41 @@ request -> topology spec/digest -> unit versions -> rendered artifacts
 | `SKILL.md` | `skills/<provider>/<domain>/<unit>/` | Human/LLM procedure and discovery |
 | Unit registration code | Same unit package, imported by application startup | Executable implementation and typed contract |
 | Reviewed OpenTofu module | Unit's `template/` directory | IaC emitted at runtime |
-| Approved `topology.yaml` | `skills/provision-infra/profiles/<profile>/` | Reusable fast-path composition |
+| Reviewed `topology.yaml` source | `skills/provision-infra/profiles/<profile>/` today | Source input for the current compatibility profile and a future immutable release |
+| `CloudStackRelease` | Cloud Stack Registry plus encrypted artifact store | Reusable immutable topology/schema/module manifest, exact provider/version/content digest, lifecycle, and author signature |
+| `CloudStackPublication` | Cloud Stack Registry | Visibility target, destination policy certificate, publication lifecycle/signature, and destination key envelope for one release |
+| `CloudStackCatalogEntry` | Authorized sanitized projection of registry metadata | Discovery only; never authorization or artifact resolution |
 | `TopologyExecutionRecord` | Evidence store beside the approval record | Normalized topology, profile/unit/template versions, deterministic reconstruction and revalidation |
 | Compiled topology graph | Process memory; optionally cached by topology digest | Per-request planning execution |
 | Saved OpenTofu plan | Request artifact directory | Exact approved provider diff |
 | Checkpoint | Parent provision graph's checkpointer | Approval pause/resume |
 
 Future free composition produces the same `TopologyExecutionRecord` but
-starts from an untrusted LLM proposal. To promote one into a reusable
-profile, a coder opens a PR adding `topology.yaml`; normal code review is
-the promotion boundary. Runtime execution never edits the skill library.
+starts from an untrusted LLM proposal. A coder may open a PR adding reviewed
+`topology.yaml`; merge makes the content eligible for validation, but does not
+make it globally reusable by itself. `CLOUD_STACK_CATALOG.md` owns the separate
+publication boundary: immutable release creation, destination-scope policy
+certification, encryption/signing, human promotion approval, and evidence.
+Runtime execution never edits the skill library or promotes a release.
+
+### Cloud Stack reuse boundary
+
+The composable graph is the build mechanism inside a reusable
+`CloudStackRelease`; it is not a second catalog. The canonical mapping is:
+
+```text
+CloudStackPublication -> CloudStackRelease (reusable, exact scope/provider/version)
+  -> decrypt/verify TopologySpec + module manifest
+  -> request-local TopologyRevision (may change before sealing)
+  -> target-bound CloudStackDeployment and DeploymentPlan
+  -> fresh provider PlanResult (never reusable)
+```
+
+Lookup and visibility are resolved before topology compilation from trusted
+org/BU/sector/provider/workspace context. Semantic retrieval, if later enabled,
+may rank only already-authorized catalog candidates. Unit registries continue
+to resolve executable planning implementations; they do not own release ACLs,
+sector policies, encryption keys, promotion, or versions.
 
 ## Four unit categories
 | Category | Examples | Nature |
@@ -1266,13 +1304,15 @@ no reviewed module -> isolated Deep Agent sandbox
   -> run fmt, tofu validate, pytest, deterministic compliance checks
   -> export a patch/PR artifact
   -> normal human code review and merge
-  -> only then can runtime registries import it
+  -> validate/sign/encrypt and approve a scoped CloudStackRelease publication
+  -> only then can the Cloud Stack Registry resolve it at runtime
 ```
 
 This agent may use sandbox filesystem and `execute` because those capabilities
 are useful there, but it receives no cloud credentials, cannot change runtime
 registries in the deployed process, cannot approve, merge, push, or apply, and
-its output never enters the executor before normal code review. Only trusted,
+its output never enters the executor before normal code review and the separate
+Cloud Stack publication gate. Only trusted,
 reviewed skill libraries are mounted; `skills/provision-infra/SKILL.md`'s
 known `allowed-tools` schema bug must still be fixed before any loader is
 wired, and skill instructions never become policy authority.
@@ -1693,6 +1733,10 @@ updated Open Questions section; its `provision-application` skill-tree
 sketch is superseded by this doc's repository shape). Applies
 [PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md)'s Level 1/2/3
 template-first rule at unit granularity — no change to that rule.
+[CLOUD_STACK_CATALOG.md](CLOUD_STACK_CATALOG.md) owns reuse above the unit and
+topology layers: immutable release identity, authorized discovery, scoped
+publication, encryption, promotion, and the hard boundary that provider plans
+remain deployment-specific.
 Extends [EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md)'s
 no-secrets and executor-isolation rules to the Kubernetes credential
 path (exec plugin) and unit boundary, and reuses its

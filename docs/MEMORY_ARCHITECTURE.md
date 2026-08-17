@@ -42,7 +42,7 @@ memory actually get built.
 | Working memory | Real, narrow — `harness/core.py`'s `dict[str, IntakeRequest]` keyed by `request_id`. No thread/run persistence (`docs/PLATFORMOPS_HARNESS.md`'s `ThreadState`/`RunState` are designed only) |
 | Policy memory | Real — `gateway/policy/ceiling.py`'s `effective_access = min(grant, ceiling)`, `gateway/auth/schemas.py`'s `ExecutionGrant`/`ApprovalGrant` |
 | Procedural memory | Real, as `skills/{provision-infra,security-review-checklist,sdlc-diagram-compliance-check}/SKILL.md` — see below |
-| Semantic memory | Designed only — `gateway/policy/*.yaml` (`org_bu_policy.yaml`/`project_registry.yaml`) per `ACCESS_POLICY_AND_IAM_DISCOVERY.md`, no data file exists |
+| Semantic memory | Designed only — workspace facts in `gateway/policy/*.yaml` plus reusable stack facts in the Cloud Stack Registry; no durable store exists. `CLOUD_STACK_CATALOG.md`'s optional vector index is a rebuildable discovery projection, not authoritative memory |
 | Episodic memory | Not designed — no event/run history store exists or is speced beyond `docs/PLATFORMOPS_HARNESS.md`'s `EventRecord` shape |
 | Evidence memory | Partially designed — `ExecutionRecord`/`InquiryRecord`/`ApprovalRecord` schemas exist (`EXECUTION_CREDENTIALS.md`, `INQUIRY_WORKFLOW.md`, `gateway/approval.py`), no append-only store implemented |
 | `PlatformOpsIdentity`/`behavior/` YAML (as new config) | Not designed, not recommended — see "Identity & Behavior" below |
@@ -52,7 +52,7 @@ memory actually get built.
 |---|---|---|
 | **Working** | What's happening in this run right now? | `harness/core.py` today (in-memory); LangGraph checkpointer once a checkpointed workflow exists |
 | **Episodic** | What happened in previous runs? | Not built. Would answer "did this fail before?", "who approved the last prod change?" — queryable, not prompt-only |
-| **Semantic** | What are the stable facts about this org/project/workspace? | `gateway/policy/*.yaml` (designed, no data yet) — toolchain, account id, execution identity per workspace |
+| **Semantic** | What stable facts describe this org/project/workspace and its authorized reusable stacks? | `gateway/policy/*.yaml` plus the Cloud Stack Registry (designed, no data yet) — workspace toolchain/account/identity and immutable stack release metadata. Search indexes are derived projections |
 | **Procedural** | How does PlatformOps do a known kind of task safely? | `skills/*/SKILL.md` — see below |
 | **Policy** | Who is allowed to do what, where, right now? | `gateway/policy/ceiling.py`, `gateway/auth/schemas.py` — real, authoritative |
 | **Evidence** | What immutably happened, for audit? | Schemas designed (`ExecutionRecord`/`InquiryRecord`/`ApprovalRecord`), no store built |
@@ -170,6 +170,7 @@ Explicit, not implied:
 - **Do not add `behavior/*.yaml`** or a `PlatformOpsIdentity` config loader.
 - **Do not build `context/project_memory.py`, `context/evidence_store.py`, or `workspace_context/`.**
 - **Do not build `executors/`** (`opentofu_local`/`terraform_local`/`hcp_terraform`/`ccapi`) as a speculative package — sketched above as the target shape; the Slice 9 local-runner protocol lands only when the real provision workflow needs it.
+- **Do not build a standalone vector/semantic-memory service for Cloud Stack lookup.** Start with authoritative structured filters, capability taxonomy, and full-text search; add semantic reranking only inside an already-authorized candidate set after retrieval evaluation justifies it (`CLOUD_STACK_CATALOG.md`).
 - **Do not turn any of this doc into runtime config until a workflow needs it.**
 
 None of the above has a second workflow, dispatcher, or executor yet
@@ -199,5 +200,8 @@ it reuses directly (the "Where Each Type Is Used" table adds a column
 to that doc's steps, doesn't redefine them). Policy memory here is the
 same `effective_access` invariant
 [ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md)
-already owns — not a second definition. Indexed from
+already owns — not a second definition.
+[CLOUD_STACK_CATALOG.md](CLOUD_STACK_CATALOG.md) owns reusable stack facts and
+the registry/catalog/search-index distinction; this memory taxonomy does not
+create another stack store. Indexed from
 [HARNESS_DESIGN.md](HARNESS_DESIGN.md).

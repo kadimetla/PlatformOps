@@ -597,9 +597,19 @@ class ExecutionRequest(BaseModel):
     local_engine_identity: LocalEngineIdentity | None
                                       # required only for a local toolchain;
                                       # must exactly match the sealed plan
+    cloud_stack_publication: CloudStackPublicationRef | None
+                                      # required for catalog-derived provision;
+                                      # exact release/publication/snapshot
+                                      # digests, never a mutable catalog row
     artifact_path: str
     approval_records: list[ApprovalRecord]
 ```
+
+`CloudStackPublicationRef` is owned by
+[CLOUD_STACK_CATALOG.md](CLOUD_STACK_CATALOG.md). It is required for a
+catalog-derived provision execution and absent for unrelated workflow kinds;
+the executor may verify its sealed digests but cannot perform catalog search,
+promotion, or version selection.
 
 ### Digest Binding — one mechanism covers every bound drift input
 ```python
@@ -742,6 +752,9 @@ mechanics, not the audit database.
 ```
 request_id, approval_id(s), approval_digest, provider, toolchain,
 toolchain_identity_digest, local_engine_identity (for local runs),
+cloud_stack_publication_id, cloud_stack_publication_target,
+cloud_stack_id, cloud_stack_release_version, cloud_stack_content_digest,
+cloud_stack_publication_digest, cloud_stack_registry_snapshot_digest,
 execution_identity, credential_expiry, started_at, ended_at, status,
 resource_ids_touched (ARNs/IDs actually created/updated/deleted —
   matters for audit, reconciliation, and future teardown),

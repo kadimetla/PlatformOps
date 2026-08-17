@@ -1,7 +1,7 @@
 ## Status
-Designed only, no web research involved — a naming/synthesis layer
-over five already-designed docs (`INTAKE_HITL_ROUTING.md`,
-`ACCESS_POLICY_AND_IAM_DISCOVERY.md`, `PROVISION_WORKFLOW.md`,
+Designed only — a naming/synthesis layer over the workflow contracts
+(`INTAKE_HITL_ROUTING.md`, `ACCESS_POLICY_AND_IAM_DISCOVERY.md`,
+`CLOUD_STACK_CATALOG.md`, `PROVISION_WORKFLOW.md`,
 `INQUIRY_WORKFLOW.md`, `BOOTSTRAP_WORKFLOW.md`, `EXECUTION_CREDENTIALS.md`)
 plus one genuinely new rule (steps may be skipped, never reordered).
 No doc previously named this sequence; grounded against actual repo
@@ -38,8 +38,8 @@ intake -> context -> plan -> approval? -> executor? -> evidence -> reporting
 | Step | What it means | Where it's actually designed |
 |---|---|---|
 | **intake** | Classify intent, ask clarification, route | `INTAKE_HITL_ROUTING.md` — classification and intent routing are real in `workflows/intake/`; scope/policy dispatch remains downstream |
-| **context** | Resolve actor grants/ceiling, load policy + project registry, snapshot current stack state | `resolve_route`'s `effective_access = min(grant, ceiling)` (`INTAKE_HITL_ROUTING.md:90`); login/provider-discovery flow (`ACCESS_POLICY_AND_IAM_DISCOVERY.md:151-199`); `current_state_fingerprint` (`PROVISION_WORKFLOW.md:21,310,501,565`) — three separately-designed mechanisms, grouped under one name here |
-| **plan** | Generate/render an IaC plan, or produce an inquiry answer | `PROVISION_WORKFLOW.md`'s `build_plan`/toolchains; `INQUIRY_WORKFLOW.md`'s answer-shape logic |
+| **context** | Resolve actor grants/ceiling, workspace facts, authorized reusable stack release, and current state | `resolve_route`'s `effective_access = min(grant, ceiling)`; login/provider discovery; `CLOUD_STACK_CATALOG.md`'s authorization-first exact-release resolution; `PROVISION_WORKFLOW.md`'s `current_state_fingerprint` |
+| **plan** | Instantiate reusable content, then generate a fresh target/state-bound provider plan—or produce an inquiry answer | `CLOUD_STACK_CATALOG.md`'s release/deployment boundary; `PROVISION_WORKFLOW.md`'s `build_plan`/toolchains; `INQUIRY_WORKFLOW.md`'s answer-shape logic |
 | **approval** | Human gate for risky/mutating work | `EXECUTION_CREDENTIALS.md`'s interrupt-based approval node; policy-driven `required_approvals` (`BOOTSTRAP_WORKFLOW.md:133-142`) |
 | **executor** | Run the approved action | `PROVISION_WORKFLOW.md`'s toolchains (`ccapi`/`hcp_terraform`/`opentofu_local`/`terraform_local`); the local pair shares one runner contract but seals different engine/version/state-owner identities; read-only describe calls for inquiry |
 | **evidence** | Record what happened | `ExecutionRecord`, `InquiryRecord` (both designed); no bootstrap-specific record exists yet |
@@ -50,8 +50,10 @@ intake -> context -> plan -> approval? -> executor? -> evidence -> reporting
 ### Provision
 ```
 intake:     "deploy invoices to dev"
-context:    actor grants, policy ceiling, project registry, current_state_fingerprint
-plan:       render OpenTofu template, run plan, compute plan_digest
+context:    actor grants, policy ceiling, project registry,
+            exact authorized CloudStackRelease, current_state_fingerprint
+plan:       instantiate CloudStackDeployment, render reviewed IaC,
+            create a fresh provider plan, compute plan_digest
 approval:   approver reviews vibe_diff + approval_digest
 executor:   acquire short-lived credential, run tofu apply
 evidence:   ExecutionRecord — actor, approver, plan digest, resources changed
@@ -86,7 +88,7 @@ reporting:  not designed — would cover onboarded projects, identity drift, pol
 It does not invent a `BootstrapRecord` to make the evidence column look
 complete, and it does not design the reporting layer — both are real
 gaps in the current design, left as gaps. It also does not redesign
-anything the five source docs already cover; every "designed"
+anything the source documents already cover; every "designed"
 attribution above points at an existing doc rather than restating its
 reasoning.
 
@@ -94,6 +96,7 @@ reasoning.
 Cross-cutting index over
 [INTAKE_HITL_ROUTING.md](INTAKE_HITL_ROUTING.md),
 [ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md),
+[CLOUD_STACK_CATALOG.md](CLOUD_STACK_CATALOG.md),
 [PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md),
 [INQUIRY_WORKFLOW.md](INQUIRY_WORKFLOW.md),
 [BOOTSTRAP_WORKFLOW.md](BOOTSTRAP_WORKFLOW.md), and

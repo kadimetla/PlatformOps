@@ -32,7 +32,8 @@ were verified 2026-07-30. Terraform saved-plan/apply and S3
 | `opentofu_local` runner (state backend, runner directory, two-phase credential acquisition) | Designed only, verified against current OpenTofu docs 2026-07-30 |
 | `terraform_local` runner | Designed only 2026-08-16; shares the local-runner contract but has a distinct binary/version/state-owner identity |
 | `Toolchain`/`LocalEngineIdentity` schemas and executor dispatch | Designed only — no runtime enum, runner, or executor package exists |
-| IaC artifact provenance in `approval_digest` | Designed only — sixth input is `template_version` for a monolithic template or `topology_digest` for a composed deployment |
+| Cloud Stack Registry/catalog, encrypted releases, scoped publication, and lookup | Designed in `CLOUD_STACK_CATALOG.md`; current `PROFILE_REGISTRY` is the only real seed and must not become a competing design |
+| IaC artifact provenance in `approval_digest` | Designed only — sixth input is `template_version` for a monolithic template or a canonical digest over exact Cloud Stack release/publication identity plus request-local `topology_digest` for a catalog-derived composition |
 | Toolchain identity in `approval_digest` | Designed 2026-08-16 — seventh input binds the resolved executor/toolchain configuration; for local runs it includes exact engine/version/platform and dependency-lock/backend identities |
 | `migrate_workspace_to_opentofu` admin workflow | Designed only |
 | Registry `toolchain`/`iac_engine`/`engine_version`/`state_owner`/`previous_state_owner`/`migrated_at` fields | Designed only — trusted selection and state-writer identity, never user/model input |
@@ -62,6 +63,34 @@ approval_digest -> binds create      approval_digest -> binds diff + current
 plan + policy snapshot                 state fingerprint + policy snapshot
 executor -> apply creates            executor -> apply diff
 ```
+
+## Reuse Boundary: Cloud Stack Release, Never Provider Plan
+
+[CLOUD_STACK_CATALOG.md](CLOUD_STACK_CATALOG.md) owns reusable-stack
+identity, lookup, visibility, sector policy, encryption, promotion, and
+version selection. Provisioning consumes that contract in this order:
+
+```text
+trusted org/BU/sector/provider/workspace context
+  -> authorized Cloud Stack Catalog search
+  -> deterministic CloudStackPublication resolution and exact release pin
+  -> decrypt and verify its TopologySpec/module manifest
+  -> target-bound CloudStackDeployment and TopologyRevision
+  -> DeploymentPlan and RenderedArtifact
+  -> fresh workspace/state-bound provider PlanResult
+```
+
+This avoids rebuilding the same reviewed topology and static certification for
+every request. It does not cache or promote `plan.bin`, an HCP run, or a CCAPI
+operation set. Those remain target/state/time-bound and are rebuilt for every
+deployment. The current `ProfileSelection -> PROFILE_REGISTRY` path is the
+compatibility seed for this lookup, not a second registry to extend separately.
+
+Catalog discovery may use full-text search and later semantic reranking, but
+only after authoritative visibility/provider/sector/policy filtering. The fixed
+parent graph supplies those trusted filters; the model may propose search terms
+but never publication scope, encryption key, artifact reference, or version
+override.
 
 ## IaC Generation: Template-First, Never Free-Form
 A gap this design hadn't addressed: `build_plan` needs actual IaC
@@ -117,7 +146,8 @@ It receives no cloud credentials and cannot merge, push, approve, or apply;
 it exports only a patch or PR artifact for normal human review. This is an
 optional authoring-time tool, not a node in the provision graph and not a
 runtime dependency of composition Slices 13 or 14. Only a human-reviewed,
-merged result can enter the runtime registry. Slice 15 in
+merged result becomes eligible for Cloud Stack release validation and scoped
+publication; merge alone does not publish it. Slice 15 in
 `PROVISION_IMPLEMENTATION_PLAN.md` tracks its independent acceptance.
 
 **Modified 2026-08-16, not silently**: the hard stop above gains a
@@ -485,10 +515,12 @@ approval_digest = hash(
 )
 ```
 For a monolithic reviewed template, `artifact_provenance` is its
-`template_version`. For a composed deployment it is the
-`topology_digest` defined by `COMPOSABLE_PROVISIONER.md`, covering the
-normalized topology, profile version, participating unit versions, and
-template digests. Either form catches a library or composition change
+`template_version`. For a composed deployment it is a canonical provenance
+digest containing the `CloudStackRelease` identity/version/content and
+publication-record digests plus the request-local `topology_digest` defined by
+`COMPOSABLE_PROVISIONER.md`; that topology digest covers the normalized
+topology, participating unit versions, and template digests. Either form
+catches a library, catalog publication, or composition change
 between plan and apply even when the rendered `plan.json` happens to
 look unchanged — provenance, not just content, is part of what approval
 attaches to.
@@ -796,12 +828,13 @@ allow-list.
 - [Terraform: S3 backend](https://developer.hashicorp.com/terraform/language/backend/s3) — verified 2026-08-16: `use_lockfile`, `.tflock`, required S3 Get/Put/Delete permissions; DynamoDB locking deprecated in current Terraform docs
 
 ## How this relates to the existing docs
-Sits between [INTAKE_HITL_ROUTING.md](INTAKE_HITL_ROUTING.md) (routes
-into `provision`) and
-[EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md) (owns credential
-acquisition mechanics; local plan-tier access occurs before approval and
-apply-tier access after it) — this doc owns what happens in
-between: `describe_current`, `build_plan`, and the `approval_digest`
+Consumes [INTAKE_HITL_ROUTING.md](INTAKE_HITL_ROUTING.md)'s route into
+`provision`, [CLOUD_STACK_CATALOG.md](CLOUD_STACK_CATALOG.md)'s reusable
+release discovery/publication/encryption/promotion/version contract, and
+[EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md)'s credential mechanics
+(local plan-tier access before approval, apply-tier access after it). This doc
+owns the deployment-specific work between them: `describe_current`,
+`build_plan`, and the `approval_digest`
 extension credentials mechanics assumes but doesn't itself define.
 Corrects `EXECUTION_CREDENTIALS.md`'s `approval_digest` formula in
 place (noted there, not silently changed). Reuses
@@ -824,8 +857,9 @@ sub-graph and failure taxonomy with
 [EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md) unchanged — this
 doc adds a sixth artifact-provenance input and seventh toolchain-identity
 input to the digest
-(`template_version` for one template; `topology_digest` for a composed
-deployment, extending Gap 2's fifth), an action dimension to the allow-list, the
+(`template_version` for one template; release/publication plus topology
+provenance for a catalog-derived deployment, extending Gap 2's fifth), an
+action dimension to the allow-list, the
 template-first IaC generation model, and the local toolchains'
 two-phase credential acquisition, nothing about the shared
 execution mechanics themselves. Indexed from

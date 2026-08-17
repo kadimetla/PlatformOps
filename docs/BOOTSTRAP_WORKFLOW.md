@@ -64,6 +64,19 @@ The full chain, ending where routing begins: no org row → no BU can be
 created → no project can be bootstrapped → no workspace can be added →
 normal provisioning cannot route.
 
+### Sector classification is onboarding data, not request data
+
+`CLOUD_STACK_CATALOG.md` requires one trusted `sector_id` to apply sector
+publication visibility and policy (for example, finance controls). Levels 0-1
+therefore own that organization/BU governance classification in the
+PR-reviewed `org_bu_policy.yaml` data. It is inherited into
+`WorkflowAuthContext`; users, models, Cloud Stack releases, and project
+bootstrap requests cannot self-classify or override it. Missing or ambiguous
+classification stops catalog lookup rather than falling back to a less
+restrictive policy. The exact field/schema and authority allowed to change it
+remain implementation work alongside the Cloud Stack Registry, not a second
+classification mechanism in provisioning.
+
 **MVP split — git is the approval gate for the rare levels:**
 
 ```
@@ -360,6 +373,8 @@ workflow entry and passed downstream immutably:
 ```python
 class WorkflowAuthContext(BaseModel):
     effective_access: Capability
+    sector_id: str  # trusted org/BU governance classification;
+                    # required by Cloud Stack lookup, never request/model input
     evidence: list[str]
 
 # evidence, in order the terms were combined -- mirrors gateway/auth/
@@ -368,6 +383,7 @@ class WorkflowAuthContext(BaseModel):
 #   "provider grant=apply_limited"
 #   "org/bu ceiling=apply_full"
 #   "workspace max_capability=describe"
+#   "sector_id=finance"
 #   "effective_access=describe"
 ```
 `resolve_execution_capability`/`resolve_ceiling` stay as they are
@@ -423,5 +439,7 @@ the identities this workflow creates and the Layer -1 manual
 exception this doc inherits.
 [INTAKE_HITL_ROUTING.md](INTAKE_HITL_ROUTING.md)'s rule that intake
 never routes project creation gets its outcome name here
-(`admin_bootstrap_required`). Indexed from
+(`admin_bootstrap_required`). [CLOUD_STACK_CATALOG.md](CLOUD_STACK_CATALOG.md)
+consumes the PR-reviewed sector classification established at Levels 0-1; it
+does not redefine onboarding authority. Indexed from
 [HARNESS_DESIGN.md](HARNESS_DESIGN.md).

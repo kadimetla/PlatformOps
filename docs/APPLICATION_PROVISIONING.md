@@ -24,6 +24,7 @@ unblocked for acceptance.
 | Area | Status |
 |---|---|
 | `workflows/provision/` | Request-preparation graph is real: deterministic scope resolution, `aws-static-web` profile selection, and `AwsStaticWebProvisionRequest` extraction; it stops before topology loading, IaC, credentials, approval, or execution and is not yet routed from intake |
+| Cloud Stack Registry/catalog | Designed in `CLOUD_STACK_CATALOG.md`; the real `aws-static-web` profile is its compatibility seed, while encrypted releases, scoped publication, promotion, and search remain unbuilt |
 | Per-run tenant selection / provision `resolve_scope` | First slice implemented 2026-08-14 (`ScopeHint`, deterministic resolver, harness preservation, CLI parsing); tenant selection remains outside mutable `ActorSession`; durable `RunContext` and the real workspace registry do not exist, and intake still carries no scope |
 | `templates/aws/kubernetes-static-web/` | Does not exist |
 | `ApplicationProvisionRequest` schema | `AwsStaticWebProvisionRequest` is real; the Kubernetes profile contract and discriminated union remain designed only |
@@ -232,9 +233,15 @@ already-designed mechanic or is **new**.
    at the `ceiling.py` level (see Real vs. Designed). Deployment
    requires `effective_access >= apply_limited`. Execution identity
    comes from the registry — the user never chooses it.
-5. **Select a reviewed profile ID** and resolve its trusted registration
-   (request model, topology path, profile version). The model may select
-   only a catalog entry; it does not provide units, edges, or IaC.
+5. **Resolve an authorized `CloudStackPublication` and its exact reviewed
+   `CloudStackRelease`** using trusted org/BU/sector/provider/workspace context.
+   The current
+   `aws-static-web` `ProfileRegistration` is the compatibility adapter for this
+   step. The model may propose capability/search terms and select only among
+   sanitized authorized candidates; deterministic code owns visibility,
+   provider/sector compatibility, policy, exact version, decryption/signature
+   verification, and artifact resolution. It does not provide units, edges,
+   publication scope, keys, or IaC.
 6. **Extract the profile-specific `ApplicationProvisionRequest`**,
    clarifying missing fields. The static-only profile never requires
    Kubernetes parameters.
@@ -342,7 +349,9 @@ reasoning trail):
 
 ## What should be implemented first
 1. ~~Per-run `TenantRef`/`ScopeHint` plus deterministic `resolve_scope`.~~ Implemented 2026-08-14.
-2. Reviewed profile catalog (selection of the initial hard-bounded profile is implemented; trusted file-backed registry remains).
+2. Cloud Stack Registry compatibility adapter over `PROFILE_REGISTRY`, then
+   exact authorized release lookup; persistent encrypted publication/promotion
+   can land independently as `PROVISION_IMPLEMENTATION_PLAN.md` Slice 16.
 3. Profile-specific `ApplicationProvisionRequest` contracts (static-web implemented; Kubernetes remains).
 4. ~~Static-web request extraction + clarification.~~ Implemented 2026-08-14.
 5. Topology loading, validation, compilation, and typed plan composition.
@@ -376,5 +385,11 @@ pattern (extended to a third, "application release" category). Adds,
 net-new: the S3+CloudFront+EKS reference architecture itself, the
 three-way bootstrap/provisioning/release workflow boundary, OAC/ACM/
 Fargate-vs-managed-node specifics, `ApplicationProvisionRequest`, and
-the `provision-application` skill tree. Not yet indexed from
-`HARNESS_DESIGN.md` pending acceptance of the open questions above.
+the `provision-application` skill tree. It is indexed from
+`HARNESS_DESIGN.md`; the earlier acceptance questions are resolved above.
+
+`CLOUD_STACK_CATALOG.md` now owns the reusable publication layer above this
+profile: exact release/version identity, authorized discovery, sector/org/BU
+visibility, encryption, promotion, and revocation. This document continues to
+own only the application-specific request/topology behavior. Every target still
+gets a fresh provider plan and approval; the catalog does not cache either.

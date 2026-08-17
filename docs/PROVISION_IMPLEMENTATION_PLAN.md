@@ -5,7 +5,8 @@ Slice 7 are represented in code. Runtime execution still stops after routing
 to a handler that produces a typed, non-executable provision draft; the
 profile registry/loader is not yet called by that graph. No topology compiler,
 OpenTofu command, credential acquisition, approval gate, or provider mutation
-is enabled.
+is enabled. No Cloud Stack Registry/catalog, encrypted release store, or
+promotion workflow exists; `PROFILE_REGISTRY` is its compatibility seed.
 
 ## Delivery rule
 
@@ -33,7 +34,8 @@ them, never earlier.
 | 12 | Independent verification, evidence persistence, reporting, failure taxonomy | Applied resources are read back; partial failure records facts and requires a new plan | Pending |
 | 13 | Optional: LangGraph-native free-composition planner (plain `create_agent`/`ToolNode` first, read-only catalog tools, `ToolStrategy(TopologyProposal)`) as an alternative `topology_revision` source alongside Slice 5's reviewed-`topology.yaml` loader; A/B against a stripped Deep Agent only if long-horizon context becomes a measured need | Unknown/forbidden unit proposals fail validation identically to a malformed reviewed profile; final visible tool set contains only reviewed read-only catalog tools; agent never reaches credentials, approval, or apply nodes; disabled by policy until its own acceptance decision; Deep Agent cannot be selected without equal-case measurements for correctness, requirement coverage, repair, calls/tokens/latency, deterministic revision output, and zero extra capability exposure | Pending, not a dependency of 5-12 — Pi/Node and Pydantic AI Harness rejected; Deep Agents conditionally retained because it shares LangGraph but is not yet justified for this bounded loop; see `COMPOSABLE_PROVISIONER.md` |
 | 14 | Optional, after 13: resource-primitive authoring — per-provider resource registries (exact discriminated config schemas + reviewed renderers), immutable `TopologyRevision` chain, coding-agent architecture review plus compose/repair loop bounded at 2 automatic rounds, revision-scoped unit/artifact state, and seal/supersede lifecycle; Deep Agents is a separately accepted runtime implementation option | Unknown resource types and out-of-schema configurations fail closed; LLM output is typed resource data only, never HCL; every changed node/edge/config creates a successor revision and atomically invalidates compiled results/artifact/plan/policy/approval; a runtime Deep Agent has no filesystem/shell/default subagent/skills/memory/store/checkpointer and exposes only scoped read-only tools; approval binds one exact revision | Pending, strictest checks of any runtime composition level; see `COMPOSABLE_PROVISIONER.md`'s Deep Agents, resource-authoring, and fluid-lifecycle sections |
-| 15 | Optional authoring-time track, after the module/renderer contract from Slices 6 and 8 is stable: isolated Deep Agent authors a new reviewed module/renderer plus contract tests, runs formatting, `tofu validate`, pytest, and deterministic compliance checks, then exports a patch or PR artifact | Sandbox receives no cloud credentials; only trusted reviewed skills/contracts are mounted; agent cannot merge, push, approve, or apply; generated output cannot enter a runtime registry until normal human review and merge; acceptance is independent of runtime Deep Agent decisions in Slices 13/14 | Pending, not a runtime workflow slice or dependency of Slices 13/14 — may be accepted even if both runtime evaluations reject Deep Agents; see `COMPOSABLE_PROVISIONER.md`'s "Offline use — Slice 15" and `PROVISION_WORKFLOW.md`'s Level 2 contract |
+| 15 | Optional authoring-time track, after the module/renderer contract from Slices 6 and 8 is stable: isolated Deep Agent authors a new reviewed module/renderer plus contract tests, runs formatting, `tofu validate`, pytest, and deterministic compliance checks, then exports a patch or PR artifact | Sandbox receives no cloud credentials; only trusted reviewed skills/contracts are mounted; agent cannot merge, push, approve, publish, or apply; merge only makes output eligible for Slice 16 validation/signing/encryption and scoped publication—it does not enter the Cloud Stack Registry automatically; acceptance is independent of runtime Deep Agent decisions in Slices 13/14 | Pending, not a runtime workflow slice or dependency of Slices 13/14 — may be accepted even if both runtime evaluations reject Deep Agents; see `COMPOSABLE_PROVISIONER.md`'s "Offline use — Slice 15" and `PROVISION_WORKFLOW.md`'s Level 2 contract |
+| 16 | Cloud Stack Registry/catalog track: adapt the real `PROFILE_REGISTRY` behind exact release lookup first; then immutable encrypted/signed artifacts, scoped publication (`org_bu`/organization before sector/global), promotion approval/evidence, full-text discovery, and only evaluation-justified semantic reranking | Existing `aws-static-web` selection is unchanged through the adapter; unauthorized releases never appear in results/counts; exact version/content/publication digests bind approval; revocation wins over a stale index; two workspaces reuse one release but always receive different fresh state-bound provider plans | Pending, independent of runtime composition Slices 13/14/15; structured lookup can land after Slice 5 and before full promotion infrastructure — canonical contract is `CLOUD_STACK_CATALOG.md` |
 
 ## Next implementation flow — contract-first vertical path
 
@@ -69,10 +71,11 @@ return type.
 | HTTP/harness | `ActorSession`, `request_id`, raw text, optional `ScopeHint` | `HITLEvent | PlatformOpsEvent` | Real; transport/harness |
 | Intake/dispatch | `IntakeRequest` plus trusted route/policy tables | `IntakeDecision`, then `ProvisionInvocation` | Real; intake + harness |
 | Provision preflight | `ProvisionInvocation`, model, known workspaces, `ExecutionGrant` list | `ProvisionDraft` containing resolved scope/profile/typed application request or one fail-closed outcome | Real; `prepare_provision_request` |
-| Trusted planning context | ready `ProvisionDraft` plus registry/auth snapshots | `PlanningContext(run_id, scope, workspace, auth_context, profile_registration, application_request)` | New prerequisite; fixed parent only |
-| Profile topology | `PlanningContext.profile_registration` | `TopologyRevision` plus `ValidatedTopology` | Loader/validator partly real; revision wrapper/node new |
+| Cloud Stack resolution | ready draft plus trusted org/BU/sector/provider/workspace and policy context | exact authorized `CloudStackPublicationRef` containing its immutable release; current `ProfileRegistration` adapter supplies the seed publication/release | Slice 16 contract; fixed parent only, structured lookup before semantic reranking |
+| Trusted planning context | ready `ProvisionDraft` plus registry/auth/publication snapshots | `PlanningContext(run_id, scope, workspace, auth_context, cloud_stack_publication, application_request)` | New prerequisite; fixed parent only |
+| Release topology | verified/decrypted release topology payload | request-local `TopologyRevision` plus `ValidatedTopology` | Loader/validator partly real; release adapter and revision wrapper/node new |
 | Unit planning | current revision, validated topology, planning-only unit registry, fresh child state | `CandidateArtifacts(revision_id, unit_results)` | Slice 6-7 |
-| Composition | current revision plus complete unit results | canonical `DeploymentPlan(revision_id, topology_digest, profile_id, scope, resources, dependency_order, template_digests)` | Slice 7; designed, normalized here |
+| Composition | current revision plus complete unit results | canonical `DeploymentPlan(revision_id, topology_digest, cloud_stack_publication, scope, resources, dependency_order, template_digests)` | Slice 7; designed, normalized here |
 | Rendering | deployment plan plus reviewed registered modules | `RenderedArtifact` with controlled root path, per-file digests, and aggregate artifact digest | Slice 8 |
 | Provider plan | rendered artifact, trusted workspace/toolchain context, least-privilege plan-phase access | closed `PlanResult`: local saved-plan result, HCP remote-run result, or CCAPI operation-set result; every branch supplies normalized changes/digests and no credential material | Slice 9 for local MVP; HCP/CCAPI adapters later |
 | Policy + seal | current revision, deployment/artifact/plan digests, normalized changes, policy/allow-list snapshots | `PolicyResult`; on pass, immutable `SealedPlan` | Slice 10 |
@@ -87,6 +90,14 @@ provider account/subscription/project, region, state-backend coordinates, and
 execution-identity references. It contains references and snapshots, never
 credentials. Do not add those fields to `Scope` or ask the model to supply
 them.
+
+Cloud Stack discovery is not provider planning. The reusable release contributes
+reviewed topology, schemas, module digests, and static certification; the target
+still gets a fresh `CloudStackDeployment`, current-state read, `DeploymentPlan`,
+provider `PlanResult`, approval, and evidence. Visibility and exact version are
+resolved deterministically. No LLM-supplied organization, BU, sector,
+publication scope, key reference, artifact reference, or version override is
+accepted.
 
 The workspace also pins one canonical toolchain—`ccapi`, `hcp_terraform`,
 `opentofu_local`, or `terraform_local`. The two local values share one runner
@@ -124,7 +135,9 @@ set. None may reinterpret another branch's artifact.
 
 The design previously defined `DeploymentPlan` twice. The canonical shape is
 now the Step 8 shape in `COMPOSABLE_PROVISIONER.md`, corrected to carry
-`resources: list[ResourceIntent]`, `revision_id`, and `scope`. It does not
+`resources: list[ResourceIntent]`, `revision_id`, `scope`, and an exact
+`CloudStackPublicationRef` containing the exact release and authorized
+publication. It does not
 carry `units` (those remain revision-local `unit_results`) or
 `policy_snapshot` (that is produced later by deterministic plan validation).
 
@@ -167,8 +180,9 @@ all fail before any unit planner runs.
 #### B. Revision handoff and stateless topology execution — Slice 7
 
 1. Add `load_topology_revision(PlanningContext) -> TopologyRevision`; calculate
-   its digest from normalized topology, profile version, unit versions, and
-   template digests.
+   its digest from normalized topology, exact Cloud Stack release/content/
+   publication identity, unit versions, and template digests. The current
+   profile adapter must produce that release reference before this node.
 2. Compile only the validated DAG. Use one LangGraph list edge for joins so
    `origin_policy` runs once after both unequal-depth predecessors.
 3. Invoke every revision with fresh `TopologyRunState(unit_results={})`; never
@@ -300,8 +314,9 @@ success when independent verification fails.
 ### Fixed parent graph after activation
 
 ```text
-resolve_scope -> resolve_context -> select_profile
-  -> extract_profile_request -> load_topology_revision -> run_topology
+resolve_scope -> resolve_context -> search_and_resolve_cloud_stack
+  -> extract_stack_request -> decrypt_verify_release
+  -> load_topology_revision -> run_topology
   -> compose_plan -> render_iac -> dispatch_plan_by_toolchain
   -> validate_plan -> seal_plan
   -> create_approval_request -> approval_gate (interrupt/quorum)
@@ -322,8 +337,10 @@ resolver checks both registry presence and a non-`none` provider-derived
 execution grant. It intentionally does not expose which half failed.
 
 The in-memory list of known `Scope` values is a testable seam, not the final
-workspace registry schema. Slice 5 replaces its caller with the trusted
-profile/workspace registries without changing scope-resolution behavior.
+workspace registry schema. Workspace-registry resolution replaces that seam
+without changing scope-resolution behavior. Slice 5's profile registry remains
+the Cloud Stack compatibility adapter until Slice 16 replaces lookup behind the
+same fail-closed boundary.
 
 ## Slice 3 boundary
 
@@ -355,6 +372,9 @@ run in the default test suite.
 [COMPOSABLE_PROVISIONER.md](COMPOSABLE_PROVISIONER.md) defines the target
 graph-as-data architecture. [APPLICATION_PROVISIONING.md](APPLICATION_PROVISIONING.md)
 defines the first AWS static-web and Kubernetes application contracts.
+[CLOUD_STACK_CATALOG.md](CLOUD_STACK_CATALOG.md) owns reusable release lookup,
+visibility, encryption, promotion, and the release-versus-execution-plan
+boundary.
 [PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md) owns plan/apply semantics and
 [APPROVAL_GATE.md](APPROVAL_GATE.md) owns the checkpointed mutation gate. This
 document only orders those designs into testable implementation slices.

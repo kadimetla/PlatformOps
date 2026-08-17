@@ -18,6 +18,7 @@ version (2026-08-14), because it changes the node decomposition — see
 |---|---|
 | `ApprovalRequest`/`ApprovalRecord`/`ApprovalVerdict` schemas | **Real** — `gateway/approval.py` |
 | Topology revision/digest fields and `superseded` request status | Designed only — required by `COMPOSABLE_PROVISIONER.md`'s fluid-topology lifecycle; absent from the real schemas/store |
+| Cloud Stack release/version/content/publication provenance | Designed only — folded into `artifact_provenance` by `CLOUD_STACK_CATALOG.md`; absent from the real schemas/store |
 | `HITLEventKind.APPROVAL_REQUIRED`, `HITLStatus` | **Real** — `interaction/events.py:52` |
 | `hitl_event_to_interrupt` + approval `responseSchema` | **Real** — `interaction/agui.py:45,75`; already emits `{verdict, approval_digest}` |
 | Approval gate node (`interrupt()`, quorum loop) | Not implemented — no checkpointed workflow exists to host it |
@@ -80,7 +81,7 @@ them:
 
 | Sketch | Real (`gateway/approval.py:43`) | Note |
 |---|---|---|
-| `artifact_provenance=topology_digest` | `approval_digest` | **Conceptual, not cosmetic**: `artifact_provenance` is one of seven inputs to `approval_digest` ([PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md)); `toolchain_identity_digest` is separate. The request carries the combined digest. |
+| `artifact_provenance=topology_digest` | `approval_digest` | **Conceptual, not cosmetic**: `artifact_provenance` is one of seven inputs to `approval_digest` ([PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md)); for catalog-derived work it canonically includes exact `CloudStackRelease` version/content/publication digests plus the request-local topology digest (`CLOUD_STACK_CATALOG.md`). `toolchain_identity_digest` remains separate. The request carries the combined digest. |
 | `summary` | `vibe_diff` | Named for what it is across the whole doc set |
 | `expires_at` | `approval_expires_at` | AG-UI's `Interrupt` separately has a native `expires_at` — see below |
 | — | `intent`, `capability_required` | Required, and load-bearing for authority evaluation |
@@ -165,8 +166,13 @@ here.
 request fluid before approval, but never makes an approval target mutable.
 The future approval-request schema therefore also carries the sealed
 `topology_revision_id`, `topology_digest`, and rendered-artifact digest in
-addition to its existing `plan_digest`/`approval_digest`. These are designed
-fields; `gateway/approval.py` does not contain them yet.
+addition to its existing `plan_digest`/`approval_digest`. Catalog-derived work
+also carries the exact `CloudStackPublicationRef` (publication target/digest,
+registry snapshot, and nested stack/version/provider/content reference) whose
+canonical digest is already bound
+inside `artifact_provenance`; these display/audit fields cannot replace digest
+validation. All are designed fields; `gateway/approval.py` does not contain
+them yet.
 
 Once an approval request is pending, an agent or human change creates a new
 immutable topology revision. `ApprovalRequestStore` atomically marks the old
@@ -220,5 +226,7 @@ topology slot in the fixed parent chain. Extends
 convention to approvals. Consumes
 [PROVISION_WORKFLOW.md](PROVISION_WORKFLOW.md)'s seven-input
 `approval_digest`, including artifact-provenance and resolved-toolchain
-identity terms. Indexed from
+identity terms; [CLOUD_STACK_CATALOG.md](CLOUD_STACK_CATALOG.md) defines the
+release/content/publication digests folded into artifact provenance for a
+catalog-derived deployment. Indexed from
 [HARNESS_DESIGN.md](HARNESS_DESIGN.md).
