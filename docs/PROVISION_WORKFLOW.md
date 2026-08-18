@@ -39,6 +39,86 @@ were verified 2026-07-30. Terraform saved-plan/apply and S3
 | Registry `toolchain`/`iac_engine`/`engine_version`/`state_owner`/`previous_state_owner`/`migrated_at` fields | Designed only — trusted selection and state-writer identity, never user/model input |
 | Backend-config-must-never-carry-credentials rule | Verified verbatim against current OpenTofu docs 2026-07-31; not previously violated but not previously stated as a rule either |
 
+## Provision Intake Handoff
+
+Intake is deliberately shallow. It classifies the user's raw text into an
+intent and resolves a trusted route ID; it does not decide which concrete
+provisioning profile the user wants and it does not gather profile-specific
+fields.
+
+The implemented handoff is:
+
+```text
+PlatformOpsHarness.start_run
+  -> _classify
+  -> workflows.intake.graph.intake_request
+  -> IntakeDecision(intent=provision, route=provision)
+  -> tenant route gate
+  -> ProvisionInvocation(raw_text, scope_hint)
+  -> _dispatch_provision
+  -> ROUTE_REGISTRY["provision"]
+  -> workflows.provision.graph.prepare_provision_request
+```
+
+`ROUTE_REGISTRY["provision"]` currently points to
+`prepare_provision_request`. That handler builds and invokes the first
+non-mutating provision graph:
+
+```text
+resolve_scope
+  -> select_profile
+  -> extract_profile_request
+  -> END
+```
+
+Node ownership is split as follows:
+
+```text
+resolve_scope
+  deterministic; checks org/BU/project/workspace against known workspace
+  records and the actor's execution grants. Missing project/workspace asks
+  clarification. Unknown and unauthorized targets return the same public
+  unavailable reason.
+
+select_profile
+  model-assisted but schema-bound; selects one reviewed deployment profile.
+  Today the only valid profile is aws-static-web, so this is a single-profile
+  gate rather than a robust catalog match.
+
+extract_profile_request
+  model-assisted but schema-bound; extracts the fields required by the
+  selected profile. For aws-static-web today those fields are
+  frontend_artifact_uri and frontend_hostname. Missing fields return a
+  workflow-specific clarification instead of guessing.
+```
+
+The public result is still a routing/preflight event, not an execution event.
+If provision needs clarification, the harness stores a pending provision
+clarification and resumes by reinvoking the provision graph with the user's
+answer appended to the original request text. If scope is unavailable, the
+harness returns `ready_to_route=false`. If the draft is complete, the harness
+returns `ready_to_route=true` with `profile_id`, resolved `scope`, and the
+typed `application_request`.
+
+The intended next handoff after this implemented slice is:
+
+```text
+ProvisionDraft.ready
+  -> exact reviewed profile or Cloud Stack release resolution
+  -> profile/release input-schema completion
+  -> topology/revision load and validation
+  -> DeploymentPlan
+  -> RenderedArtifact
+  -> fresh provider PlanResult
+  -> policy checks
+  -> approval
+  -> apply
+  -> verify/evidence
+```
+
+Those downstream planning, approval, execution, and verification steps are
+designed below but not implemented by the current public route.
+
 ## Same Access Flow for New and Existing Stacks
 No separate grant model needed for "create a new stack" vs. "update an
 existing one" — both are `provision` intent, both hit the identical
