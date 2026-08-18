@@ -92,6 +92,96 @@ parent graph supplies those trusted filters; the model may propose search terms
 but never publication scope, encryption key, artifact reference, or version
 override.
 
+## Unsupported Profile Requests and Profile Authoring
+
+Intake only decides that the request belongs to the `provision` workflow.
+It must not decide that the user wants `aws-static-web`, `rds-postgres`, or
+any other concrete stack shape. That belongs inside the provision workflow,
+where profile matching, profile-specific extraction, and workflow-specific
+clarification can use the resolved target context.
+
+The implemented slice is still narrower than this target: `aws-static-web` is
+the only accepted `ProfileSelection`, so profile selection is mostly a
+single-profile gate today. The next profile-matching contract must separate
+these outcomes:
+
+```text
+existing reviewed profile matches
+  -> load that profile/release input schema
+  -> extract all required fields
+  -> ask targeted clarification for missing fields
+  -> continue only when the typed request is complete
+
+no reviewed profile matches
+  -> do not coerce the request into the only existing profile
+  -> gather high-level requirements for profile authoring
+  -> return a non-executable profile-authoring request
+```
+
+The end user is not expected to know every infrastructure detail needed to
+create a reusable profile. The authoring path should ask for product-level
+intent and constraints, then let platform and security review own the deep
+infrastructure choices:
+
+```text
+user-owned inputs:
+  capability requested, target project/workspace, environment,
+  data sensitivity, access pattern, rough scale, availability needs,
+  retention/compliance constraints
+
+platform/security-owned decisions:
+  exact resource types, engine/version defaults, sizing, storage class,
+  network placement, encryption, backup policy, IAM shape, monitoring,
+  tags, allowed actions/resources, cost guardrails, reviewer checklist
+```
+
+For example, "provision a Postgres database for invoices dev" should not be
+forced into `aws-static-web`. The provision workflow should resolve the
+target, identify that no reviewed database profile is available, ask only the
+missing product-level questions, and produce a draft such as:
+
+```text
+requested_capability: postgres_database
+provider: aws
+target_scope: aiq:it/invoices/dev
+data_sensitivity: unknown | internal | regulated
+access_pattern: app_private | vpn_private | public
+scale_hint: small | medium | large
+availability: dev_default | production_ha
+status: profile_authoring_required
+```
+
+That draft is not an execution artifact. It feeds a separate
+ProfileAuthoringWorkflow or offline authoring track that creates a reviewed
+profile/catalog proposal. The proposal may produce profile metadata, input
+schemas, topology, reviewed renderer/module changes, policy certificates, and
+tests, but it cannot publish, approve, or apply anything by itself. A profile
+becomes available to provision only after the normal review, merge, validation,
+signing, and scoped publication path completes.
+
+Project is still required as context even when the eventual reusable profile is
+not project-specific. Provision execution always targets an exact
+`org/bu/project/workspace`; that target drives grants, policy ceilings,
+workspace defaults, state ownership, provider account/region, naming, tagging,
+and evidence. Profile/catalog content should usually be scoped at org/BU or a
+broader publication scope and then authorized for one or more projects or
+workspaces:
+
+```text
+profile/catalog content:
+  owner_scope: aiq:it
+  allowed_projects: invoices, billing
+
+deployment request:
+  use that reviewed content for aiq:it/invoices/dev
+```
+
+A profile should be project-specific only when the infrastructure pattern is
+not meaningfully reusable outside that project, such as a hard dependency on
+one project's VPC, DNS zone, data contract, integration, or regulatory policy.
+Even then, profile creation remains an authoring/publication act, not a
+runtime shortcut inside provisioning.
+
 ## IaC Generation: Template-First, Never Free-Form
 A gap this design hadn't addressed: `build_plan` needs actual IaC
 content to diff and apply, and nothing so far said where that content
