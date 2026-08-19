@@ -11,6 +11,9 @@ org/BU/project/workspace scaffolding, groups, execution identities, and
 registry rows. This document owns day-two access changes: how a user
 asks for a role, how that request is approved, how Authentik/IdP group
 membership changes, and how PlatformOps sees the new capability.
+`OPEN_SOURCE_IGA_OPTIONS.md` compares whether an external IGA tool such
+as midPoint or OpenIAM should own this lifecycle instead of PlatformOps
+building the MVP workflow itself.
 
 ## Decision
 
