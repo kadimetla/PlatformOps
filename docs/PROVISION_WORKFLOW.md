@@ -182,8 +182,15 @@ clarification can use the resolved target context.
 
 The implemented slice is still narrower than this target: `aws-static-web` is
 the only accepted `ProfileSelection`, so profile selection is mostly a
-single-profile gate today. The next profile-matching contract must separate
-these outcomes:
+single-profile gate today. That profile is an initial seed for the Cloud Stack
+Catalog direction, not the whole static-web product surface. A user-level
+request such as "host my static web app" should resolve to an authorized
+static-web stack variant for the target org/BU/workspace, for example an
+AWS-native S3/CloudFront variant, a Kubernetes-served variant, or another
+reviewed organization standard. The end user supplies application-specific
+facts; the selected stack variant owns the reviewed resource assembly.
+
+The next profile-matching contract must separate these outcomes:
 
 ```text
 existing reviewed profile matches

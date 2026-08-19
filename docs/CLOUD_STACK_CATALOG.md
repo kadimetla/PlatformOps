@@ -307,6 +307,70 @@ Selection evidence records the query, candidate release references, rejected
 reasons safe to disclose, selected exact version, registry snapshot, and policy
 snapshot. This makes a later "why did it choose this stack?" answer auditable.
 
+## Stack Families and Organization Variants
+
+A Cloud Stack is the reviewed implementation of a product outcome, not the
+outcome itself. End users may ask for "host my static web app" with little or
+no cloud knowledge. They should not have to assemble S3, CloudFront, ACM,
+Route53, Kubernetes, Ingress, TLS, bucket policies, or provider-specific
+access controls. The catalog maps that product-level intent to one authorized
+stack variant for the user's trusted scope.
+
+Use this hierarchy:
+
+```text
+application intent
+  -> stack family
+  -> provider
+  -> authorized org/BU/workspace variant
+  -> exact versioned topology release
+```
+
+For example:
+
+```text
+host static web app
+  -> static-web
+  -> aws
+  -> aws-static-web-cdn
+  -> v1.0.0
+```
+
+`static-web` is a family. It may have multiple reviewed variants because
+organizations standardize static hosting differently:
+
+| Variant | Typical resource assembly | When it fits |
+|---|---|---|
+| `aws-static-web-cdn` | private S3 bucket, CloudFront, OAC, bucket policy, optional ACM certificate and Route53 records | AWS-native CDN-backed static hosting |
+| `aws-kubernetes-static-web` | container image, Deployment, Service, Ingress, TLS, DNS | organizations that require all apps to run through Kubernetes |
+| `aws-s3-website-basic` | S3 website hosting, bucket policy, optional DNS | simple or legacy cases where the weaker security posture is explicitly allowed |
+| `external-cdn-static-web` | artifact bucket plus external CDN/DNS handoff | organizations standardizing on a third-party CDN |
+
+The exact list is allowed to evolve. A global default can seed an initial
+implementation, but mature organizations and BUs may publish their own
+standard variants once platform and security review decide "this is how our
+teams should deploy this capability." Resolution prefers the most specific
+permitted publication: workspace policy or pin, then BU, organization, sector,
+and finally global default.
+
+Each variant must declare:
+
+- user-facing intent and summary;
+- required application inputs, such as app name, source or release reference,
+  environment, and optional desired URL;
+- generated or registry-derived inputs, such as bucket name, state key,
+  namespace, region, DNS zone, provider account, and execution role;
+- topology units and dependencies;
+- policy constraints, including allowed DNS zones, allowed resource/action
+  types, region rules, and approval requirements;
+- lifecycle, version, migration notes, and deprecation status.
+
+The model may help discover candidate resource assemblies while humans are
+authoring or revising a stack variant. At runtime, the model may explain
+choices, classify intent, and gather application-specific facts. It must not
+invent the executable resource graph. Planning consumes only reviewed catalog
+content, trusted workspace context, and deterministic policy checks.
+
 ## Sector and Tenant Policy
 
 A finance stack is not safe merely because its metadata says `finance`.
