@@ -60,12 +60,8 @@ design reasoning needs consulting.
   IaC, CCAPI, Terraform). Imports `StdioServerParameters` from
   `google.adk.tools.mcp_tool.mcp_toolset`; migration to
   `langchain-mcp-adapters` pending.
-- `skills/` — Agent Skills (`SKILL.md` per folder). **Known bug,
-  confirmed present on this branch**: `provision-infra/SKILL.md`'s
-  `allowed-tools` is a YAML list; the real schema (per
-  `google-adk==2.4.0`'s `SkillToolset`) requires a space-delimited
-  string instead — fix before wiring any skill-loading mechanism to
-  this file.
+- `skills/` — Agent Skills (`SKILL.md` per folder). `allowed-tools`
+  frontmatter uses ADK's space-delimited string schema, not a YAML list.
 - `spec/` — the durable, version-controlled reference architecture
   (`reference_architecture.md`, Given/When/Then) and its deterministic
   checker (`check_compliance.py`). Unaffected by the stack decision.

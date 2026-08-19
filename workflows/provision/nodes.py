@@ -108,18 +108,19 @@ def build_extract_profile_request(model):
             ]
         )
         calls = getattr(response, "tool_calls", None) or []
-        args = calls[0].get("args", {}) if len(calls) == 1 else {}
+        raw_args = calls[0].get("args", {}) if len(calls) == 1 else {}
+        args = raw_args if isinstance(raw_args, dict) else {}
         artifact = args.get("frontend_artifact_uri")
         hostname = args.get("frontend_hostname")
+        question = args.get("clarifying_question") or (
+            "Provide the frontend artifact URI and frontend hostname."
+        )
         if (
             len(calls) != 1
             or calls[0].get("name") != "extract_aws_static_web_request"
             or not artifact
             or not hostname
         ):
-            question = args.get("clarifying_question") or (
-                "Provide the frontend artifact URI and frontend hostname."
-            )
             result = state["result"].model_copy(
                 update={
                     "clarification_questions": [
@@ -129,11 +130,21 @@ def build_extract_profile_request(model):
             )
             return {"result": result}
 
-        request = AwsStaticWebProvisionRequest(
-            scope=state["scope"],
-            frontend_artifact_uri=artifact,
-            frontend_hostname=hostname,
-        )
+        try:
+            request = AwsStaticWebProvisionRequest(
+                scope=state["scope"],
+                frontend_artifact_uri=artifact,
+                frontend_hostname=hostname,
+            )
+        except ValidationError:
+            result = state["result"].model_copy(
+                update={
+                    "clarification_questions": [
+                        ClarificationQuestion(field="application_request", question=question)
+                    ]
+                }
+            )
+            return {"result": result}
         return {
             "result": state["result"].model_copy(
                 update={"application_request": request}

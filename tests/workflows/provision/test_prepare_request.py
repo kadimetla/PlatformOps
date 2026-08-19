@@ -108,3 +108,21 @@ def test_missing_profile_input_returns_clarification():
     assert result.clarification_questions[0].question == (
         "Which hostname should serve the frontend?"
     )
+
+
+def test_malformed_profile_input_returns_clarification():
+    model = _DirectFake(
+            _tool_call("select_deployment_profile", profile_id="aws-static-web"),
+            _tool_call(
+                "extract_aws_static_web_request",
+                frontend_artifact_uri=["s3://releases/invoices-ui.tar.gz"],
+                frontend_hostname={"name": "invoices.dev.example.com"},
+            ),
+    )
+
+    result = asyncio.run(
+        prepare_provision_request(_invocation(), model, [_scope()], [_grant()])
+    )
+
+    assert result.ready is False
+    assert result.clarification_questions[0].field == "application_request"
