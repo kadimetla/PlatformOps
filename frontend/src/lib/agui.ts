@@ -113,7 +113,12 @@ export interface ThreadClient {
   id: string;
   getState: () => PlatformOpsClientState;
   subscribe: (listener: () => void) => () => void;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, scope: string) => Promise<void>;
+}
+
+function buildForwardedProps(scope: string): Record<string, unknown> {
+  const trimmed = scope.trim();
+  return trimmed ? { scope: trimmed } : {};
 }
 
 /** One HttpAgent + MessageProcessor + state store per thread -- threadId
@@ -215,11 +220,11 @@ export function createThreadClient(runsUrl: string, threadId: string): ThreadCli
     }
   }
 
-  async function sendMessage(text: string): Promise<void> {
+  async function sendMessage(text: string, scope: string): Promise<void> {
     if (state.isSubmitting) return;
     appendTurn({ kind: "user_message", text });
     agent.messages.push({ id: crypto.randomUUID(), role: "user", content: text });
-    await runAndLog((s) => agent.runAgent({}, s));
+    await runAndLog((s) => agent.runAgent({ forwardedProps: buildForwardedProps(scope) }, s));
   }
 
   return {

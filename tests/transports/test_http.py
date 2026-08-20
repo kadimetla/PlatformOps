@@ -14,15 +14,29 @@ from langchain_core.messages import AIMessage
 
 from gateway.auth.cli import write_session
 from gateway.auth.claims import OIDCClaims
+from gateway.auth.schemas import Capability, ExecutionGrant
 from gateway.auth.sessions import build_actor_session
+from gateway.schemas import Scope
 from transports.http import _build_model, create_app
 
 
-def _session_path(tmp_path, *, expired=False):
+def _invoices_dev_scope():
+    return Scope(org="aiq", bu="it", project="invoices", workspace="dev")
+
+
+def _invoices_dev_grant():
+    return ExecutionGrant(
+        scope=_invoices_dev_scope(),
+        provider="aws",
+        capability=Capability.APPLY_LIMITED,
+    )
+
+
+def _session_path(tmp_path, *, expired=False, execution_grants=None):
     now = datetime.now(timezone.utc)
     session = build_actor_session(
         OIDCClaims(sub="alice", email="alice@example.com", groups=[]),
-        [],
+        execution_grants or [],
         [],
         now=now,
         ttl_seconds=-1 if expired else 3600,
@@ -42,12 +56,32 @@ def _tool_call(**args):
     )
 
 
-def _client(tmp_path, model, *, expired=False):
-    app = create_app(model=model, session_path=_session_path(tmp_path, expired=expired))
+def _provision_tool_call(name, **args):
+    return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": name}])
+
+
+class _DirectFake:
+    def __init__(self, *responses):
+        self.responses = list(responses)
+
+    async def ainvoke(self, _messages):
+        return self.responses.pop(0)
+
+    def bind_tools(self, _tools, **_kwargs):
+        return self
+
+
+def _client(tmp_path, model, *, expired=False, execution_grants=None):
+    app = create_app(
+        model=model,
+        session_path=_session_path(
+            tmp_path, expired=expired, execution_grants=execution_grants
+        ),
+    )
     return TestClient(app)
 
 
-def _run_input(thread_id, run_id, *, text=None, resume=None):
+def _run_input(thread_id, run_id, *, text=None, resume=None, forwarded_props=None):
     body = {
         "threadId": thread_id,
         "runId": run_id,
@@ -55,7 +89,7 @@ def _run_input(thread_id, run_id, *, text=None, resume=None):
         "messages": [],
         "tools": [],
         "context": [],
-        "forwardedProps": {},
+        "forwardedProps": forwarded_props or {},
     }
     if text is not None:
         body["messages"] = [{"id": "msg-1", "role": "user", "content": text}]
@@ -105,6 +139,59 @@ def test_tier2_prefixed_message_resolves_with_zero_model_calls(tmp_path):
     assert any('"RUN_STARTED"' in f for f in frames)
     assert any('"a2ui.createSurface"' in f for f in frames)
     assert any('"RUN_FINISHED"' in f and '"success"' in f for f in frames)
+
+
+def test_provision_from_browser_scope_hint_reaches_preflight(tmp_path):
+    client = _client(
+        tmp_path,
+        _DirectFake(
+            _provision_tool_call(
+                "select_deployment_profile", profile_id="aws-static-web"
+            ),
+            _provision_tool_call(
+                "extract_aws_static_web_request",
+                frontend_artifact_uri="s3://releases/invoices-ui.tar.gz",
+                frontend_hostname="invoices.dev.example.com",
+            ),
+        ),
+        execution_grants=[_invoices_dev_grant()],
+    )
+
+    response = client.post(
+        "/runs",
+        json=_run_input(
+            "t-provision",
+            "r-1",
+            text=(
+                "provision: deploy s3://releases/invoices-ui.tar.gz at "
+                "invoices.dev.example.com"
+            ),
+            forwarded_props={"scope": "aiq:it/invoices/dev"},
+        ),
+    )
+
+    assert response.status_code == 200
+    assert '"RUN_FINISHED"' in response.text
+    assert '"ready_to_route":true' in response.text
+    assert '"profile_id":"aws-static-web"' in response.text
+    assert '"frontend_hostname":"invoices.dev.example.com"' in response.text
+
+
+def test_invalid_browser_scope_hint_returns_400(tmp_path):
+    client = _client(tmp_path, _fake())
+
+    response = client.post(
+        "/runs",
+        json=_run_input(
+            "t-bad-scope",
+            "r-1",
+            text="provision: deploy the invoices app",
+            forwarded_props={"scope": "aiq:it"},
+        ),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "scope must use org:bu/project/workspace"
 
 
 def test_ambiguous_message_returns_clarification_interrupt(tmp_path):

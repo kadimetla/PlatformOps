@@ -38,9 +38,12 @@ import ag_ui.core as ag_ui
 from ag_ui.encoder import EventEncoder
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import ValidationError
 
 from gateway.auth.cli import DEFAULT_SESSION_PATH
 from gateway.auth.sessions import ActorSession, read_session
+from gateway.schemas import ScopeHint
+from gateway.scope import parse_scope_hint
 from harness.core import PlatformOpsHarness
 from interaction.a2ui import hitl_event_to_a2ui_messages, platformops_event_to_a2ui_messages
 from interaction.agui import hitl_event_to_run_finished, platformops_event_to_run_finished
@@ -94,6 +97,41 @@ def _extract_answer(resume: list) -> tuple[str, str]:
     return entry.interrupt_id, answer
 
 
+def _extract_scope_hint(forwarded_props: Any) -> ScopeHint | None:
+    """Parse the local-dev target selector sent by the browser.
+
+    This is only transport normalization. Authorization still happens in
+    harness/core.py and gateway/dispatcher.py against the actor session's
+    grants and tenant policy.
+    """
+
+    if not isinstance(forwarded_props, dict):
+        return None
+
+    structured = forwarded_props.get("scopeHint")
+    if structured is not None:
+        try:
+            return ScopeHint.model_validate(structured)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="invalid scopeHint forwardedProp",
+            ) from exc
+
+    raw_scope = forwarded_props.get("scope")
+    if raw_scope is None:
+        return None
+    if not isinstance(raw_scope, str) or not raw_scope:
+        raise HTTPException(
+            status_code=400,
+            detail="scope forwardedProp must use org:bu/project/workspace",
+        )
+    try:
+        return parse_scope_hint(raw_scope)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def create_app(*, model: Any, session_path: Path) -> FastAPI:
     """model/session_path are explicit params, not read from env at call
     time, so tests inject a FakeMessagesListChatModel and a tmp_path
@@ -138,7 +176,10 @@ def create_app(*, model: Any, session_path: Path) -> FastAPI:
                 )
             else:
                 text = _extract_text(run_input.messages)
-                result = await harness.start_run(actor, run_input.thread_id, text)
+                scope_hint = _extract_scope_hint(run_input.forwarded_props)
+                result = await harness.start_run(
+                    actor, run_input.thread_id, text, scope_hint=scope_hint
+                )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

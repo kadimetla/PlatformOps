@@ -120,6 +120,7 @@ body {
 .floating-panel-close:focus-visible,
 .floating-panel-drag-handle:focus-visible,
 .turn-header:focus-visible,
+.scope-bar input:focus-visible,
 .input-bar input:focus-visible,
 .input-bar button:focus-visible {
   outline: 2px solid var(--pops-accent);
@@ -448,6 +449,29 @@ body {
 
 .floating-panel .turn-stream {
   padding: 0.5rem 0.9rem;
+}
+
+.scope-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.9rem;
+  border-top: 1px solid var(--pops-border);
+  background: var(--pops-block-bg);
+  color: var(--pops-muted);
+  font-size: 0.78rem;
+}
+
+.scope-bar input {
+  min-width: 0;
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--pops-border);
+  border-radius: 5px;
+  background: var(--pops-bg);
+  color: var(--pops-fg);
+  font-size: 0.78rem;
 }
 
 .floating-panel .input-bar {

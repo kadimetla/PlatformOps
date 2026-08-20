@@ -9,6 +9,8 @@ const PANEL_HEIGHT = 560;
 const EDGE_MARGIN = 24;
 const POSITION_STORAGE_KEY = "platformops.floatingChatPosition";
 const PINNED_STORAGE_KEY = "platformops.floatingChatPinned";
+const TARGET_SCOPE_STORAGE_KEY = "platformops.targetScope";
+const DEFAULT_TARGET_SCOPE = "aiq:it/invoices/dev";
 
 function defaultPosition() {
   // Bottom-right corner -- the common floating-chat-widget convention
@@ -27,6 +29,11 @@ function savePinned(pinned: boolean): void {
   writeStoredJSON(PINNED_STORAGE_KEY, pinned);
 }
 
+function loadTargetScope(): string {
+  const stored = readStoredJSON<unknown>(TARGET_SCOPE_STORAGE_KEY, DEFAULT_TARGET_SCOPE);
+  return typeof stored === "string" && stored ? stored : DEFAULT_TARGET_SCOPE;
+}
+
 // The grid (App.tsx) stays visible and interactive behind this panel --
 // unlike the old full-page ThreadView, there's no "back to grid" state
 // to navigate out of, so the only exit affordance is Close.
@@ -39,6 +46,7 @@ export default function FloatingSessionPanel({
 }) {
   const state = useSyncExternalStore(client.subscribe, client.getState);
   const [input, setInput] = useState("");
+  const [targetScope, setTargetScope] = useState(loadTargetScope);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [pinned, setPinned] = useState(loadPinned);
   const streamRef = useRef<HTMLDivElement>(null);
@@ -72,12 +80,17 @@ export default function FloatingSessionPanel({
     });
   }
 
+  function updateTargetScope(value: string) {
+    setTargetScope(value);
+    writeStoredJSON(TARGET_SCOPE_STORAGE_KEY, value);
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const text = input.trim();
     if (!text || state.isSubmitting) return;
     setInput("");
-    await client.sendMessage(text);
+    await client.sendMessage(text, targetScope);
   }
 
   return (
@@ -126,6 +139,16 @@ export default function FloatingSessionPanel({
           />
         ))}
       </div>
+
+      <label className="scope-bar">
+        <span>Target</span>
+        <input
+          value={targetScope}
+          onChange={(event) => updateTargetScope(event.target.value)}
+          placeholder="org:bu/project/workspace"
+          disabled={state.isSubmitting}
+        />
+      </label>
 
       <form className="input-bar" onSubmit={handleSubmit}>
         <input
