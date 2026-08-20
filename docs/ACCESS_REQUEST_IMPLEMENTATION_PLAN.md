@@ -3,6 +3,10 @@
 Implementation plan captured 2026-08-20. No code exists yet for
 `access_request` intent routing, guest route policy, requestable-access
 catalog, access-request workflow, midPoint backend, or status lookup.
+The current harness dispatch path is still provision-specific:
+`harness/core.py` builds `ProvisionInvocation` directly and calls
+`ROUTE_REGISTRY["provision"]`. Generic route dispatch is therefore an
+explicit prerequisite, not an assumed foundation.
 
 This document breaks the guest/chat permission-request design into
 buildable slices. `GUEST_ACCESS_REQUEST_CHAT.md` owns the product flow.
@@ -41,7 +45,8 @@ auth/session pipeline
   deterministic; builds ActorSession and identifies guest vs authorized
 
 intake route update
-  adds ACCESS_REQUEST and ACCESS_REQUEST_STATUS
+  adds ACCESS_REQUEST first; ACCESS_REQUEST_STATUS lands with its
+  own route/status workflow later
 
 access_request workflow
   LangGraph preflight: collect fields, resolve requestable role,
@@ -71,15 +76,135 @@ PlatformOps chooses the internal IGA backend. If midPoint is used,
 midPoint owns approval, assignment implementation, expiry, revocation,
 and access review.
 
-## Slice 1 — Intent and Route Gate
+## Slice 0 — Generic Dispatch and Actor Route Gate
 
-Add new intents:
+The first slice is not `ACCESS_REQUEST`. The first slice is making the
+existing dispatcher actually pluggable.
+
+Current reality:
+
+```text
+intake classifies intent and route generically
+  -> harness checks tenant policy
+  -> harness always builds ProvisionInvocation
+  -> harness always calls ROUTE_REGISTRY["provision"]
+```
+
+Target shape:
+
+```text
+intake classifies intent and resolves route
+  -> tenant route gate
+  -> actor route gate
+  -> route registration builds the route-specific invocation
+  -> route registration handler runs
+```
+
+Define a route registration contract:
+
+```python
+class RouteRegistration(BaseModel):
+    route_id: str
+    intent: Intent
+    build_invocation: Callable[..., object]
+    handler: Callable[..., Awaitable[object]]
+    map_result_to_event: Callable[..., HITLEvent | PlatformOpsEvent]
+```
+
+Provision becomes one route registration:
+
+```text
+route_id: provision
+intent: provision
+build_invocation: ProvisionInvocation(raw_text, scope_hint)
+handler: prepare_provision_request
+```
+
+Access request later becomes another:
+
+```text
+route_id: access_request
+intent: access_request
+build_invocation: AccessRequestInvocation(raw_text, actor_ref, scope_hint)
+handler: prepare_access_request
+```
+
+Do not add dynamic import paths or model-selected handlers. The route
+registry remains trusted code/config.
+
+Add an explicit actor gate beside `check_tenant_policy`:
+
+```python
+class ActorAccessState(str, Enum):
+    ANONYMOUS = "anonymous"
+    AUTHENTICATED_GUEST = "authenticated_guest"
+    AUTHORIZED = "authorized"
+
+
+def check_actor_route_access(
+    actor: ActorSession | None,
+    intent: Intent,
+    scope_hint: ScopeHint | None,
+) -> ActorRouteDecision:
+    ...
+```
+
+Evaluation rule:
+
+- anonymous means no authenticated actor session;
+- authenticated guest means authenticated actor, but no matching
+  execution grant for the requested scope;
+- authorized means authenticated actor with a matching grant for the
+  requested scope or a route that does not require one.
+
+When a request names a project/workspace, guest-vs-authorized is
+scope-specific. A user may be authorized for `aiq:it/invoices/dev` and
+still be a guest for `aiq:it/billing/prod`. Do not classify the whole
+actor as globally authorized just because any grant exists.
+
+Route policy after Slice 0:
+
+```text
+provision
+  requires authenticated actor and target-scope authorization
+
+access_request
+  not added yet
+
+compliance_check
+  preserves existing resolved-route/no-handler behavior until its real
+  handler exists
+```
+
+Tests:
+
+- existing provision route still reaches `prepare_provision_request`;
+- compliance_check route still resolves without being invoked;
+- no route can be invoked by a model-emitted module path;
+- an unknown route id fails closed;
+- actor gate distinguishes anonymous, authenticated guest for the
+  requested scope, and authorized for the requested scope;
+- the harness dispatches through the route registration instead of
+  hardcoding `_dispatch_provision`.
+
+## Slice 1 — Access Request Intent and Route Gate
+
+Extend the real `Intent` enum with only the route that becomes
+reachable in this slice. Do not replace the enum and do not add
+reserved values.
 
 ```python
 class Intent(str, Enum):
+    PROVISION = "provision"
+    INQUIRY = "inquiry"
+    COMPLIANCE_CHECK = "compliance_check"
     ACCESS_REQUEST = "access_request"
-    ACCESS_REQUEST_STATUS = "access_request_status"
 ```
+
+`ACCESS_REQUEST_STATUS` is intentionally not added here. The enum's
+real docstring forbids reserved, unreachable values. Add
+`ACCESS_REQUEST_STATUS` in Slice 6, when its handler and route gate
+land.
 
 Route behavior:
 
@@ -99,7 +224,8 @@ Implementation notes:
 
 - Keep auth outside LangGraph.
 - Do not treat "no execution grants" as unauthenticated.
-- Do not route guests to provision or inquiry.
+- Use `check_actor_route_access` from Slice 0. Guests may route only to
+  `access_request`; provision/inquiry remain scope-authorized routes.
 - Return uniform denial for unsupported operational routes.
 
 Tests:
@@ -275,6 +401,14 @@ Tests:
 
 ## Slice 6 — Status Lookup
 
+Add the second intent only when this slice is implemented:
+
+```python
+class Intent(str, Enum):
+    ...
+    ACCESS_REQUEST_STATUS = "access_request_status"
+```
+
 Add `access_request_status`.
 
 Rules:
@@ -330,6 +464,94 @@ Tests:
 - backend ref comes from catalog;
 - failed midPoint call returns retryable/unavailable result;
 - no credentials are serialized in workflow state.
+
+## Pluggable IGA Backend Contract
+
+The backend contract should be narrow enough that an organization can
+bring its own IGA or service-management tool without changing the chat
+workflow.
+
+Supported backend families:
+
+```text
+manual
+platformops_internal
+midpoint
+saviynt
+servicenow
+jira
+custom_http
+```
+
+The chat workflow always emits the same canonical request. The backend
+adapter translates it:
+
+```python
+class AccessRequestBackend(Protocol):
+    backend_id: str
+
+    def create_request(
+        self,
+        request: AccessRequestRecord,
+        catalog_item: RequestableAccessItem,
+    ) -> BackendResult:
+        ...
+
+    def get_status(
+        self,
+        request_id: str,
+        requester: ActorRef,
+    ) -> BackendStatus:
+        ...
+
+    def cancel_request(
+        self,
+        request_id: str,
+        requester: ActorRef,
+    ) -> BackendStatus:
+        ...
+```
+
+Org/BU policy chooses the backend:
+
+```yaml
+org_bu: aiq:it
+access_request_backend:
+  type: midpoint
+  config_ref: midpoint_aiq_it
+  mode: api_create
+```
+
+Catalog items carry backend references:
+
+```yaml
+item_id: platformops-invoices-dev-operator
+backend: midpoint
+backend_ref: midpoint-role-oid-123
+```
+
+For another org:
+
+```yaml
+item_id: platformops-claims-dev-operator
+backend: servicenow
+backend_ref: catalog-item-sys-id
+```
+
+The LLM never selects `backend`, `backend_ref`, URLs, credentials,
+group names, or entitlement IDs. Those are reviewed catalog/config
+values.
+
+Backend invariants:
+
+- backend plugins create governed requests; they do not bypass route
+  policy or eligibility checks;
+- only the explicitly selected internal backend may mutate Authentik
+  groups, and only after its approval gate;
+- external IGA backends own approval and entitlement implementation;
+- PlatformOps waits for login/session refresh before treating access as
+  active;
+- every backend result is normalized into PlatformOps evidence.
 
 ## Slice 8 — Backend Sync or Callback
 

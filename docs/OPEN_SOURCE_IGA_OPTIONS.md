@@ -83,6 +83,11 @@ In either path, normal provisioning does not grant access. Provisioning
 consumes the current `ActorSession` and fails closed when the user lacks
 the required grant.
 
+Both paths should use the same PlatformOps backend contract described in
+`ACCESS_REQUEST_IMPLEMENTATION_PLAN.md`. That keeps the chat workflow
+stable while allowing an org to plug in midPoint, Saviynt, ServiceNow,
+Jira, a custom HTTP service, or PlatformOps's internal MVP backend.
+
 ## Target Integration Shape
 
 PlatformOps should keep its internal model stable even if the external
