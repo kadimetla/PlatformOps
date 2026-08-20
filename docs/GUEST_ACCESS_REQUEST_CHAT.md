@@ -6,6 +6,8 @@ yet.
 
 This document captures the chat-first access request flow for users who
 cannot yet use the normal PlatformOps operations surface.
+`ACCESS_REQUEST_IMPLEMENTATION_PLAN.md` breaks this product flow into
+buildable implementation slices.
 
 ## Decision
 
