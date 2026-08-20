@@ -14,6 +14,9 @@ membership changes, and how PlatformOps sees the new capability.
 `OPEN_SOURCE_IGA_OPTIONS.md` compares whether an external IGA tool such
 as midPoint or OpenIAM should own this lifecycle instead of PlatformOps
 building the MVP workflow itself.
+`GUEST_ACCESS_REQUEST_CHAT.md` defines the limited chat surface for
+authenticated users who have no PlatformOps grants yet but need to
+request them.
 
 ## Decision
 

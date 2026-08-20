@@ -194,6 +194,13 @@ This is the safest integration point for PlatformOps. It lets users ask
 from the PlatformOps UI while midPoint remains the authority for access
 governance.
 
+This handoff may also serve authenticated guests: users who can log in
+through Authentik but have no PlatformOps execution grants. They may use
+the limited access-request chat flow described in
+`GUEST_ACCESS_REQUEST_CHAT.md`; they still cannot use provision,
+inquiry, approval, or inventory routes until a later session refresh
+contains the required grants.
+
 ## Request From PlatformOps Chat
 
 If a user asks PlatformOps:
