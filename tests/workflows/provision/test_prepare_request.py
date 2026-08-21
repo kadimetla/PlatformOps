@@ -50,6 +50,16 @@ class _DirectFake:
         return self
 
 
+class _RecordingFake(_DirectFake):
+    def __init__(self, *responses):
+        super().__init__(*responses)
+        self.bind_tool_kwargs = []
+
+    def bind_tools(self, _tools, **kwargs):
+        self.bind_tool_kwargs.append(kwargs)
+        return self
+
+
 def test_prepares_a_typed_static_web_request_without_execution():
     model = _DirectFake(
             _tool_call("select_deployment_profile", profile_id="aws-static-web"),
@@ -68,6 +78,27 @@ def test_prepares_a_typed_static_web_request_without_execution():
     assert result.profile_id == "aws-static-web"
     assert result.application_request.scope == _scope()
     assert result.application_request.frontend_hostname == "invoices.dev.example.com"
+
+
+def test_tool_choice_uses_provider_compatible_required_mode():
+    model = _RecordingFake(
+            _tool_call("select_deployment_profile", profile_id="aws-static-web"),
+            _tool_call(
+                "extract_aws_static_web_request",
+                frontend_artifact_uri="s3://releases/invoices-ui.tar.gz",
+                frontend_hostname="invoices.dev.example.com",
+            ),
+    )
+
+    result = asyncio.run(
+        prepare_provision_request(_invocation(), model, [_scope()], [_grant()])
+    )
+
+    assert result.ready is True
+    assert model.bind_tool_kwargs == [
+        {"tool_choice": "required"},
+        {"tool_choice": "required"},
+    ]
 
 
 def test_scope_failure_stops_before_any_model_call():
@@ -108,6 +139,23 @@ def test_missing_profile_input_returns_clarification():
     assert result.clarification_questions[0].question == (
         "Which hostname should serve the frontend?"
     )
+
+
+def test_missing_profile_input_default_question_uses_layman_terms():
+    model = _DirectFake(
+            _tool_call("select_deployment_profile", profile_id="aws-static-web"),
+            _tool_call("extract_aws_static_web_request"),
+    )
+
+    result = asyncio.run(
+        prepare_provision_request(_invocation(), model, [_scope()], [_grant()])
+    )
+
+    question = result.clarification_questions[0].question
+    assert "built frontend package" in question
+    assert "website address users should open" in question
+    assert "frontend_artifact_uri" not in question
+    assert "frontend_hostname" not in question
 
 
 def test_malformed_profile_input_returns_clarification():

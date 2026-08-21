@@ -14,6 +14,14 @@ from workflows.provision.tools import (
     select_deployment_profile,
 )
 
+_STATIC_WEB_INPUT_QUESTION = (
+    "To prepare this static website, provide two details: "
+    "1) where the built frontend package is, for example "
+    "s3://releases/invoices-ui.tar.gz, and 2) the website address users "
+    "should open, for example invoices.dev.example.com. If you do not "
+    "have a custom domain yet, say that."
+)
+
 
 def build_resolve_scope(
     known_workspaces: list[Scope], execution_grants: list[ExecutionGrant]
@@ -42,7 +50,8 @@ def build_resolve_scope(
 
 def build_select_profile(model):
     planner = model.bind_tools(
-        [select_deployment_profile], tool_choice="select_deployment_profile"
+        [select_deployment_profile],
+        tool_choice="required",
     )
 
     async def select_profile(state: ProvisionState) -> dict:
@@ -91,7 +100,7 @@ def build_select_profile(model):
 def build_extract_profile_request(model):
     extractor = model.bind_tools(
         [extract_aws_static_web_request],
-        tool_choice="extract_aws_static_web_request",
+        tool_choice="required",
     )
 
     async def extract_profile_request(state: ProvisionState) -> dict:
@@ -112,9 +121,7 @@ def build_extract_profile_request(model):
         args = raw_args if isinstance(raw_args, dict) else {}
         artifact = args.get("frontend_artifact_uri")
         hostname = args.get("frontend_hostname")
-        question = args.get("clarifying_question") or (
-            "Provide the frontend artifact URI and frontend hostname."
-        )
+        question = args.get("clarifying_question") or _STATIC_WEB_INPUT_QUESTION
         if (
             len(calls) != 1
             or calls[0].get("name") != "extract_aws_static_web_request"

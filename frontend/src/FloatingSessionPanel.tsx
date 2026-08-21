@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { A2uiSurface, type A2uiSurfaceModel, type Turn, type ThreadClient } from "./lib/agui";
+import ActiveSurfaceSlot from "./components/a2ui/ActiveSurfaceSlot";
 import { useDraggable } from "./lib/useDraggable";
 import { TURN_LABELS, deriveLabel, formatTime } from "./lib/sessionPresentation";
 import { readStoredJSON, writeStoredJSON } from "./lib/storage";
@@ -34,6 +35,10 @@ function loadTargetScope(): string {
   return typeof stored === "string" && stored ? stored : DEFAULT_TARGET_SCOPE;
 }
 
+function isAttentionTurn(turn: Turn): boolean {
+  return turn.kind === "clarification_required" || turn.kind === "approval_required";
+}
+
 // The grid (App.tsx) stays visible and interactive behind this panel --
 // unlike the old full-page ThreadView, there's no "back to grid" state
 // to navigate out of, so the only exit affordance is Close.
@@ -45,6 +50,14 @@ export default function FloatingSessionPanel({
   onClose: () => void;
 }) {
   const state = useSyncExternalStore(client.subscribe, client.getState);
+  const latestTurn = state.turns[state.turns.length - 1];
+  const activeAttentionTurn =
+    latestTurn && isAttentionTurn(latestTurn) && latestTurn.surfaceId
+      ? latestTurn
+      : undefined;
+  const activeSurface = activeAttentionTurn?.surfaceId
+    ? state.surfacesById.get(activeAttentionTurn.surfaceId)
+    : undefined;
   const [input, setInput] = useState("");
   const [targetScope, setTargetScope] = useState(loadTargetScope);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -125,19 +138,23 @@ export default function FloatingSessionPanel({
         </button>
       </div>
 
-      <div className="turn-stream" ref={streamRef}>
-        {state.turns.length === 0 && (
-          <p className="turn-stream-empty">Say something to get started.</p>
-        )}
-        {state.turns.map((turn) => (
-          <TurnBlock
-            key={turn.id}
-            turn={turn}
-            surface={turn.surfaceId ? state.surfacesById.get(turn.surfaceId) : undefined}
-            isCollapsed={collapsed.has(turn.id)}
-            onToggle={() => toggleCollapsed(turn.id)}
-          />
-        ))}
+      <div className="conversation-region">
+        <div className="turn-stream" ref={streamRef}>
+          {state.turns.length === 0 && (
+            <p className="turn-stream-empty">Say something to get started.</p>
+          )}
+          {state.turns.filter((turn) => turn.id !== activeAttentionTurn?.id).map((turn) => (
+            <TurnBlock
+              key={turn.id}
+              turn={turn}
+              surface={turn.surfaceId ? state.surfacesById.get(turn.surfaceId) : undefined}
+              isCollapsed={collapsed.has(turn.id)}
+              onToggle={() => toggleCollapsed(turn.id)}
+            />
+          ))}
+        </div>
+
+        {activeSurface && <ActiveSurfaceSlot surface={activeSurface} />}
       </div>
 
       <label className="scope-bar">

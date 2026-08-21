@@ -60,6 +60,27 @@ def _approval_event():
     )
 
 
+def _static_web_input_event():
+    decision = IntakeDecision(
+        clarification_questions=[
+            ClarificationQuestion(
+                field="application_request",
+                question="What do you want to publish?",
+                choices=[],
+            )
+        ]
+    )
+    return HITLEvent(
+        event_id="hitl-static-web",
+        request_id="req-static-web",
+        kind=HITLEventKind.CLARIFICATION_REQUIRED,
+        status=HITLStatus.PENDING,
+        payload=decision,
+        resume_mode="reinvoke",
+        created_at=NOW,
+    )
+
+
 def test_clarification_produces_create_and_update_messages():
     create, update = hitl_event_to_a2ui_messages(_clarification_event())
 
@@ -76,20 +97,54 @@ def test_clarification_renders_one_button_per_choice_via_child_label():
     components = update["updateComponents"]["components"]
 
     root = next(c for c in components if c["id"] == "root")
-    assert root["component"] == "Column"
-    assert root["children"] == ["message", "choice-provision", "choice-inquiry"]
+    assert root["component"] == "Card"
+    assert root["child"] == "content"
+
+    content = next(c for c in components if c["id"] == "content")
+    assert content["component"] == "Column"
+    assert content["children"] == ["title", "message", "choice-0", "choice-1"]
+
+    title = next(c for c in components if c["id"] == "title")
+    assert title["component"] == "Text"
+    assert title["text"] == "Input needed"
+    assert title["variant"] == "h3"
 
     message = next(c for c in components if c["id"] == "message")
     assert message["component"] == "Text"
     assert message["text"] == "Which workflow?"
 
-    button = next(c for c in components if c["id"] == "choice-provision")
+    button = next(c for c in components if c["id"] == "choice-0")
     assert button["component"] == "Button"
     label = next(c for c in components if c["id"] == button["child"])
     assert label["text"] == "provision"
     assert button["action"] == {
         "event": {"name": "hitl-2", "context": {"selected_choice": "provision"}}
     }
+
+
+def test_static_web_clarification_renders_help_examples():
+    _, update = hitl_event_to_a2ui_messages(_static_web_input_event())
+    components = update["updateComponents"]["components"]
+    field_texts = [c["text"] for c in components if c["component"] == "Text"]
+    root = next(c for c in components if c["id"] == "root")
+    content = next(c for c in components if c["id"] == "content")
+
+    assert root["component"] == "Card"
+    assert root["child"] == "content"
+    assert content["children"] == [
+        "title",
+        "message",
+        "help-0",
+        "help-1",
+        "help-2",
+        "help-3",
+        "help-4",
+    ]
+    assert "Need help with these details?" in field_texts
+    assert any("s3://releases/invoices-ui.tar.gz" in text for text in field_texts)
+    assert any("invoices.dev.example.com" in text for text in field_texts)
+    assert any("generated CloudFront URL" in text for text in field_texts)
+    assert any("GitHub repo" in text for text in field_texts)
 
 
 def test_approval_renders_message_only_no_buttons():
@@ -101,7 +156,10 @@ def test_approval_renders_message_only_no_buttons():
 
     assert not [c for c in components if c["component"] == "Button"]
     root = next(c for c in components if c["id"] == "root")
-    assert root["children"] == ["message"]
+    content = next(c for c in components if c["id"] == "content")
+    assert root["component"] == "Card"
+    assert root["child"] == "content"
+    assert content["children"] == ["title", "message"]
 
 
 def test_route_resolved_renders_result_fields():

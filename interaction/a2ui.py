@@ -18,12 +18,14 @@ not inline nesting; Button has no `text` prop -- it references a
 label Text component via `child: <id>`, and its click-report shape is
 `action.event.{name,context}`, not a bare `action.{name,context}`.
 
-Renders using @a2ui/react's built-in basicCatalog only (Column, Text,
-Button) -- no custom catalog registration needed on the frontend.
+Renders using @a2ui/react's built-in basicCatalog only (Card, Column,
+Text, Button) -- no custom catalog registration needed on the frontend.
 """
 from typing import Any
 
+from gateway.schemas import IntakeDecision
 from interaction.agui import hitl_event_to_interrupt
+from interaction.dynamic_ui import DynamicCardSpec, DynamicChoice, compile_dynamic_card
 from interaction.events import HITLEvent, HITLEventKind, PlatformOpsEvent
 
 A2UI_VERSION = "v0.9"
@@ -41,6 +43,18 @@ _ROUTE_RESULT_FIELDS = (
     "mutation_requested",
     "approval_required",
     "unsupported_reason",
+)
+
+_STATIC_WEB_HELP_TEXTS = (
+    "Need help with these details?",
+    "Built frontend package: where your compiled website files are stored, "
+    "for example s3://releases/invoices-ui.tar.gz.",
+    "Website address: the domain users should open, for example "
+    "invoices.dev.example.com.",
+    "If you do not have a custom domain yet, say: use the generated "
+    "CloudFront URL for now.",
+    "If you only have source code, say where it is, for example: GitHub repo "
+    "org/invoices-ui on branch main.",
 )
 
 
@@ -70,6 +84,43 @@ def _choice_field_and_enum(interrupt: dict[str, Any]) -> tuple[str, list[str]] |
     return None
 
 
+def _help_texts_for(event: HITLEvent) -> tuple[str, ...]:
+    if event.kind != HITLEventKind.CLARIFICATION_REQUIRED:
+        return ()
+    payload = event.payload
+    if not isinstance(payload, IntakeDecision) or not payload.clarification_questions:
+        return ()
+    question = payload.clarification_questions[0]
+    if question.field == "application_request":
+        return _STATIC_WEB_HELP_TEXTS
+    return ()
+
+
+def _card_spec_for(event: HITLEvent, interrupt: dict[str, Any]) -> DynamicCardSpec:
+    title_text = (
+        "Input needed"
+        if event.kind == HITLEventKind.CLARIFICATION_REQUIRED
+        else "Approval required"
+    )
+    choice_field_and_enum = (
+        _choice_field_and_enum(interrupt)
+        if event.kind == HITLEventKind.CLARIFICATION_REQUIRED
+        else None
+    )
+    choices: list[DynamicChoice] = []
+    choice_response_field = "selected_choice"
+    if choice_field_and_enum is not None:
+        choice_response_field, raw_choices = choice_field_and_enum
+        choices = [DynamicChoice(label=choice, value=choice) for choice in raw_choices]
+    return DynamicCardSpec(
+        title=title_text,
+        message=interrupt["message"],
+        help_texts=list(_help_texts_for(event)),
+        choices=choices,
+        choice_response_field=choice_response_field,
+    )
+
+
 def hitl_event_to_a2ui_messages(event: HITLEvent) -> list[dict[str, Any]]:
     """A createSurface + updateComponents pair: a root Column holding a
     message Text plus, for CLARIFICATION_REQUIRED only, one Button
@@ -90,36 +141,10 @@ def hitl_event_to_a2ui_messages(event: HITLEvent) -> list[dict[str, Any]]:
     """
     interrupt = hitl_event_to_interrupt(event)
     surface_id = event.event_id
-
-    message_component = {"id": "message", "component": "Text", "text": interrupt["message"]}
-    root_children = ["message"]
-    components: list[dict[str, Any]] = [message_component]
-
-    choice_field_and_enum = (
-        _choice_field_and_enum(interrupt)
-        if event.kind == HITLEventKind.CLARIFICATION_REQUIRED
-        else None
-    )
-    if choice_field_and_enum is not None:
-        field, choices = choice_field_and_enum
-        for choice in choices:
-            label_id = f"choice-{choice}-label"
-            button_id = f"choice-{choice}"
-            components.append({"id": label_id, "component": "Text", "text": choice})
-            components.append(
-                {
-                    "id": button_id,
-                    "component": "Button",
-                    "child": label_id,
-                    "action": {"event": {"name": surface_id, "context": {field: choice}}},
-                }
-            )
-            root_children.append(button_id)
-
-    root = {"id": "root", "component": "Column", "children": root_children}
+    components = compile_dynamic_card(_card_spec_for(event, interrupt), surface_id=surface_id)
     return [
         _create_surface(surface_id),
-        _update_components(surface_id, [root, *components]),
+        _update_components(surface_id, components),
     ]
 
 

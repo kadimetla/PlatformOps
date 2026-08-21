@@ -206,7 +206,7 @@ export function createThreadClient(runsUrl: string, threadId: string): ThreadCli
         const reason = params.interrupts[0]?.reason;
         appendTurn({
           kind: reason === "approval.required" ? "approval_required" : "clarification_required",
-          text: params.interrupts[0]?.message ?? "Input needed",
+          text: "Input needed",
           surfaceId: lastSurfaceId,
         });
       },
@@ -223,6 +223,21 @@ export function createThreadClient(runsUrl: string, threadId: string): ThreadCli
   async function sendMessage(text: string, scope: string): Promise<void> {
     if (state.isSubmitting) return;
     appendTurn({ kind: "user_message", text });
+    if (agent.pendingInterrupts.length === 1) {
+      const interrupt = agent.pendingInterrupts[0];
+      const resume = buildResumeArray([interrupt], {
+        [interrupt.id]: { status: "resolved", payload: { value: text } },
+      });
+      await runAndLog((s) => agent.runAgent({ resume }, s));
+      return;
+    }
+    if (agent.pendingInterrupts.length > 1) {
+      appendTurn({
+        kind: "error",
+        text: "Multiple pending inputs are open. Resolve them from the cards before sending a new message.",
+      });
+      return;
+    }
     agent.messages.push({ id: crypto.randomUUID(), role: "user", content: text });
     await runAndLog((s) => agent.runAgent({ forwardedProps: buildForwardedProps(scope) }, s));
   }
