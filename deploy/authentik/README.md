@@ -51,7 +51,7 @@ provider discovery and provisioning workflows are not implemented yet.
    ```
    Or as a single command from the repository root:
    ```bash
-   cd ~/WinDrive/CODE/LEARN_AI/PlatformOps/deploy/authentik && { printf 'PG_PASS=%s\n' "$(openssl rand -hex 24)"; printf 'AUTHENTIK_SECRET_KEY=%s\n' "$(openssl rand -hex 48)"; } > .env && docker compose pull && docker compose up -d
+   cd deploy/authentik && { printf 'PG_PASS=%s\n' "$(openssl rand -hex 24)"; printf 'AUTHENTIK_SECRET_KEY=%s\n' "$(openssl rand -hex 48)"; } > .env && docker compose pull && docker compose up -d
    ```
 
    Hex output is used because `openssl rand -base64` can wrap long values
