@@ -138,7 +138,7 @@ grant type was not enabled on the provider.
 From the repository root:
 
 ```bash
-export PLATFORMOPS_OIDC_ISSUER="http://localhost:9000/application/o/platformops/"
+export PLATFORMOPS_OIDC_ISSUER="http://localhost:9000/application/o/<slug>/"
 export PLATFORMOPS_OIDC_CLIENT_ID="<client-id from provider detail page>"
 export PLATFORMOPS_GRANT_MAPPING="$PWD/deploy/authentik/grants.example.yaml"
 export PLATFORMOPS_SESSION_PATH="$PWD/.platformops/session.json"
@@ -148,6 +148,21 @@ uv run python -m gateway.auth.cli \
   --client-id "$PLATFORMOPS_OIDC_CLIENT_ID" \
   --grant-mapping "$PLATFORMOPS_GRANT_MAPPING"
 ```
+
+**Where each value comes from:**
+
+| Variable | Source |
+|---|---|
+| `PLATFORMOPS_OIDC_ISSUER` | Derived from the application slug: `http://localhost:9000/application/o/<slug>/`. Find the slug at Admin UI → Applications → Applications → your app (also visible in the browser URL bar: `#/core/applications/<slug>`). Example: slug `platform-ops` → issuer `http://localhost:9000/application/o/platform-ops/` |
+| `PLATFORMOPS_OIDC_CLIENT_ID` | Admin UI → Applications → Providers → your provider → **Client ID** field (a UUID) |
+| `PLATFORMOPS_GRANT_MAPPING` | Local file — always `$PWD/deploy/authentik/grants.example.yaml` from repo root |
+| `PLATFORMOPS_SESSION_PATH` | Local file — always `$PWD/.platformops/session.json`; directory is created automatically on first login |
+
+Verify the issuer is reachable before running the CLI:
+```bash
+curl -fsS "${PLATFORMOPS_OIDC_ISSUER}.well-known/openid-configuration" | python3 -m json.tool | grep device
+```
+Must return a `device_authorization_endpoint` line.
 
 The CLI (`gateway/auth/cli.py`) flushes the verification URL and user code
 immediately (`sys.stdout.flush()` — added 2026-09-14 to unblock piped/Docker
