@@ -54,6 +54,20 @@ Server became healthy after ~2.5 minutes. Because the volume was wiped, the
 exists. Either keep `.env` stable, or always pair `down -v` with a new
 `.env` before `up -d`.
 
+To intentionally rotate the Postgres password:
+
+```bash
+cd deploy/authentik
+docker compose down -v
+{ printf 'PG_PASS=%s\n' "$(openssl rand -hex 24)"; printf 'AUTHENTIK_SECRET_KEY=%s\n' "$(openssl rand -hex 48)"; } > .env
+docker compose up -d
+```
+
+Sequence matters: volume must be gone before the new `.env` is written and
+`up -d` runs. After this, re-run the initial setup flow at
+`http://localhost:9000/if/flow/initial-setup/` — the `akadmin` account is
+wiped with the volume.
+
 ## UI steps to create the provider and application
 
 These steps are also in `deploy/authentik/README.md` steps 3–5. Captured here

@@ -229,6 +229,19 @@ resume from step 2.
 produce a new `PG_PASS` and break the next start the same way. Keep the `.env`
 stable once the volume exists, or always regenerate it together with `down -v`.
 
+To intentionally rotate the Postgres password (e.g. for a clean restart):
+
+```bash
+cd deploy/authentik
+docker compose down -v
+{ printf 'PG_PASS=%s\n' "$(openssl rand -hex 24)"; printf 'AUTHENTIK_SECRET_KEY=%s\n' "$(openssl rand -hex 48)"; } > .env
+docker compose up -d
+```
+
+This is the only safe sequence: tear down the volume first, write the new
+`.env`, then start. Doing it in any other order leaves the volume holding a
+password that no longer matches `.env`.
+
 ### Admin credentials lost after `down -v`
 
 `docker compose down -v` deletes the database volume, which holds `akadmin`'s
