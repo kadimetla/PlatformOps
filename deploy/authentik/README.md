@@ -64,46 +64,88 @@ provider discovery and provisioning workflows are not implemented yet.
    ```
 2. **Complete initial admin setup** at `http://localhost:9000/if/flow/initial-setup/`
    -- set a password for the `akadmin` user.
-3. **Create the PlatformOps OAuth client.** In the Authentik admin UI:
-   - go to **Applications -> Applications -> New Provider**;
-   - choose **OAuth2/OpenID Provider**;
-   - create an application named `PlatformOps`;
-   - enable the **Device-code** grant type;
-   - save the provider and record its **Client ID** and application slug.
+3. **Create the OAuth2 provider.** In the Authentik admin UI
+   (`http://localhost:9000/if/admin/`):
 
-   The issuer is:
-   ```text
-   http://localhost:9000/application/o/<slug>/
-   ```
+   - Go to **Applications → Providers → Create**.
+   - Select **OAuth2/OpenID Provider** and click **Next**.
+   - Fill in:
 
-   Confirm the OIDC document before attempting login:
+     | Field | Value |
+     |---|---|
+     | Name | `PlatformOps Provider` |
+     | Authentication flow | `default-authentication-flow` |
+     | Authorization flow | `default-provider-authorization-implicit-consent` |
+     | Client type | `Public` |
+     | Client ID | leave auto-generated — **copy it after saving** |
+     | Redirect URIs | leave blank (device-code flow has no redirect) |
+     | Signing Key | `authentik Self-signed Certificate` |
+
+   - Expand **Advanced settings → Grant Types** and check **Device Code**.
+   - Click **Finish**. Open the provider detail page and copy the **Client ID**.
+
+4. **Create the application.**
+
+   - Go to **Applications → Applications → Create**.
+   - Fill in:
+
+     | Field | Value |
+     |---|---|
+     | Name | `PlatformOps` |
+     | Slug | `platformops` |
+     | Provider | `PlatformOps Provider` |
+     | Policy engine mode | `any` |
+
+   - Click **Create**.
+
+5. **Configure bindings** (controls who can authenticate).
+
+   - Open **Applications → Applications → PlatformOps**.
+   - Click the **Policy / Group / User Bindings** tab.
+   - Click **Bind existing policy/group/user**.
+   - For a smoke test with a single admin user:
+
+     | Field | Value |
+     |---|---|
+     | Type | `User` |
+     | User | `akadmin` |
+     | Enabled | yes |
+     | Order | `0` |
+     | Timeout | `30` |
+
+   - Click **Create**.
+
+   Confirm the OIDC discovery document before attempting login:
    ```bash
-   export PLATFORMOPS_OIDC_ISSUER="http://localhost:9000/application/o/<slug>/"
-   curl -fsS "${PLATFORMOPS_OIDC_ISSUER}.well-known/openid-configuration"
+   export PLATFORMOPS_OIDC_ISSUER="http://localhost:9000/application/o/platformops/"
+   curl -fsS "${PLATFORMOPS_OIDC_ISSUER}.well-known/openid-configuration" | python3 -m json.tool
    ```
+   The response must include `device_authorization_endpoint` — that confirms
+   the device-code grant is live.
 
    Or run the repository smoke check:
    ```bash
    cd ../..
    PLATFORMOPS_OIDC_ISSUER="$PLATFORMOPS_OIDC_ISSUER" scripts/authentik-smoke.sh
    ```
-4. **Create a test group**, e.g. `aiq-it-prod-approvers`, matching
+
+6. **Create a test group**, e.g. `aiq-it-prod-approvers`, matching
    `grants.example.yaml`.
-5. **Add your test user to that group.**
-6. **Run the device-code login from the repository root:**
+7. **Add your test user to that group.**
+8. **Run the device-code login from the repository root:**
    ```bash
    export PLATFORMOPS_OIDC_CLIENT_ID="<client-id from Authentik>"
    export PLATFORMOPS_GRANT_MAPPING="$PWD/deploy/authentik/grants.example.yaml"
    export PLATFORMOPS_SESSION_PATH="$PWD/.platformops/session.json"
 
-   uv run python -m transports.cli login \
+   uv run python -m gateway.auth.cli \
      --issuer "$PLATFORMOPS_OIDC_ISSUER" \
      --client-id "$PLATFORMOPS_OIDC_CLIENT_ID" \
      --grant-mapping "$PLATFORMOPS_GRANT_MAPPING"
    ```
    The CLI prints a verification URL and user code. Open the URL, sign in as
    the test user, and wait for the CLI to finish polling.
-7. **Inspect the token-free session:**
+9. **Inspect the token-free session:**
    ```bash
    uv run python -m transports.cli whoami
    uv run python -m transports.cli session show
@@ -129,7 +171,7 @@ provider discovery and provisioning workflows are not implemented yet.
    floating around from before 2026.2 will say the opposite -- verify against
    the release notes for whatever version you're actually running, not this
    note, if the pin above ever changes.
-8. **Test the web chat session boundary.** In one terminal, from the
+10. **Test the web chat session boundary.** In one terminal, from the
    repository root:
    ```bash
    export PLATFORMOPS_SESSION_PATH="$PWD/.platformops/session.json"
@@ -160,6 +202,38 @@ flow -- useful right after step 5, before wiring up env vars:
 PLATFORMOPS_OIDC_ISSUER="http://localhost:9000/application/o/<slug>/" \
   scripts/authentik-smoke.sh
 ```
+
+## Troubleshooting
+
+### Server fails with "password authentication failed for user authentik"
+
+This happens when the `database` Docker volume was initialized with a different
+`PG_PASS` than what is currently in `.env` — typically because `.env` was
+regenerated after the volume already existed, or the volume persisted from a
+prior run.
+
+**Fix: wipe the volume and restart.** No real data is lost during a fresh smoke
+setup — there is no configured provider or session yet.
+
+```bash
+cd deploy/authentik
+docker compose down -v   # removes containers AND the database volume
+docker compose up -d
+```
+
+Wait for `docker compose ps` to show all three containers `healthy` (postgres
+goes healthy first; server and worker take 2-3 minutes on first boot), then
+resume from step 2.
+
+**Do not regenerate `.env` between `down -v` and `up -d`** — that would
+produce a new `PG_PASS` and break the next start the same way. Keep the `.env`
+stable once the volume exists, or always regenerate it together with `down -v`.
+
+### Admin credentials lost after `down -v`
+
+`docker compose down -v` deletes the database volume, which holds `akadmin`'s
+password. You must re-run the initial setup flow at
+`http://localhost:9000/if/flow/initial-setup/` after every full teardown.
 
 ## Version pin
 
