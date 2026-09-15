@@ -83,9 +83,11 @@ def login_once(
     verification_url = (
         authorization.verification_uri_complete or authorization.verification_uri
     )
+    import sys
     print("Open this URL to authenticate:")
     print(verification_url)
     print(f"User code: {authorization.user_code}")
+    sys.stdout.flush()
 
     deadline = time.monotonic() + authorization.expires_in
     interval = authorization.interval
