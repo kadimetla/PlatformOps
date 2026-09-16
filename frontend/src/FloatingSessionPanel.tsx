@@ -1,34 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { A2uiSurface, type A2uiSurfaceModel, type Turn, type ThreadClient } from "./lib/agui";
-import ActiveSurfaceSlot from "./components/a2ui/ActiveSurfaceSlot";
-import { useDraggable } from "./lib/useDraggable";
 import { TURN_LABELS, deriveLabel, formatTime } from "./lib/sessionPresentation";
 import { readStoredJSON, writeStoredJSON } from "./lib/storage";
 
-const PANEL_WIDTH = 400;
-const PANEL_HEIGHT = 560;
-const EDGE_MARGIN = 24;
-const POSITION_STORAGE_KEY = "platformops.floatingChatPosition";
-const PINNED_STORAGE_KEY = "platformops.floatingChatPinned";
 const TARGET_SCOPE_STORAGE_KEY = "platformops.targetScope";
 const DEFAULT_TARGET_SCOPE = "aiq:it/invoices/dev";
-
-function defaultPosition() {
-  // Bottom-right corner -- the common floating-chat-widget convention
-  // (Intercom etc.), adjustable from there via drag.
-  return {
-    x: Math.max(window.innerWidth - PANEL_WIDTH - EDGE_MARGIN, 0),
-    y: Math.max(window.innerHeight - PANEL_HEIGHT - EDGE_MARGIN, 0),
-  };
-}
-
-function loadPinned(): boolean {
-  return readStoredJSON<unknown>(PINNED_STORAGE_KEY, false) === true;
-}
-
-function savePinned(pinned: boolean): void {
-  writeStoredJSON(PINNED_STORAGE_KEY, pinned);
-}
 
 function loadTargetScope(): string {
   const stored = readStoredJSON<unknown>(TARGET_SCOPE_STORAGE_KEY, DEFAULT_TARGET_SCOPE);
@@ -39,9 +15,8 @@ function isAttentionTurn(turn: Turn): boolean {
   return turn.kind === "clarification_required" || turn.kind === "approval_required";
 }
 
-// The grid (App.tsx) stays visible and interactive behind this panel --
-// unlike the old full-page ThreadView, there's no "back to grid" state
-// to navigate out of, so the only exit affordance is Close.
+// Docked chat/control panel for the selected session. Generated workflow
+// UI is rendered in the workspace by App.tsx, not inside this transcript.
 export default function FloatingSessionPanel({
   client,
   onClose,
@@ -50,24 +25,10 @@ export default function FloatingSessionPanel({
   onClose: () => void;
 }) {
   const state = useSyncExternalStore(client.subscribe, client.getState);
-  const latestTurn = state.turns[state.turns.length - 1];
-  const activeAttentionTurn =
-    latestTurn && isAttentionTurn(latestTurn) && latestTurn.surfaceId
-      ? latestTurn
-      : undefined;
-  const activeSurface = activeAttentionTurn?.surfaceId
-    ? state.surfacesById.get(activeAttentionTurn.surfaceId)
-    : undefined;
   const [input, setInput] = useState("");
   const [targetScope, setTargetScope] = useState(loadTargetScope);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [pinned, setPinned] = useState(loadPinned);
   const streamRef = useRef<HTMLDivElement>(null);
-  const { position, isDragging, onDragHandleMouseDown } = useDraggable({
-    storageKey: POSITION_STORAGE_KEY,
-    defaultPosition,
-    size: { width: PANEL_WIDTH, height: PANEL_HEIGHT },
-  });
 
   useEffect(() => {
     streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight, behavior: "smooth" });
@@ -81,14 +42,6 @@ export default function FloatingSessionPanel({
       } else {
         next.add(turnId);
       }
-      return next;
-    });
-  }
-
-  function togglePinned() {
-    setPinned((current) => {
-      const next = !current;
-      savePinned(next);
       return next;
     });
   }
@@ -107,54 +60,27 @@ export default function FloatingSessionPanel({
   }
 
   return (
-    <div
-      className="floating-panel"
-      data-pinned={pinned || undefined}
-      data-dragging={isDragging || undefined}
-      style={{ left: position.x, top: position.y }}
-    >
-      <div className="floating-panel-header">
-        <button
-          type="button"
-          className="floating-panel-drag-handle"
-          onMouseDown={pinned ? undefined : onDragHandleMouseDown}
-          aria-label={pinned ? "Chat panel is pinned" : "Move chat panel"}
-          title={pinned ? "Pinned" : "Drag to move"}
-        >
-          <span className="floating-panel-grip" aria-hidden="true" />
-        </button>
-        <span className="floating-panel-label">{deriveLabel(state.turns)}</span>
-        <button
-          type="button"
-          className="floating-panel-action"
-          onClick={togglePinned}
-          aria-pressed={pinned}
-          title={pinned ? "Unpin chat panel" : "Pin chat panel"}
-        >
-          {pinned ? "Unpin" : "Pin"}
-        </button>
-        <button type="button" className="floating-panel-close" onClick={onClose} aria-label="Hide panel" title="Hide panel">
+    <div className="session-chat-panel">
+      <div className="session-chat-header">
+        <span className="session-chat-label">{deriveLabel(state.turns)}</span>
+        <button type="button" className="session-chat-close" onClick={onClose} aria-label="Hide chat" title="Hide chat">
           ×
         </button>
       </div>
 
-      <div className="conversation-region">
-        <div className="turn-stream" ref={streamRef}>
-          {state.turns.length === 0 && (
-            <p className="turn-stream-empty">Say something to get started.</p>
-          )}
-          {state.turns.filter((turn) => turn.id !== activeAttentionTurn?.id).map((turn) => (
-            <TurnBlock
-              key={turn.id}
-              turn={turn}
-              surface={turn.surfaceId ? state.surfacesById.get(turn.surfaceId) : undefined}
-              isCollapsed={collapsed.has(turn.id)}
-              onToggle={() => toggleCollapsed(turn.id)}
-            />
-          ))}
-        </div>
-
-        {activeSurface && <ActiveSurfaceSlot surface={activeSurface} />}
+      <div className="turn-stream" ref={streamRef}>
+        {state.turns.length === 0 && (
+          <p className="turn-stream-empty">Say something to get started.</p>
+        )}
+        {state.turns.map((turn) => (
+          <TurnBlock
+            key={turn.id}
+            turn={turn}
+            surface={turn.surfaceId ? state.surfacesById.get(turn.surfaceId) : undefined}
+            isCollapsed={collapsed.has(turn.id)}
+            onToggle={() => toggleCollapsed(turn.id)}
+          />
+        ))}
       </div>
 
       <label className="scope-bar">
@@ -203,7 +129,7 @@ function TurnBlock({
       {!isCollapsed && (
         <div className="turn-body">
           <p className="turn-text">{turn.text}</p>
-          {surface && (
+          {surface && !isAttentionTurn(turn) && (
             <div className="turn-surface">
               <A2uiSurface surface={surface} />
             </div>

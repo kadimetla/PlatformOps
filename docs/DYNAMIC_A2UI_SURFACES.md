@@ -89,17 +89,23 @@ The browser should not contain a React component named
 `StaticWebProvisionQuestion`. It should only host the generated A2UI
 surface.
 
+Active generated surfaces belong in the main workspace, not inside or
+over the floating chat panel. The chat panel remains a conversation and
+control surface; the generated A2UI card is the work surface.
+
 ## Frontend Layout
 
 Frontend React code should be mostly global shell and renderer hosting:
 
 ```text
 frontend/src/
-  App.tsx                         session grid / app shell
-  FloatingSessionPanel.tsx        current local-dev session chrome
+  App.tsx                         session grid / app shell;
+                                  owns side sessions, middle work surface,
+                                  and bottom selected-session chat
+  FloatingSessionPanel.tsx        current local-dev bottom chat/control panel
   components/
     a2ui/
-      ActiveSurfaceSlot.tsx       centered host for active A2UI surfaces
+      ActiveSurfaceSlot.tsx       generic host for active A2UI surfaces
   lib/
     agui.ts                       AG-UI client, event processing, thread state
     threadManager.ts              local thread registry
