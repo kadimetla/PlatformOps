@@ -143,7 +143,7 @@ export default function FloatingSessionPanel({
           {state.turns.length === 0 && (
             <p className="turn-stream-empty">Say something to get started.</p>
           )}
-          {state.turns.filter((turn) => turn.id !== activeAttentionTurn?.id).map((turn) => (
+          {state.turns.map((turn) => (
             <TurnBlock
               key={turn.id}
               turn={turn}
@@ -152,9 +152,12 @@ export default function FloatingSessionPanel({
               onToggle={() => toggleCollapsed(turn.id)}
             />
           ))}
+          {activeSurface && (
+            <div className="inline-surface-slot">
+              <ActiveSurfaceSlot surface={activeSurface} />
+            </div>
+          )}
         </div>
-
-        {activeSurface && <ActiveSurfaceSlot surface={activeSurface} />}
       </div>
 
       <label className="scope-bar">
