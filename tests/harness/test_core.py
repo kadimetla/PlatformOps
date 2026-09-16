@@ -95,7 +95,7 @@ def test_start_run_resolves_tier2_intent_with_zero_model_calls():
         "route": "provision",
         "ready_to_route": False,
         "mutation_requested": True,
-        "approval_required": False,
+        "approval_required": True,
         "unsupported_reason": "tenant not authorized for this route",
     }
 
@@ -176,7 +176,7 @@ def test_resume_clarification_reinvokes_with_combined_text():
         "route": "provision",
         "ready_to_route": False,
         "mutation_requested": True,
-        "approval_required": False,
+        "approval_required": True,
         "unsupported_reason": "tenant not authorized for this route",
     }
 
@@ -306,6 +306,9 @@ def test_provision_dispatch_succeeds_end_to_end():
     assert isinstance(event, PlatformOpsEvent)
     assert event.payload["route"] == "provision"
     assert event.payload["ready_to_route"] is True
+    # provisioning mutates infra -- this event only reports a fully-resolved
+    # request, it does not execute it; approval_required marks that.
+    assert event.payload["approval_required"] is True
     assert event.payload["profile_id"] == "aws-static-web"
     assert event.payload["scope"] == {
         "org": "aiq",
@@ -343,7 +346,7 @@ def test_provision_dispatch_fails_closed_with_no_execution_grants():
         "route": "provision",
         "ready_to_route": False,
         "mutation_requested": True,
-        "approval_required": False,
+        "approval_required": True,
         "unsupported_reason": "target not found or not accessible",
     }
 

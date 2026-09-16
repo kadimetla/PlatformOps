@@ -2,8 +2,8 @@
 docs/INTAKE_HITL_ROUTING.md, openspec/changes/build-intake-workflow/design.md,
 and openspec/changes/build-intake-dispatcher/design.md for the design this
 implements. Routing/dispatch fields are populated by
-workflows/intake/nodes.py's resolve_route for the compliance_check tier
-only -- see IntakeDecision's docstring.
+workflows/intake/nodes.py's resolve_route -- see IntakeDecision's
+docstring for which intents resolve to a real route.
 
 Scope lives here rather than in gateway/auth/ because it's shared by
 both intake (project/workspace targeting) and auth (grant scoping) --
@@ -77,11 +77,14 @@ class IntakeRequest(BaseModel):
 
 class IntakeDecision(BaseModel):
     """route/ready_to_route are resolved by workflows/intake/nodes.py's
-    resolve_route for the compliance_check tier only (the one real
-    routable target -- see openspec/changes/build-intake-dispatcher/).
-    mutation_requested/approval_required/unsupported_reason are new in
-    that change; approval_required stays inert (always False) until a
-    real mutating route exists to require approval for."""
+    resolve_route -- compliance_check and provision both resolve to a
+    real route (see openspec/changes/build-intake-dispatcher/ and
+    gateway/dispatcher.py's ROUTE_REGISTRY). mutation_requested/
+    approval_required/unsupported_reason were added in that change;
+    approval_required is True for provision (a mutating route that must
+    not auto-execute) and False for compliance_check (read-only) -- see
+    openspec/changes/gate-provision-approval/ for why provision needed
+    that gate instead of staying inert."""
 
     intent: Intent | None = None
     clarification_questions: list[ClarificationQuestion] = Field(default_factory=list)

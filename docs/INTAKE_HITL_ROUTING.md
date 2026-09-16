@@ -1,16 +1,22 @@
 ## Status
-Mostly designed only, with two narrow real slices (**corrected
+Mostly designed only, with several narrow real slices (**corrected
 2026-08-07** — this line previously said no `gateway/`/`workflows/`
 code existed at all, which stopped being true once
-`build-intake-workflow` landed): `gateway/schemas.py` and
-`workflows/intake/` are real, and `workflows/intake/nodes.py`'s
-`resolve_route` deterministically routes the `compliance_check` intent
-(`openspec/changes/build-intake-dispatcher/`). Everything scope/policy
--dependent below — `Scope` on `IntakeRequest`, `POLICY[(org_bu,
-intent)]`, `actor.execution_grants` gating, `gateway/dispatcher.py` —
-remains designed only; see the Real vs. Designed table. This document
-captures the OpenSpec explore result for request intake with
-human-in-the-loop clarification before workflow routing.
+`build-intake-workflow` landed; **further corrected 2026-09-16** —
+`resolve_route` now routes `provision` too, not `compliance_check`
+alone, and `gateway/dispatcher.py`/`actor.execution_grants` gating are
+real, not designed-only, per this branch's provisioning slices and
+`openspec/changes/gate-provision-approval/`): `gateway/schemas.py` and
+`workflows/intake/` are real, `workflows/intake/nodes.py`'s
+`resolve_route` deterministically routes the `compliance_check` and
+`provision` intents (`openspec/changes/build-intake-dispatcher/`,
+`gate-provision-approval/`), and `gateway/dispatcher.py` dispatches a
+real handler for `provision`, gated by tenant policy and
+`approval_required`. `Scope` on `IntakeRequest` and the full
+`POLICY[(org_bu, intent)]` registry remain designed only; see the Real
+vs. Designed table. This document captures the OpenSpec explore result
+for request intake with human-in-the-loop clarification before
+workflow routing.
 
 **Corrected by the 2026-07-27 deep-dive explore** (grounded against
 `design/harness-architecture`'s built-and-tested intake:
@@ -98,9 +104,9 @@ LLM call.
 |---|---|---|
 | Intake workflow | **Real** (corrected 2026-08-07) — `workflows/intake/` LangGraph `StateGraph` runs `classify_workflow -> resolve_route -> END` | (built) |
 | Gateway schemas | **Real** (corrected 2026-08-07) — `gateway/schemas.py` owns `Intent`, `Scope`, `IntakeRequest`, `IntakeDecision`; `IntakeRequest` has no `scope` field yet, see Actor/grants row | `gateway/schemas.py` owns request, decision, route, and clarification models |
-| Dispatcher | **Real for `compliance_check` only** (corrected 2026-08-07) — `workflows/intake/nodes.py`'s `resolve_route`, a static intent-keyed table, no scope/policy dimension | Deterministic route selection maps known intents to known workflows only, keyed on `(org_bu, intent)` via a real `POLICY` registry and `gateway/dispatcher.py` — neither exists |
+| Dispatcher | **Real** (corrected 2026-09-16 — previously said "real for `compliance_check` only"; stopped being true once `gateway/dispatcher.py`'s `ROUTE_REGISTRY` landed) — `workflows/intake/nodes.py`'s `resolve_route`, a static intent-keyed table, no scope/policy dimension, resolves both `compliance_check` and `provision`; `gateway/dispatcher.py` additionally registers and dispatches a real handler (`workflows.provision.graph.prepare_provision_request`) for `provision`, gated by `check_tenant_policy` | Deterministic route selection maps known intents to known workflows only, keyed on `(org_bu, intent)` via a real `POLICY` registry and `gateway/dispatcher.py` |
 | HITL clarification | Not implemented | Intake returns clarification questions as data and ends; caller re-invokes, capped at 2 rounds (corrected — C1; was "intake interrupts") |
-| Mutation approval | Not implemented in intake | Intake can mark approval required, but cannot approve or execute mutation |
+| Mutation approval | **Partially real** (corrected 2026-09-16 — previously said "not implemented in intake"; see `openspec/changes/gate-provision-approval/`) — `resolve_route` sets `IntakeDecision.approval_required = True` when `intent == provision` (`False` for the read-only `compliance_check` route), so a mutating route is flagged rather than treated as unconditionally executable. Still true as designed: intake/`gateway/dispatcher.py` can mark approval required, but there is no approve-or-execute step yet — `harness/core.py`'s dispatch only ever reports a resolved provisioning request, never applies it | Intake can mark approval required, but cannot approve or execute mutation |
 | Compliance check | Existing deterministic CLI in `spec/check_compliance.py` | Dispatcher can route compliance requests to a wrapper around the deterministic checker |
 | Cloud execution identity | Not implemented — designed from a clean slate, no prior credential model assumed | Narrow, temporary identity chosen by policy per `(org_bu, intent)` — AssumeRole/managed identity/service-account impersonation — selected only after plan + deterministic checks + human approval, never by the classifier (see Cloud Roles and Access Flow) |
 | Actor / grants (WHO, distinct from scope's WHERE) | Not implemented — no auth/session layer exists anywhere on this branch | `actor.execution_grants` (per-workspace capability, resolved at login — see [ACCESS_POLICY_AND_IAM_DISCOVERY.md](ACCESS_POLICY_AND_IAM_DISCOVERY.md)); `resolve_route` computes `effective_access = min(grant, ceiling)` in addition to `POLICY[(org_bu, intent)]`. A separate `actor.approval_grants` set is consulted only at the approval gate — see [EXECUTION_CREDENTIALS.md](EXECUTION_CREDENTIALS.md). (Corrected — an earlier row here described a single flat `persona` field, superseded by that doc's capability ladder; further corrected to split `actor.grants` into `execution_grants`/`approval_grants`.) |

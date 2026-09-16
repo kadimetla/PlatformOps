@@ -95,7 +95,11 @@ async def resolve_route(state: IntakeState) -> dict:
                     "route": route,
                     "ready_to_route": True,
                     "mutation_requested": decision.intent == Intent.PROVISION,
-                    "approval_required": False,
+                    # provision mutates infra, so it needs recorded approval
+                    # before execution -- see
+                    # openspec/changes/gate-provision-approval/design.md.
+                    # compliance_check is read-only, so it stays False.
+                    "approval_required": decision.intent == Intent.PROVISION,
                     "evidence": [
                         *decision.evidence,
                         f"resolved route={route!r} for intent={decision.intent.value!r}",

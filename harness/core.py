@@ -244,7 +244,7 @@ class PlatformOpsHarness:
                     "route": "provision",
                     "ready_to_route": False,
                     "mutation_requested": True,
-                    "approval_required": False,
+                    "approval_required": True,
                     "unsupported_reason": draft.unavailable_reason,
                 },
                 created_at=now,
@@ -259,7 +259,11 @@ class PlatformOpsHarness:
                 "route": "provision",
                 "ready_to_route": True,
                 "mutation_requested": True,
-                "approval_required": False,
+                # provisioning is not auto-executed: this event only reports
+                # a fully-resolved provisioning request, ready for the
+                # (not-yet-built) approval/apply step -- see
+                # openspec/changes/gate-provision-approval/.
+                "approval_required": True,
                 "profile_id": draft.profile_id,
                 "scope": draft.scope.model_dump() if draft.scope else None,
                 "application_request": (

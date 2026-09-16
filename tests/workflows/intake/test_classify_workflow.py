@@ -88,7 +88,7 @@ def test_compliance_check_resolves_a_real_route():
     assert decision.evidence  # audit trail line recording the resolution
 
 
-def test_provision_resolves_a_route_at_the_intake_graph_level():
+def test_provision_resolves_a_real_route_gated_by_approval():
     # gateway/dispatcher.py (Slice 4) registers a real provision handler --
     # intake-level resolve_route now resolves the route; whether it's
     # actually dispatched still depends on the tenant/access gates
@@ -101,6 +101,11 @@ def test_provision_resolves_a_route_at_the_intake_graph_level():
     # mutation_requested reflects the intent, not routability -- provision
     # implies mutation whether or not a handler ends up dispatching it.
     assert decision.mutation_requested is True
+    # provision mutates infra, so it must not resolve to an
+    # unconditionally-executable route -- approval_required gates it,
+    # unlike compliance_check's read-only route above (see
+    # openspec/changes/gate-provision-approval/).
+    assert decision.approval_required is True
     assert decision.unsupported_reason is None
 
 
@@ -111,6 +116,7 @@ def test_inquiry_has_no_route_yet_and_is_marked_unsupported():
     assert decision.route is None
     assert decision.ready_to_route is False
     assert decision.mutation_requested is False
+    assert decision.approval_required is False
     assert decision.unsupported_reason is not None
 
 
