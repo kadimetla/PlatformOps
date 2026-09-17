@@ -23,5 +23,8 @@ dependencies = [
 # install method, rather than calling boto3 in-process. `uv` (which provides
 # `uvx`) is required at runtime; see README.md setup.
 
-[project.optional-dependencies]
-dev = ["pytest", "cryptography"]
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "cryptography>=43",
+]
