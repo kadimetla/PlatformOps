@@ -462,11 +462,8 @@ body {
   flex: 1;
 }
 
-.inline-surface-slot {
-  padding: 0.5rem 0;
-}
-
 .active-surface-slot {
+  padding: 0.5rem 0;
   width: 100%;
 }
 

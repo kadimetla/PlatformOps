@@ -149,7 +149,16 @@ class PlatformOpsHarness:
         request: IntakeRequest,
         scope_hint: ScopeHint | None,
     ) -> HITLEvent | PlatformOpsEvent:
-        decision = await intake_request(request, self._model)
+        try:
+            decision = await intake_request(request, self._model)
+        except Exception as exc:
+            return PlatformOpsEvent(
+                event_id=str(uuid4()),
+                request_id=request_id,
+                kind=EventKind.ROUTE_RESOLVED,
+                payload={"error": str(exc)},
+                created_at=datetime.now(timezone.utc),
+            )
         now = datetime.now(timezone.utc)
 
         if decision.clarification_questions:
@@ -208,9 +217,18 @@ class PlatformOpsHarness:
         round_: int,
     ) -> HITLEvent | PlatformOpsEvent:
         handler = ROUTE_REGISTRY["provision"]
-        draft: ProvisionDraft = await handler(
-            invocation, self._model, KNOWN_WORKSPACES, actor.actor.execution_grants
-        )
+        try:
+            draft: ProvisionDraft = await handler(
+                invocation, self._model, KNOWN_WORKSPACES, actor.actor.execution_grants
+            )
+        except Exception as exc:
+            return PlatformOpsEvent(
+                event_id=str(uuid4()),
+                request_id=request_id,
+                kind=EventKind.ROUTE_RESOLVED,
+                payload={"error": str(exc)},
+                created_at=datetime.now(timezone.utc),
+            )
         now = datetime.now(timezone.utc)
 
         if draft.clarification_questions:
