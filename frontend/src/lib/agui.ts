@@ -214,6 +214,9 @@ export function createThreadClient(runsUrl: string, threadId: string): ThreadCli
     try {
       await run(subscriber);
     } catch (err) {
+      // Clear stale interrupts so the next message goes through as a
+      // fresh run rather than a resume of a failed/expired interrupt.
+      agent.pendingInterrupts = [];
       appendTurn({ kind: "error", text: describeAgentError(err) });
     } finally {
       setState({ isSubmitting: false });
