@@ -1657,7 +1657,7 @@ dependencies = [
     { name = "uvicorn" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "cryptography" },
     { name = "pytest" },
@@ -1666,7 +1666,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "ag-ui-protocol" },
-    { name = "cryptography", marker = "extra == 'dev'" },
     { name = "fastapi" },
     { name = "google-adk" },
     { name = "langchain-core" },
@@ -1675,11 +1674,15 @@ requires-dist = [
     { name = "mcp" },
     { name = "pydantic" },
     { name = "pyjwt" },
-    { name = "pytest", marker = "extra == 'dev'" },
     { name = "pyyaml" },
     { name = "uvicorn" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "cryptography", specifier = ">=43" },
+    { name = "pytest", specifier = ">=9.1.1" },
+]
 
 [[package]]
 name = "pluggy"
