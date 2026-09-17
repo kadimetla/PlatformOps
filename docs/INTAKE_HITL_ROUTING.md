@@ -12,6 +12,17 @@ remains designed only; see the Real vs. Designed table. This document
 captures the OpenSpec explore result for request intake with
 human-in-the-loop clarification before workflow routing.
 
+**Corrected 2026-09-17 by
+[`build-org-onboarding`](../openspec/changes/build-org-onboarding/README.md):**
+the target shape planned for future registry-backed routing is
+`org:group:team:project:env`.  This supersedes the older
+`<org>:<bu> → project → workspace` vocabulary in the historical design
+sections below.  It does **not** make target selection session state or
+token data: the authenticated session identifies the requester; a
+structured request selects a target; deterministic registry lookup
+resolves its provider binding.  The current code still exposes the
+older `Scope` fields until the separately tracked migration is built.
+
 **Corrected by the 2026-07-27 deep-dive explore** (grounded against
 `design/harness-architecture`'s built-and-tested intake:
 `workflows/intake/{graph,nodes,state,tools}.py`,
@@ -31,7 +42,8 @@ Summary of what changed and why:
 
 Two additions the original omitted entirely:
 
-**(A1) Scope model — decided this session.** Every workflow operates
+**(A1) Scope model — decided in the original session; terminology
+superseded 2026-09-17 above.** Every workflow was designed to operate
 inside a three-level scope:
 
 ```text
