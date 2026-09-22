@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-22
+goal: Define the provision flow from registry-resolved target through plan,
+  policy, approval, execution, and evidence before further implementation.

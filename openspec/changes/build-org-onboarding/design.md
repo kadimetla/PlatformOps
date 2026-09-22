@@ -14,9 +14,6 @@ that this pair is the stable unique identifier an RP can rely upon.
 
 - Define a reviewed onboarding contract that admits an organization before
   any of its targets become routable.
-- Make `org:group:team:project:env` the canonical PlatformOps target and
-  resolve its cloud provider from trusted registry data.
-- Keep requester identity, target ownership, and execution identity separate.
 - Deliver a minimal AWS-first implementation path with fake-adapter tests and
   no cloud mutation in its first slice.
 
@@ -25,8 +22,8 @@ that this pair is the stable unique identifier an RP can rely upon.
 - No self-service sign-up, free-text onboarding, cloud-account vending,
   project/environment bootstrap, or normal resource apply in this change's
   first implementation slice.
-- No user-supplied cloud credentials, account IDs, role ARNs, or trusted
-  provider selection.
+- No user-supplied cloud credentials, account IDs, role ARNs, trusted provider
+  selection, target bootstrap, or target access-control implementation.
 - No multi-cloud adapter implementation before the AWS contract is verified
   against current provider documentation.
 
@@ -49,38 +46,13 @@ administration proof and an externally configured read-only cloud role) is an
 implementation decision that must be specified and tested before a live
 adapter is enabled. An email-domain match alone is explicitly insufficient.
 
-### The token identifies the requester; the request selects the target
+### Target bootstrap is a separate prerequisite
 
-An authenticated session supplies `issuer + subject` and resolved grants.
-The UI/CLI supplies the structured five-segment target.  The gateway validates
-the target then performs an exact registry lookup.  A token may carry groups
-for authorization resolution, but it is not the source of target binding or
-provider selection.  This avoids stale, over-broad token claims and supports
-one user working across multiple approved targets.
-
-### Registry-controlled provider bindings
-
-The registry owns `provider`, cloud boundary identifier,
-`execution_identity_ref`, optional `provider_workspace`, state, and a version
-or digest.  `provider_workspace` is an adapter/tool detail; `env` remains the
-platform term.  The registry writes an active/routable target only after its
-bootstrap/verification work succeeds.  Exact lookup has no inheritance or
-fallback.
-
-### A resolved context is snapshotted before plan and approval
-
-Before planning, deterministic code produces:
-
-```text
-ResolvedProvisionContext(
-  target=org:group:team:project:env,
-  provider_binding=..., registry_digest=...
-)
-```
-
-The plan and approval digest include the registry digest.  A changed target
-binding therefore requires re-resolution and a fresh plan, rather than
-redirecting an approved request.
+The applicant identity established by this change is not a target grant and
+does not select cloud routing. `build-target-bootstrap` owns Deployment Target
+identity, identity-group access bindings, and registry-controlled provider
+resolution. Provisioning consumes an authorized, resolved target only after
+organization activation.
 
 ### Minimal first implementation links an existing cloud root
 
@@ -103,12 +75,9 @@ free-text intent.
 
 ## Risks / Trade-offs
 
-- [Risk] Renaming the scope vocabulary touches real models and tests →
-  Mitigation: a dedicated compatibility migration, one canonical stored `env`
-  field, and explicit correction notes; no silent dual schema.
 - [Risk] A registry becomes security-critical configuration → Mitigation:
-  deny by default, explicit lifecycle state, review/approval, digest snapshots,
-  and no request/model write path.
+  `build-target-bootstrap` owns its deny-by-default lifecycle, review,
+  snapshots, and request/model write prohibition.
 - [Risk] Provider verification details can drift → Mitigation: isolate the
   verifier protocol and verify exact AWS integration semantics against current
   official docs immediately before that task is implemented.
@@ -119,21 +88,17 @@ free-text intent.
 
 ## Migration Plan
 
-1. Publish the terminology correction in the existing architecture docs.
-2. Add target and registry schemas with deterministic unit tests.
-3. Add read-only registry loading and exact resolution; keep all records
-   non-routable until the onboarding lifecycle exists.
-4. Add admin onboarding validation, fake verifier, approval/digest handling,
+1. Publish the organization-onboarding correction in the existing architecture
+   docs, with a cross-reference to target bootstrap.
+2. Add admin onboarding validation, fake verifier, approval/digest handling,
    and activation tests.
-5. Add the AWS verifier only after current-doc research, then run a dedicated
+3. Add the AWS verifier only after current-doc research, then run a dedicated
    sandbox verification before enabling it in any deployment.
-6. Migrate callers from `workspace` to `env`; accept a documented temporary
-   legacy input only at the edge and normalize immediately.
 
 ## Open Questions
 
-- The durable registry backing store and review mechanism beyond the MVP
-  reviewed-file approach are not selected.
+- The durable target-registry backing store and review mechanism beyond the
+  MVP reviewed-file approach are owned by `build-target-bootstrap`.
 - The precise applicant authentication source and customer-domain/IdP control
   challenge are open; they must be selected before the public onboarding entry
   point is implemented.
