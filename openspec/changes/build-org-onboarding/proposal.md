@@ -13,9 +13,9 @@ tenant.
   the organization's identity and cloud root through injected adapters, and
   becomes its initial tenant administrator only after recorded review and
   activation succeed.
-- Keep target bootstrap, provider binding, AWS account vending, and normal
+- Keep Resource Scope bootstrap, provider binding, AWS account vending, and normal
   resource provisioning out of the first onboarding implementation.  They are
-  tracked separately by `build-target-bootstrap` and later changes.
+  tracked separately by `build-resource-scope-bootstrap` and later changes.
 
 ## Capabilities
 
@@ -36,7 +36,7 @@ defines the scope vocabulary.)
 - Later implementation touches organization lifecycle and membership
   contracts, gateway schemas, and organization-onboarding workflow code and
   tests.  Target registry and policy loading belong to
-  `build-target-bootstrap`.
+  `build-resource-scope-bootstrap`.
 - No cloud SDK, credentials, account mutation, or external network call is
   introduced by this planning change.  Exact AWS Organizations and IAM
   integration points require current-doc verification before their

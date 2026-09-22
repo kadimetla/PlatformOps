@@ -46,10 +46,10 @@ administration proof and an externally configured read-only cloud role) is an
 implementation decision that must be specified and tested before a live
 adapter is enabled. An email-domain match alone is explicitly insufficient.
 
-### Target bootstrap is a separate prerequisite
+### Resource Scope bootstrap is a separate prerequisite
 
 The applicant identity established by this change is not a target grant and
-does not select cloud routing. `build-target-bootstrap` owns PlatformOps
+does not select cloud routing. `build-resource-scope-bootstrap` owns PlatformOps
 Resource Scope identity, identity-group access bindings, and registry-controlled
 provider resolution. Provisioning consumes an authorized, resolved scope only after
 organization activation.
@@ -76,7 +76,7 @@ free-text intent.
 ## Risks / Trade-offs
 
 - [Risk] A registry becomes security-critical configuration → Mitigation:
-  `build-target-bootstrap` owns its deny-by-default lifecycle, review,
+  `build-resource-scope-bootstrap` owns its deny-by-default lifecycle, review,
   snapshots, and request/model write prohibition.
 - [Risk] Provider verification details can drift → Mitigation: isolate the
   verifier protocol and verify exact AWS integration semantics against current
@@ -89,7 +89,7 @@ free-text intent.
 ## Migration Plan
 
 1. Publish the organization-onboarding correction in the existing architecture
-   docs, with a cross-reference to target bootstrap.
+   docs, with a cross-reference to Resource Scope bootstrap.
 2. Add admin onboarding validation, fake verifier, approval/digest handling,
    and activation tests.
 3. Add the AWS verifier only after current-doc research, then run a dedicated
@@ -98,7 +98,7 @@ free-text intent.
 ## Open Questions
 
 - The durable Resource Scope registry backing store and review mechanism beyond the
-  MVP reviewed-file approach are owned by `build-target-bootstrap`.
+  MVP reviewed-file approach are owned by `build-resource-scope-bootstrap`.
 - The precise applicant authentication source and customer-domain/IdP control
   challenge are open; they must be selected before the public onboarding entry
   point is implemented.

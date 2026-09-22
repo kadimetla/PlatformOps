@@ -126,7 +126,7 @@ allowing future multi-cloud scopes.
 A separately authorized, read-only inquiry may enumerate existing AWS accounts,
 GCP projects, or Azure subscriptions only within an organization’s already
 connected provider boundary. The response is a candidate list, not a grant or
-binding. Attaching a candidate requires a later target-bootstrap administrator
+binding. Attaching a candidate requires a later Resource Scope bootstrap administrator
 action with verification and review. Creating a new Cloud Resource Container is
 a different privileged provider-bootstrap workflow, subject to organization
 policy and approval.

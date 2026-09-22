@@ -23,7 +23,7 @@ not make scope authorization a deterministic contract.
   govern one or more Cloud Resource Containers; a request selects the scope,
   never a trusted cloud account, subscription, project, execution identity, or
   provider workspace.
-- Move target-bootstrap planning ownership out of `build-org-onboarding`.
+- Move Resource Scope bootstrap planning ownership out of `build-org-onboarding`.
   Organization onboarding remains a prerequisite that activates the tenant;
   this change creates no organization-claiming, cloud connection, or normal
   provisioning behavior.

@@ -19,7 +19,7 @@ resource.
   checks first, then approval bound to a plan/context digest, then a separately
   authorized execution and evidence path.
 - Keep user registration, organization claiming, cloud-provider connection,
-  target bootstrap, frontend work, and account vending in their own changes.
+  Resource Scope bootstrap, frontend work, and account vending in their own changes.
 
 ## Capabilities
 
@@ -43,7 +43,7 @@ OpenSpec base capability.)
 - Documents the real `workflows/provision/`, `harness/core.py`, and
   `gateway/dispatcher.py` handoff before changing their behavior.
 - Depends on the planned user-registration, organization-onboarding,
-  cloud-provider-connection, and `build-target-bootstrap` contracts; it does
+  cloud-provider-connection, and `build-resource-scope-bootstrap` contracts; it does
   not create those control-plane records itself.
 - Later tasks will update provision schemas/state, policy and approval
   integration, provider adapters, tests, and the architecture document map.
