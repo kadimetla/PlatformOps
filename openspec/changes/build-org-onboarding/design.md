@@ -23,7 +23,7 @@ that this pair is the stable unique identifier an RP can rely upon.
   project/environment bootstrap, or normal resource apply in this change's
   first implementation slice.
 - No user-supplied cloud credentials, account IDs, role ARNs, trusted provider
-  selection, target bootstrap, or target access-control implementation.
+  selection, Resource Scope bootstrap, or Resource Scope access-control implementation.
 - No multi-cloud adapter implementation before the AWS contract is verified
   against current provider documentation.
 
@@ -49,9 +49,9 @@ adapter is enabled. An email-domain match alone is explicitly insufficient.
 ### Target bootstrap is a separate prerequisite
 
 The applicant identity established by this change is not a target grant and
-does not select cloud routing. `build-target-bootstrap` owns Deployment Target
-identity, identity-group access bindings, and registry-controlled provider
-resolution. Provisioning consumes an authorized, resolved target only after
+does not select cloud routing. `build-target-bootstrap` owns PlatformOps
+Resource Scope identity, identity-group access bindings, and registry-controlled
+provider resolution. Provisioning consumes an authorized, resolved scope only after
 organization activation.
 
 ### Minimal first implementation links an existing cloud root
@@ -97,7 +97,7 @@ free-text intent.
 
 ## Open Questions
 
-- The durable target-registry backing store and review mechanism beyond the
+- The durable Resource Scope registry backing store and review mechanism beyond the
   MVP reviewed-file approach are owned by `build-target-bootstrap`.
 - The precise applicant authentication source and customer-domain/IdP control
   challenge are open; they must be selected before the public onboarding entry

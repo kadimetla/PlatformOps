@@ -8,11 +8,12 @@ resource.
 
 ## What Changes
 
-- Capture the real provision preflight as the baseline: scope resolution,
+- Capture the real provision preflight as the baseline: Resource Scope resolution,
   reviewed profile selection, typed profile-request extraction, and
   clarification/unavailable outcomes; it performs no cloud mutation.
 - Specify the required handoff from active organization membership and an
-  authorized, registry-resolved `org:bu:team:project:env` provider binding into a
+  authorized, registry-resolved PlatformOps Resource Scope
+  (`org:bu:team:project:env`) provider binding into a
   provision run.
 - Define the staged downstream contract: deterministic plan construction and
   checks first, then approval bound to a plan/context digest, then a separately
@@ -24,7 +25,7 @@ resource.
 
 ### New Capabilities
 
-- `provision-preflight`: non-mutating target resolution, profile selection,
+- `provision-preflight`: non-mutating Resource Scope resolution, profile selection,
   typed request extraction, and fail-closed clarification/unavailable results.
 - `provision-plan-gate`: deterministic plan/context sealing and policy outcome
   before any approval or execution is possible.
