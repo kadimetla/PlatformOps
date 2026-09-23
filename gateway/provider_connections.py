@@ -36,6 +36,10 @@ def _binding_id() -> str:
     return f"binding_{uuid4().hex}"
 
 
+def _bootstrap_request_id() -> str:
+    return f"bootstrap_{uuid4().hex}"
+
+
 class ProviderConnection(BaseModel):
     """Organization-owned, non-secret provider control-plane record."""
 
@@ -114,6 +118,51 @@ class CloudResourceContainerBinding(BaseModel):
     version: int = Field(default=1, ge=1)
 
 
+class ProviderContainerBootstrapState(str, Enum):
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    CREATED = "created"
+
+
+class ProviderContainerBootstrapRequest(BaseModel):
+    """Approval-controlled request to create a cloud container.
+
+    It is intentionally separate from normal application provisioning and
+    returns a candidate, not an active Resource Scope binding.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: str = Field(default_factory=_bootstrap_request_id, min_length=11)
+    connection_id: str = Field(min_length=7)
+    requested_display_name: str = Field(min_length=1)
+    requested_by: str = Field(min_length=1)
+    state: ProviderContainerBootstrapState = ProviderContainerBootstrapState.PENDING_APPROVAL
+    approved_by: str | None = None
+    created_candidate: ProviderContainerCandidate | None = None
+    version: int = Field(default=1, ge=1)
+
+
+class ProvisioningContainerResolutionStatus(str, Enum):
+    READY = "ready"
+    SETUP_REQUIRED = "setup_required"
+
+
+class ProvisioningContainerResolution(BaseModel):
+    """Provider-boundary result consumed by later ordinary provisioning."""
+
+    status: ProvisioningContainerResolutionStatus
+    binding: CloudResourceContainerBinding | None = None
+
+    @classmethod
+    def from_binding(
+        cls, binding: CloudResourceContainerBinding | None
+    ) -> "ProvisioningContainerResolution":
+        if binding is None:
+            return cls(status=ProvisioningContainerResolutionStatus.SETUP_REQUIRED)
+        return cls(status=ProvisioningContainerResolutionStatus.READY, binding=binding)
+
+
 class ProviderAdapter(Protocol):
     """Narrow deterministic provider contract; implementations own I/O."""
 
@@ -167,6 +216,59 @@ class ProviderContainerAttachmentAuthorizer(Protocol):
         self, *, actor_id: str, organization_id: str, resource_scope_id: str
     ) -> bool:
         """Return whether the actor can approve this scope attachment."""
+
+
+class ProviderContainerBootstrapAuthorizer(Protocol):
+    """Organization-level authorization supplied by the auth boundary."""
+
+    def may_request_container_bootstrap(
+        self, *, actor_id: str, organization_id: str
+    ) -> bool:
+        """Return whether the actor can request a new cloud container."""
+
+    def may_approve_container_bootstrap(
+        self, *, actor_id: str, organization_id: str
+    ) -> bool:
+        """Return whether the actor can approve cloud-container creation."""
+
+
+class ProviderContainerBootstrapPolicy(Protocol):
+    """Deterministic organization policy decision; deny by default."""
+
+    def allows_container_bootstrap(self, *, connection: ProviderConnection) -> bool:
+        """Return whether the organization permits creation in this boundary."""
+
+
+class ProviderContainerBootstrapAdapter(Protocol):
+    """Privileged provider operation, never implemented by the read-only adapter."""
+
+    provider: CloudProvider
+
+    def create_container(
+        self,
+        connection: ProviderConnection,
+        *,
+        display_name: str,
+    ) -> ProviderContainerCandidate:
+        """Create one provider container and return it as an unattached candidate."""
+
+
+class ProviderContainerBootstrapAdapterRegistry:
+    def __init__(self, adapters: list[ProviderContainerBootstrapAdapter]) -> None:
+        self._adapters = {adapter.provider: adapter for adapter in adapters}
+        if len(self._adapters) != len(adapters):
+            raise ValueError("only one bootstrap adapter may be registered per provider")
+
+    def for_connection(
+        self, connection: ProviderConnection
+    ) -> ProviderContainerBootstrapAdapter:
+        connection.require_active()
+        try:
+            return self._adapters[connection.provider]
+        except KeyError as error:
+            raise ProviderConnectionUnavailable(
+                f"no bootstrap adapter is configured for provider {connection.provider.value!r}"
+            ) from error
 
 
 class ProviderContainerInquiryService:
@@ -283,6 +385,96 @@ class ProviderContainerAttachmentService:
             raise ValueError("container candidate is outside the connection boundary")
 
 
+class ProviderContainerBootstrapService:
+    """Separate approval-controlled cloud-container creation boundary."""
+
+    def __init__(
+        self,
+        *,
+        adapters: ProviderContainerBootstrapAdapterRegistry,
+        authorizer: ProviderContainerBootstrapAuthorizer,
+        policy: ProviderContainerBootstrapPolicy,
+    ) -> None:
+        self._adapters = adapters
+        self._authorizer = authorizer
+        self._policy = policy
+
+    def request_bootstrap(
+        self,
+        *,
+        actor_id: str,
+        connection: ProviderConnection,
+        display_name: str,
+    ) -> ProviderContainerBootstrapRequest:
+        connection.require_active()
+        if not self._policy.allows_container_bootstrap(connection=connection):
+            raise ProviderConnectionAccessDenied(
+                "organization policy does not permit provider-container bootstrap"
+            )
+        if not self._authorizer.may_request_container_bootstrap(
+            actor_id=actor_id, organization_id=connection.organization_id
+        ):
+            raise ProviderConnectionAccessDenied(
+                "organization administrator permission is required to request bootstrap"
+            )
+        return ProviderContainerBootstrapRequest(
+            connection_id=connection.connection_id,
+            requested_display_name=display_name,
+            requested_by=actor_id,
+        )
+
+    def approve_bootstrap(
+        self,
+        *,
+        actor_id: str,
+        connection: ProviderConnection,
+        request: ProviderContainerBootstrapRequest,
+    ) -> ProviderContainerBootstrapRequest:
+        connection.require_active()
+        if request.connection_id != connection.connection_id:
+            raise ValueError("bootstrap request does not belong to this connection")
+        if request.state != ProviderContainerBootstrapState.PENDING_APPROVAL:
+            raise ValueError("only a pending bootstrap request can be approved")
+        if not self._authorizer.may_approve_container_bootstrap(
+            actor_id=actor_id, organization_id=connection.organization_id
+        ):
+            raise ProviderConnectionAccessDenied(
+                "organization administrator permission is required to approve bootstrap"
+            )
+        return request.model_copy(
+            update={
+                "state": ProviderContainerBootstrapState.APPROVED,
+                "approved_by": actor_id,
+                "version": request.version + 1,
+            }
+        )
+
+    def create_container(
+        self,
+        *,
+        connection: ProviderConnection,
+        request: ProviderContainerBootstrapRequest,
+    ) -> ProviderContainerBootstrapRequest:
+        connection.require_active()
+        if request.connection_id != connection.connection_id:
+            raise ValueError("bootstrap request does not belong to this connection")
+        if request.state != ProviderContainerBootstrapState.APPROVED:
+            raise ValueError("bootstrap request requires recorded approval")
+        candidate = self._adapters.for_connection(connection).create_container(
+            connection, display_name=request.requested_display_name
+        )
+        ProviderContainerAttachmentService._require_connection_candidate(
+            connection, candidate
+        )
+        return request.model_copy(
+            update={
+                "state": ProviderContainerBootstrapState.CREATED,
+                "created_candidate": candidate,
+                "version": request.version + 1,
+            }
+        )
+
+
 class FakeProviderAdapter:
     """Scripted non-network adapter for deterministic contract tests."""
 
@@ -316,3 +508,27 @@ class FakeProviderAdapter:
             if candidate.provider == connection.provider
             and candidate.boundary_ref == connection.boundary_ref
         ]
+
+
+class FakeProviderContainerBootstrapAdapter:
+    """Scripted privileged adapter for tests; never enabled as a live adapter."""
+
+    def __init__(self, provider: CloudProvider) -> None:
+        self.provider = provider
+        self.create_calls: list[tuple[str, str]] = []
+
+    def create_container(
+        self,
+        connection: ProviderConnection,
+        *,
+        display_name: str,
+    ) -> ProviderContainerCandidate:
+        if connection.provider != self.provider:
+            raise ValueError("connection provider does not match adapter provider")
+        self.create_calls.append((connection.connection_id, display_name))
+        return ProviderContainerCandidate(
+            provider=connection.provider,
+            boundary_ref=connection.boundary_ref,
+            container_ref=f"fake:{connection.connection_id}:{len(self.create_calls)}",
+            display_name=display_name,
+        )

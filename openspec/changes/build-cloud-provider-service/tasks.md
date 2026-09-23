@@ -17,10 +17,10 @@
 
 ## 4. Provider-container bootstrap
 
-- [ ] 4.1 Add a separately authorized provider-container bootstrap request with policy and approval checks; verify ordinary provisioning receives setup-required rather than creating a container.
-- [ ] 4.2 Add fake-adapter tests proving a created container returns as a candidate and still requires reviewed attachment.
+- [x] 4.1 Add a separately authorized provider-container bootstrap request with policy and approval checks; verify ordinary provisioning receives setup-required rather than creating a container.
+- [x] 4.2 Add fake-adapter tests proving a created container returns as a candidate and still requires reviewed attachment.
 
 ## 5. Live-adapter readiness and verification
 
-- [ ] 5.1 Verify the exact AWS provider API/MCP contract, minimum permissions, and resource support against current official documentation before implementing a live adapter; record sources and tests.
-- [ ] 5.2 Run fake-adapter tests and `openspec validate build-cloud-provider-service --strict`; do not enable a live provider adapter by default.
+- [x] 5.1 Verify the exact AWS provider API/MCP contract, minimum permissions, and resource support against current official documentation before implementing a live adapter; record sources and tests.
+- [x] 5.2 Run fake-adapter tests and `openspec validate build-cloud-provider-service --strict`; do not enable a live provider adapter by default.

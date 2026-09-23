@@ -5,7 +5,11 @@ from gateway.provider_connections import (
     CloudProvider,
     ContainerAttachmentState,
     FakeProviderAdapter,
+    FakeProviderContainerBootstrapAdapter,
     ProviderAdapterRegistry,
+    ProviderContainerBootstrapAdapterRegistry,
+    ProviderContainerBootstrapService,
+    ProviderContainerBootstrapState,
     ProviderContainerAttachmentService,
     ProviderConnectionAccessDenied,
     ProviderContainerCandidate,
@@ -13,6 +17,8 @@ from gateway.provider_connections import (
     ProviderConnection,
     ProviderConnectionState,
     ProviderConnectionUnavailable,
+    ProvisioningContainerResolution,
+    ProvisioningContainerResolutionStatus,
 )
 
 
@@ -40,6 +46,26 @@ class FakeAttachmentAuthorizer:
         self, *, actor_id: str, organization_id: str, resource_scope_id: str
     ) -> bool:
         return actor_id in self._reviewers
+
+
+class FakeBootstrapAuthorizer:
+    def __init__(self, requesters: set[str], approvers: set[str]) -> None:
+        self._requesters = requesters
+        self._approvers = approvers
+
+    def may_request_container_bootstrap(self, *, actor_id: str, organization_id: str) -> bool:
+        return actor_id in self._requesters
+
+    def may_approve_container_bootstrap(self, *, actor_id: str, organization_id: str) -> bool:
+        return actor_id in self._approvers
+
+
+class FakeBootstrapPolicy:
+    def __init__(self, allowed: bool) -> None:
+        self._allowed = allowed
+
+    def allows_container_bootstrap(self, *, connection: ProviderConnection) -> bool:
+        return self._allowed
 
 
 def _connection(*, state: ProviderConnectionState = ProviderConnectionState.ACTIVE) -> ProviderConnection:
@@ -252,3 +278,103 @@ def test_attachment_cannot_be_approved_twice():
         service.approve_attachment(
             actor_id="usr_bob", connection=connection, request=approved
         )
+
+
+def test_bootstrap_requires_policy_and_recorded_approval_before_creation():
+    adapter = FakeProviderContainerBootstrapAdapter(CloudProvider.AWS)
+    service = ProviderContainerBootstrapService(
+        adapters=ProviderContainerBootstrapAdapterRegistry([adapter]),
+        authorizer=FakeBootstrapAuthorizer({"usr_alice"}, {"usr_bob"}),
+        policy=FakeBootstrapPolicy(True),
+    )
+    connection = _connection()
+    request = service.request_bootstrap(
+        actor_id="usr_alice", connection=connection, display_name="checkout-prod"
+    )
+
+    with pytest.raises(ValueError, match="recorded approval"):
+        service.create_container(connection=connection, request=request)
+
+    approved = service.approve_bootstrap(
+        actor_id="usr_bob", connection=connection, request=request
+    )
+    created = service.create_container(connection=connection, request=approved)
+
+    assert created.state == ProviderContainerBootstrapState.CREATED
+    assert created.created_candidate is not None
+    assert created.created_candidate.boundary_ref == connection.boundary_ref
+    assert adapter.create_calls == [(connection.connection_id, "checkout-prod")]
+
+
+def test_bootstrap_denies_creation_when_organization_policy_disallows_it():
+    adapter = FakeProviderContainerBootstrapAdapter(CloudProvider.AWS)
+    service = ProviderContainerBootstrapService(
+        adapters=ProviderContainerBootstrapAdapterRegistry([adapter]),
+        authorizer=FakeBootstrapAuthorizer({"usr_alice"}, {"usr_bob"}),
+        policy=FakeBootstrapPolicy(False),
+    )
+
+    with pytest.raises(ProviderConnectionAccessDenied, match="policy"):
+        service.request_bootstrap(
+            actor_id="usr_alice", connection=_connection(), display_name="checkout-prod"
+        )
+
+    assert adapter.create_calls == []
+
+
+def test_created_container_remains_an_unattached_candidate_until_reviewed_attachment():
+    adapter = FakeProviderContainerBootstrapAdapter(CloudProvider.AWS)
+    bootstrap = ProviderContainerBootstrapService(
+        adapters=ProviderContainerBootstrapAdapterRegistry([adapter]),
+        authorizer=FakeBootstrapAuthorizer({"usr_alice"}, {"usr_bob"}),
+        policy=FakeBootstrapPolicy(True),
+    )
+    connection = _connection()
+    request = bootstrap.request_bootstrap(
+        actor_id="usr_alice", connection=connection, display_name="checkout-prod"
+    )
+    approved = bootstrap.approve_bootstrap(
+        actor_id="usr_bob", connection=connection, request=request
+    )
+    created = bootstrap.create_container(connection=connection, request=approved)
+
+    resolution = ProvisioningContainerResolution.from_binding(None)
+
+    assert resolution.status == ProvisioningContainerResolutionStatus.SETUP_REQUIRED
+    assert created.created_candidate is not None
+
+
+def test_provisioning_container_resolution_is_ready_only_for_an_approved_binding():
+    candidate = ProviderContainerCandidate(
+        provider=CloudProvider.AWS,
+        boundary_ref="aws-org:o-acme",
+        container_ref="account:123456789012",
+        display_name="acme-production",
+    )
+    attachment = ProviderContainerAttachmentService(
+        authorizer=FakeAttachmentAuthorizer({"usr_alice"}, {"usr_bob"})
+    )
+    connection = _connection()
+    pending = attachment.request_attachment(
+        actor_id="usr_alice",
+        connection=connection,
+        resource_scope_id="scope_checkout_prod",
+        candidate=candidate,
+    )
+    _, binding = attachment.approve_attachment(
+        actor_id="usr_bob", connection=connection, request=pending
+    )
+
+    resolution = ProvisioningContainerResolution.from_binding(binding)
+
+    assert resolution.status == ProvisioningContainerResolutionStatus.READY
+    assert resolution.binding == binding
+
+
+def test_no_live_provider_adapter_is_enabled_by_default():
+    connection = _connection()
+
+    with pytest.raises(ProviderConnectionUnavailable, match="no adapter"):
+        ProviderAdapterRegistry([]).for_connection(connection)
+    with pytest.raises(ProviderConnectionUnavailable, match="no bootstrap adapter"):
+        ProviderContainerBootstrapAdapterRegistry([]).for_connection(connection)
