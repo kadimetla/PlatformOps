@@ -7,6 +7,8 @@ from pydantic import ValidationError
 from gateway.auth.registration import (
     PLATFORMOPS_ISSUER,
     InMemoryVerificationAttemptStore,
+    InMemoryRegistrationRateLimiter,
+    RegistrationPendingResponse,
     RegistrationService,
     InMemoryUserRegistrationStore,
     UserAccount,
@@ -15,6 +17,7 @@ from gateway.auth.registration import (
     VerifiedEmailContact,
     canonicalize_email,
     digest_verification_token,
+    redact_registration_secret,
 )
 
 
@@ -190,3 +193,163 @@ def test_registration_service_delivers_opaque_token_and_persists_only_digest():
     assert stored.token_digest == digest_verification_token(token, hmac_key=b"test-key")
     assert token not in stored.model_dump_json()
     assert stored.expires_at == now + timedelta(minutes=15)
+
+
+def test_public_registration_response_does_not_disclose_new_existing_or_invalid_state():
+    attempts = InMemoryVerificationAttemptStore()
+    delivery = FakeVerificationDelivery()
+    service = RegistrationService(attempts=attempts, delivery=delivery, token_hmac_key=b"test-key")
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+
+    new = service.request_registration("alice@example.com", now=now)
+    existing = service.request_registration("alice@example.com", now=now + timedelta(minutes=1))
+    invalid = service.request_registration("not-an-email", now=now + timedelta(minutes=2))
+
+    assert new == existing == invalid
+
+
+def test_registration_rate_limit_returns_generic_response_without_delivery():
+    attempts = InMemoryVerificationAttemptStore()
+    delivery = FakeVerificationDelivery()
+    service = RegistrationService(
+        attempts=attempts,
+        delivery=delivery,
+        token_hmac_key=b"test-key",
+        rate_limiter=InMemoryRegistrationRateLimiter(max_per_email=1),
+    )
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+
+    first = service.request_registration("alice@example.com", source="test", now=now)
+    limited = service.request_registration("alice@example.com", source="test", now=now + timedelta(minutes=1))
+
+    assert first == limited
+    assert len(delivery.messages) == 1
+
+
+def test_registration_source_rate_limit_applies_across_email_addresses():
+    attempts = InMemoryVerificationAttemptStore()
+    delivery = FakeVerificationDelivery()
+    service = RegistrationService(
+        attempts=attempts,
+        delivery=delivery,
+        token_hmac_key=b"test-key",
+        rate_limiter=InMemoryRegistrationRateLimiter(max_per_email=5, max_per_source=1),
+    )
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+
+    first = service.request_registration("alice@example.com", source="test", now=now)
+    limited = service.request_registration("bob@example.com", source="test", now=now + timedelta(minutes=1))
+
+    assert first == limited
+    assert len(delivery.messages) == 1
+
+
+def test_registration_delivery_failure_returns_generic_response():
+    class FailingDelivery:
+        def send_verification(self, *, email: str, token: str) -> None:
+            raise RuntimeError("delivery unavailable")
+
+    service = RegistrationService(
+        attempts=InMemoryVerificationAttemptStore(),
+        delivery=FailingDelivery(),
+        token_hmac_key=b"test-key",
+    )
+
+    response = service.request_registration("alice@example.com")
+
+    assert response == RegistrationPendingResponse()
+
+
+def test_registration_redaction_removes_token_and_full_url_fragment():
+    redacted = redact_registration_secret("https://platformops.test/verify?token=secret&next=home#fragment")
+    assert "secret" not in redacted
+    assert "#fragment" not in redacted
+    assert "token=%5BREDACTED%5D" in redacted
+    assert redact_registration_secret("secret") == "[REDACTED]"
+
+
+def test_delivery_failure_diagnostics_redact_verification_url():
+    class FailingDelivery:
+        def send_verification(self, *, email: str, token: str) -> None:
+            raise RuntimeError("https://platformops.test/verify?token=secret-token")
+
+    class Diagnostics:
+        details: list[str] = []
+
+        def record_delivery_failure(self, *, detail: str) -> None:
+            self.details.append(detail)
+
+    diagnostics = Diagnostics()
+    RegistrationService(
+        attempts=InMemoryVerificationAttemptStore(),
+        delivery=FailingDelivery(),
+        token_hmac_key=b"test-key",
+        diagnostics=diagnostics,
+    ).request_registration("alice@example.com")
+
+    assert "secret-token" not in diagnostics.details[0]
+    assert "token=%5BREDACTED%5D" in diagnostics.details[0]
+
+
+def test_verification_intent_validates_without_consuming_scanner_link():
+    attempts = InMemoryVerificationAttemptStore()
+    delivery = FakeVerificationDelivery()
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+    service = RegistrationService(attempts=attempts, delivery=delivery, token_hmac_key=b"test-key")
+    service.begin_verification("alice@example.com", now=now)
+    token = delivery.messages[0][1]
+
+    assert service.verification_intent(token, now=now + timedelta(minutes=1))
+    stored = next(iter(attempts._attempts_by_id.values()))
+    assert stored.consumed_at is None
+
+
+def test_confirmation_consumes_token_once_and_rejects_replay_or_mismatch():
+    attempts = InMemoryVerificationAttemptStore()
+    delivery = FakeVerificationDelivery()
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+    service = RegistrationService(attempts=attempts, delivery=delivery, token_hmac_key=b"test-key")
+    service.begin_verification("alice@example.com", now=now)
+    token = delivery.messages[0][1]
+
+    assert service.confirm_verification(token, now=now + timedelta(minutes=1))
+    assert not service.confirm_verification(token, now=now + timedelta(minutes=2))
+    assert not service.confirm_verification("wrong-token", now=now + timedelta(minutes=2))
+
+
+def test_confirmation_rejects_expired_invalidated_and_racing_attempts():
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+    attempts = InMemoryVerificationAttemptStore()
+    delivery = FakeVerificationDelivery()
+    service = RegistrationService(attempts=attempts, delivery=delivery, token_hmac_key=b"test-key")
+    service.begin_verification("alice@example.com", now=now)
+    expired_token = delivery.messages[0][1]
+    assert not service.confirm_verification(expired_token, now=now + timedelta(minutes=16))
+
+    service.begin_verification("alice@example.com", now=now + timedelta(minutes=17))
+    invalidated_token = delivery.messages[1][1]
+    service.begin_verification("alice@example.com", now=now + timedelta(minutes=18))
+    assert not service.confirm_verification(invalidated_token, now=now + timedelta(minutes=19))
+
+    token = delivery.messages[2][1]
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        outcomes = list(executor.map(lambda _item: service.confirm_verification(token, now=now + timedelta(minutes=19)), range(16)))
+    assert outcomes.count(True) == 1
+
+
+def test_confirmation_issues_unassociated_token_free_session():
+    attempts = InMemoryVerificationAttemptStore()
+    delivery = FakeVerificationDelivery()
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+    service = RegistrationService(
+        attempts=attempts, delivery=delivery, token_hmac_key=b"test-key",
+        users=InMemoryUserRegistrationStore(),
+    )
+    service.begin_verification("alice@example.com", now=now)
+    session = service.confirm_and_issue_session(delivery.messages[0][1], now=now + timedelta(minutes=1))
+
+    assert session is not None
+    assert session.actor.user_id.startswith("usr_")
+    assert session.actor.execution_grants == []
+    assert session.actor.approval_grants == []
+    assert session.groups == []

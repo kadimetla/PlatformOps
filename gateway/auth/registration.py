@@ -10,6 +10,7 @@ from enum import Enum
 import hashlib
 import hmac
 import secrets
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from threading import Lock
 from typing import Protocol
 from uuid import uuid4
@@ -18,6 +19,18 @@ from pydantic import BaseModel, Field, model_validator
 
 
 PLATFORMOPS_ISSUER = "platformops"
+
+
+def redact_registration_secret(value: str) -> str:
+    """Remove verification tokens from diagnostics without changing routing."""
+    parsed = urlsplit(value)
+    if parsed.scheme or parsed.netloc or parsed.query:
+        query = urlencode(
+            [(key, "[REDACTED]" if key.lower() in {"token", "verification_token"} else item)
+             for key, item in parse_qsl(parsed.query, keep_blank_values=True)]
+        )
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, ""))
+    return "[REDACTED]" if value else value
 
 
 def _generated_subject() -> str:
@@ -220,6 +233,26 @@ class InMemoryVerificationAttemptStore:
         with self._lock:
             return self._attempts_by_id.get(attempt_id)
 
+    def find_active_by_digest(self, digest: str, *, now: datetime) -> VerificationAttempt | None:
+        with self._lock:
+            for attempt in self._attempts_by_id.values():
+                if (attempt.token_digest == digest and not attempt.is_consumed
+                        and attempt.invalidated_at is None and not attempt.is_expired(now=now)):
+                    return attempt
+        return None
+
+    def consume_by_digest(self, digest: str, *, now: datetime) -> bool:
+        return self.consume_email_by_digest(digest, now=now) is not None
+
+    def consume_email_by_digest(self, digest: str, *, now: datetime) -> str | None:
+        with self._lock:
+            for attempt in self._attempts_by_id.values():
+                if (attempt.token_digest == digest and not attempt.is_consumed
+                        and attempt.invalidated_at is None and not attempt.is_expired(now=now)):
+                    attempt.consumed_at = now
+                    return attempt.canonical_email
+            return None
+
 
 class VerificationAttemptWriter(Protocol):
     def save_new_attempt(self, attempt: VerificationAttempt, *, now: datetime | None = None) -> None: ...
@@ -227,6 +260,50 @@ class VerificationAttemptWriter(Protocol):
 
 class VerificationEmailDelivery(Protocol):
     def send_verification(self, *, email: str, token: str) -> None: ...
+
+
+class RegistrationDiagnostics(Protocol):
+    def record_delivery_failure(self, *, detail: str) -> None: ...
+
+
+class RegistrationRateLimiter(Protocol):
+    def allow(self, *, canonical_email: str, source: str | None, now: datetime) -> bool: ...
+
+
+class RegistrationPendingResponse(BaseModel):
+    """Enumeration-safe public response for every registration outcome."""
+
+    message: str = "If the address can receive email, a verification message will arrive shortly."
+
+
+class InMemoryRegistrationRateLimiter:
+    """Development/test rate limiter; production injects a shared limiter."""
+
+    def __init__(self, *, max_per_email: int = 3, max_per_source: int = 10, window_seconds: int = 900) -> None:
+        self._max_per_email = max_per_email
+        self._max_per_source = max_per_source
+        self._window = timedelta(seconds=window_seconds)
+        self._email_attempts: dict[str, list[datetime]] = {}
+        self._source_attempts: dict[str, list[datetime]] = {}
+        self._lock = Lock()
+
+    def allow(self, *, canonical_email: str, source: str | None, now: datetime) -> bool:
+        with self._lock:
+            email_attempts = self._recent(self._email_attempts, canonical_email, now)
+            source_attempts = self._recent(self._source_attempts, source, now) if source else []
+            if len(email_attempts) >= self._max_per_email or len(source_attempts) >= self._max_per_source:
+                return False
+            email_attempts.append(now)
+            self._email_attempts[canonical_email] = email_attempts
+            if source:
+                source_attempts.append(now)
+                self._source_attempts[source] = source_attempts
+            return True
+
+    def _recent(self, attempts: dict[str, list[datetime]], key: str | None, now: datetime) -> list[datetime]:
+        if key is None:
+            return []
+        return [attempt for attempt in attempts.get(key, []) if attempt + self._window > now]
 
 
 class RegistrationService:
@@ -238,6 +315,9 @@ class RegistrationService:
         attempts: VerificationAttemptWriter,
         delivery: VerificationEmailDelivery,
         token_hmac_key: bytes,
+        rate_limiter: RegistrationRateLimiter | None = None,
+        diagnostics: RegistrationDiagnostics | None = None,
+        users: InMemoryUserRegistrationStore | None = None,
         token_ttl_seconds: int = 900,
     ) -> None:
         if not token_hmac_key:
@@ -248,6 +328,39 @@ class RegistrationService:
         self._delivery = delivery
         self._token_hmac_key = token_hmac_key
         self._token_ttl_seconds = token_ttl_seconds
+        self._rate_limiter = rate_limiter
+        self._diagnostics = diagnostics
+        self._users = users
+
+    def request_registration(
+        self,
+        email: str,
+        *,
+        source: str | None = None,
+        now: datetime | None = None,
+    ) -> RegistrationPendingResponse:
+        started_at = now or _utc_now()
+        try:
+            local_part, canonical_domain = canonicalize_email(email)
+            canonical_email = f"{local_part}@{canonical_domain}"
+        except ValueError:
+            return RegistrationPendingResponse()
+
+        if self._rate_limiter is not None and not self._rate_limiter.allow(
+            canonical_email=canonical_email,
+            source=source,
+            now=started_at,
+        ):
+            return RegistrationPendingResponse()
+
+        try:
+            self.begin_verification(email, now=started_at)
+        except Exception as error:
+            # Delivery outcomes are internal; callers receive no account or
+            # delivery-state signal. Token/log redaction is added in task 2.3.
+            if self._diagnostics is not None:
+                self._diagnostics.record_delivery_failure(detail=redact_registration_secret(str(error)))
+        return RegistrationPendingResponse()
 
     def begin_verification(self, email: str, *, now: datetime | None = None) -> None:
         started_at = now or _utc_now()
@@ -262,3 +375,36 @@ class RegistrationService:
         )
         self._attempts.save_new_attempt(attempt, now=started_at)
         self._delivery.send_verification(email=email, token=token)
+
+    def verification_intent(self, token: str, *, now: datetime | None = None) -> bool:
+        """Validate a link without consuming it; safe for mail link scanners."""
+        current = now or _utc_now()
+        finder = getattr(self._attempts, "find_active_by_digest", None)
+        if finder is None:
+            return False
+        return finder(digest_verification_token(token, hmac_key=self._token_hmac_key), now=current) is not None
+
+    def confirm_verification(self, token: str, *, now: datetime | None = None) -> bool:
+        """Consume an active token exactly once; session issuance is separate."""
+        current = now or _utc_now()
+        consumer = getattr(self._attempts, "consume_email_by_digest", None)
+        if consumer is None:
+            return False
+        return consumer(digest_verification_token(token, hmac_key=self._token_hmac_key), now=current) is not None
+
+    def confirm_and_issue_session(self, token: str, *, now: datetime | None = None):
+        """Confirm once and issue an active, unassociated token-free session."""
+        if self._users is None:
+            return None
+        current = now or _utc_now()
+        consumer = getattr(self._attempts, "consume_email_by_digest", None)
+        if consumer is None:
+            return None
+        email = consumer(digest_verification_token(token, hmac_key=self._token_hmac_key), now=current)
+        if email is None:
+            return None
+        from gateway.auth.claims import OIDCClaims
+        from gateway.auth.sessions import build_actor_session
+
+        account = self._users.create_or_recover_verified_user(email, verified_at=current)
+        return build_actor_session(OIDCClaims(sub=account.subject, email=email), [], [], now=current)

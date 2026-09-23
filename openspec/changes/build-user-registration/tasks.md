@@ -10,14 +10,14 @@
 ## 2. Registration initiation and email delivery boundary
 
 - [x] 2.1 Add a server-side registration initiation boundary that creates a cryptographically secure opaque verification token and calls an injectable email-delivery interface; verify fake-delivery tests receive a verification message without requiring a live provider.
-- [ ] 2.2 Return one generic verification-pending response for new and existing users and enforce server-side delivery/rate controls without disclosing which condition occurred; verify enumeration and rate-limit tests receive the identical public response shape.
-- [ ] 2.3 Add centralized redaction for token-bearing URLs and token fields at registration, delivery, and error/log boundaries; verify logging tests cannot find a raw token or complete verification URL.
+- [x] 2.2 Return one generic verification-pending response for new and existing users and enforce server-side delivery/rate controls without disclosing which condition occurred; verify enumeration and rate-limit tests receive the identical public response shape.
+- [x] 2.3 Add centralized redaction for token-bearing URLs and token fields at registration, delivery, and error/log boundaries; verify diagnostics tests cannot find a raw token or complete verification URL.
 
 ## 3. Scanner-safe verification and narrow session issuance
 
-- [ ] 3.1 Add a verification-intent endpoint or handler that validates an unexpired unused token without consuming it; verify a simulated link-scanner GET leaves the attempt usable.
-- [ ] 3.2 Add same-origin confirmation handling that atomically consumes a valid token and rejects expired, consumed, mismatched, or racing attempts; verify focused tests permit exactly one successful consumption and no second session.
-- [ ] 3.3 Issue the existing authenticated-session representation only after successful confirmation with the PlatformOps user subject and no organization, approval, execution, cloud, or provider-binding grants; verify session tests assert the active unassociated state.
+- [x] 3.1 Add a verification-intent endpoint or handler that validates an unexpired unused token without consuming it; verify a simulated link-scanner GET leaves the attempt usable.
+- [x] 3.2 Add same-origin confirmation handling that atomically consumes a valid token and rejects expired, consumed, mismatched, or racing attempts; verify focused tests permit exactly one successful consumption and no second session.
+- [x] 3.3 Issue the existing authenticated-session representation only after successful confirmation with the PlatformOps user subject and no organization, approval, execution, cloud, or provider-binding grants; verify session tests assert the active unassociated state.
 
 ## 4. Post-login organization-domain discovery
 
