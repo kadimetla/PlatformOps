@@ -15,18 +15,21 @@ example); surfaced an unresolved gap between the registry's scalar
 `max_capability` and `ceiling.py`'s intent-keyed `CeilingEntry` while
 doing so.
 
-**Corrected 2026-09-17 by
+**Corrected 2026-09-23 by
 [`build-org-onboarding`](../openspec/changes/build-org-onboarding/README.md):**
 the canonical PlatformOps target vocabulary is now
-`org:group:team:project:env`, not `org:bu:project:workspace`.  `env`
+`org:bu:team:project:env`, not `org:bu:project:workspace`. `bu` is a
+business-ownership hierarchy record; an identity/access `group` is a separate
+principal type. `env`
 is the platform-facing environment; a provider/tool-specific workspace
 is an optional binding detail, never a synonym for it.  The earlier
 examples below remain as historical design context until their matching
-runtime migration lands.  The same change also makes organization
-onboarding explicit: a pending organization must link and verify a
-trusted cloud root before any child target can become routable.  Its
-OpenSpec proposal/specs/design are the authoritative delta; no
-onboarding runtime exists yet.
+runtime migration lands. The same change makes organization onboarding
+explicit: a pending organization must prove its identity boundary, receive
+review, and activate before child scopes can become routable. Cloud-root and
+provider verification are separately owned by
+`build-cloud-provider-service`. Its OpenSpec proposal/specs/design are the
+authoritative delta; no onboarding runtime exists yet.
 
 ## Real vs. Designed
 | Area | Status |
@@ -34,7 +37,7 @@ onboarding runtime exists yet.
 | Bootstrap workflow (any level) | Not implemented |
 | Bootstrap allow-list (`infra/bootstrap-allowed-resource-types.json`) | Not implemented — file does not exist yet |
 | Contracts (`BootstrapRequest`, `BootstrapPlan`, `WorkspaceIdentitySpec`, `ProjectRegistryEntry`) | Designed only — the recommended first build |
-| Organization onboarding | Designed as PR-reviewed config editing for MVP, not automated; `build-org-onboarding` now specifies the pending → approved/verified → active lifecycle |
+| Organization onboarding | Designed as PR-reviewed config editing for MVP, not automated; `build-org-onboarding` specifies the identity-verified, approved → active lifecycle; provider verification is separate |
 | Teardown paths | Explicitly deferred — separate admin path, not designed |
 | Existing `infra/allowed-resource-types.json` | Real — the normal-provisioning allow-list this design's disjointness rule builds on |
 

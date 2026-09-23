@@ -8,11 +8,15 @@ tenant.
 
 ## What Changes
 
-- Add a self-service organization-onboarding capability: an authenticated
-  organization applicant creates a pending tenant record, proves control of
-  the organization's identity and cloud root through injected adapters, and
-  becomes its initial tenant administrator only after recorded review and
-  activation succeed.
+- Add an applicant-initiated, reviewed organization-onboarding capability: an
+  authenticated organization applicant creates a pending tenant record,
+  proves control of the organization's configured identity boundary through
+  an injected verifier, and becomes its initial tenant administrator only
+  after recorded review and activation succeed.
+- Keep cloud-provider connection and cloud-root verification in the separate
+  `build-cloud-provider-service` change. An active organization neither
+  implies nor receives provider access until a provider connection and later
+  Resource Scope binding are explicitly reviewed and activated.
 - Keep Resource Scope bootstrap, provider binding, AWS account vending, and normal
   resource provisioning out of the first onboarding implementation.  They are
   tracked separately by `build-resource-scope-bootstrap` and later changes.
@@ -21,8 +25,9 @@ tenant.
 
 ### New Capabilities
 
-- `organization-onboarding`: deterministic, admin-only tenant admission,
-  cloud-root reference verification, approval, and lifecycle activation.
+- `organization-onboarding`: deterministic business-tenant admission,
+  identity-boundary verification, approval, lifecycle activation, and initial
+  tenant-admin membership.
 
 ### Modified Capabilities
 
@@ -37,7 +42,7 @@ defines the scope vocabulary.)
   contracts, gateway schemas, and organization-onboarding workflow code and
   tests.  Target registry and policy loading belong to
   `build-resource-scope-bootstrap`.
-- No cloud SDK, credentials, account mutation, or external network call is
-  introduced by this planning change.  Exact AWS Organizations and IAM
-  integration points require current-doc verification before their
-  implementation task begins.
+- No cloud SDK, credentials, cloud-root reference, account mutation, or
+  external provider call is introduced by this planning change. The identity
+  verifier is a deterministic injected boundary with fakes for tests; its
+  production proof mechanism is selected and verified before enablement.
