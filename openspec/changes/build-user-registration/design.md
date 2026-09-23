@@ -46,6 +46,24 @@ subject, as the PlatformOps primary key. Email addresses can change and one
 person can authenticate through several IdPs; PlatformOps must retain a stable
 identity across those events.
 
+### PostgreSQL is the durable store in every deployed environment
+
+PostgreSQL is the authoritative store for user accounts, verified email
+contacts, verification attempts, and their audit timestamps in both local
+development and production. Local development uses an isolated local
+PostgreSQL database; production uses a separately managed PostgreSQL database.
+SQLite is not a supported PlatformOps deployment topology.
+
+In-memory registration stores remain unit-test doubles only. PostgreSQL
+integration tests exercise migrations, uniqueness constraints, and the
+transaction that consumes an attempt while creating or recovering a user. The
+application uses a narrow repository boundary so unit tests do not require a
+database, but the real server path uses PostgreSQL.
+
+The rejected alternative is SQLite for local development and PostgreSQL only in
+production. It creates avoidable behavioral drift around concurrency,
+transaction semantics, and schema migrations at the identity security boundary.
+
 ### Canonicalize only the email domain for routing and lookup
 
 Registration validates a syntactically acceptable address, preserves the local
@@ -139,7 +157,9 @@ session is not substituted for corporate authentication.
 
 1. Add the registration and verification contracts behind a server-side
    boundary with fake delivery and fake session implementations.
-2. Add user and verification-attempt persistence with no legacy password data.
+2. Add PostgreSQL schema migrations and repository operations for users,
+   contacts, and verification attempts; retain in-memory stores only for unit
+   tests.
 3. Direct unauthenticated entry points to registration; retain existing login
    schemas as the downstream authenticated-session boundary.
 4. Enable organization-domain discovery only after active verified organization

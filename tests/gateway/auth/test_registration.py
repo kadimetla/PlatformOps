@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from gateway.auth.registration import (
     PLATFORMOPS_ISSUER,
     InMemoryVerificationAttemptStore,
+    RegistrationService,
     InMemoryUserRegistrationStore,
     UserAccount,
     UserStatus,
@@ -160,3 +161,32 @@ def test_new_attempt_invalidates_prior_unconsumed_attempt_for_same_email():
 
     assert store.get(first.attempt_id).invalidated_at == now + timedelta(minutes=1)
     assert store.get(second.attempt_id).invalidated_at is None
+
+
+class FakeVerificationDelivery:
+    def __init__(self) -> None:
+        self.messages: list[tuple[str, str]] = []
+
+    def send_verification(self, *, email: str, token: str) -> None:
+        self.messages.append((email, token))
+
+
+def test_registration_service_delivers_opaque_token_and_persists_only_digest():
+    attempts = InMemoryVerificationAttemptStore()
+    delivery = FakeVerificationDelivery()
+    service = RegistrationService(
+        attempts=attempts,
+        delivery=delivery,
+        token_hmac_key=b"test-key",
+    )
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+
+    service.begin_verification("alice@example.com", now=now)
+
+    email, token = delivery.messages[0]
+    stored = next(iter(attempts._attempts_by_id.values()))
+    assert email == "alice@example.com"
+    assert len(token) >= 40
+    assert stored.token_digest == digest_verification_token(token, hmac_key=b"test-key")
+    assert token not in stored.model_dump_json()
+    assert stored.expires_at == now + timedelta(minutes=15)

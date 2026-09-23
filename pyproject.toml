@@ -16,6 +16,7 @@ dependencies = [
     "uvicorn",
     "ag-ui-protocol",
     "langchain-litellm",
+    "psycopg[binary]",
 ]
 # Note: boto3 is no longer a direct dependency — provisioning now routes
 # through external MCP servers (awslabs.aws-iac-mcp-server, awslabs.ccapi-mcp-server,
@@ -25,3 +26,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "cryptography"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: requires an explicitly configured local PostgreSQL database",
+]

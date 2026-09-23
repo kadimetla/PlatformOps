@@ -5,11 +5,13 @@ state.  They deliberately do not create organization membership, grants,
 provider bindings, or sessions; those are separate deterministic boundaries.
 See openspec/changes/build-user-registration/.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 import hashlib
 import hmac
+import secrets
 from threading import Lock
+from typing import Protocol
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, model_validator
@@ -217,3 +219,46 @@ class InMemoryVerificationAttemptStore:
     def get(self, attempt_id: str) -> VerificationAttempt | None:
         with self._lock:
             return self._attempts_by_id.get(attempt_id)
+
+
+class VerificationAttemptWriter(Protocol):
+    def save_new_attempt(self, attempt: VerificationAttempt, *, now: datetime | None = None) -> None: ...
+
+
+class VerificationEmailDelivery(Protocol):
+    def send_verification(self, *, email: str, token: str) -> None: ...
+
+
+class RegistrationService:
+    """Initiates passwordless verification without exposing storage details."""
+
+    def __init__(
+        self,
+        *,
+        attempts: VerificationAttemptWriter,
+        delivery: VerificationEmailDelivery,
+        token_hmac_key: bytes,
+        token_ttl_seconds: int = 900,
+    ) -> None:
+        if not token_hmac_key:
+            raise ValueError("verification token HMAC key cannot be empty")
+        if token_ttl_seconds <= 0:
+            raise ValueError("verification token TTL must be positive")
+        self._attempts = attempts
+        self._delivery = delivery
+        self._token_hmac_key = token_hmac_key
+        self._token_ttl_seconds = token_ttl_seconds
+
+    def begin_verification(self, email: str, *, now: datetime | None = None) -> None:
+        started_at = now or _utc_now()
+        local_part, canonical_domain = canonicalize_email(email)
+        canonical_email = f"{local_part}@{canonical_domain}"
+        token = secrets.token_urlsafe(32)
+        attempt = VerificationAttempt(
+            canonical_email=canonical_email,
+            token_digest=digest_verification_token(token, hmac_key=self._token_hmac_key),
+            created_at=started_at,
+            expires_at=started_at + timedelta(seconds=self._token_ttl_seconds),
+        )
+        self._attempts.save_new_attempt(attempt, now=started_at)
+        self._delivery.send_verification(email=email, token=token)
