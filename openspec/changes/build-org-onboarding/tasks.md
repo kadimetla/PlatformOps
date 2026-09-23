@@ -12,23 +12,23 @@
 
 ## 2. Organization onboarding lifecycle
 
-- [ ] 2.1 Define and implement the authenticated applicant entry contract and
+- [x] 2.1 Define and implement the authenticated applicant entry contract and
       deterministic organization-control proof checks; creating a pending
       record grants no tenant authority and is not a free-text intake path.
-- [ ] 2.2 Define an injected identity-boundary verifier protocol and a
+- [x] 2.2 Define an injected identity-boundary verifier protocol and a
       scripted fake for tests; do not add DNS, IdP, or other live verifier
       integration yet.
-- [ ] 2.3 Add deterministic approval/digest and activation transitions so
+- [x] 2.3 Add deterministic approval/digest and activation transitions so
       only a validated, approved, verified record becomes active.
-- [ ] 2.4 Add tests for pending/non-routable records, verification failure,
+- [x] 2.4 Add tests for pending/non-routable records, verification failure,
       insufficient or invalid approval, applicant-to-initial-admin binding,
       and successful activation.
 
 ## 3. Final verification and documentation
 
-- [ ] 3.1 Run the focused gateway, onboarding, provision, and harness tests
+- [x] 3.1 Run the focused gateway, onboarding, provision, and harness tests
       without real model credentials.
-- [ ] 3.2 Run `openspec validate build-org-onboarding --strict` and update
+- [x] 3.2 Run `openspec validate build-org-onboarding --strict` and update
       status/document-map rows to distinguish the implemented slice from the
       deferred Cloud Provider Service and Resource Scope bootstrap work.
 

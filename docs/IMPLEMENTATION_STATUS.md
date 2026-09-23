@@ -46,7 +46,7 @@ deny-by-default and must explicitly resolve its own trusted context.
 | Change | Planning state | Implementation state | Review / next step |
 |---|---|---|---|
 | [User registration](../openspec/changes/build-user-registration/) | Proposal, specs, design, and tasks complete | Tasks 1–3 complete: passwordless registration, PostgreSQL persistence, scanner-safe confirmation, and an active unassociated session | Complete post-login organization-domain discovery (tasks 4.1–4.3), then run final boundary verification (5.1–5.3) |
-| [Organization onboarding](../openspec/changes/build-org-onboarding/) | Proposal, spec, design, and tasks complete; cloud/provider ownership corrected 2026-09-23 | No onboarding lifecycle code | Implement the identity-boundary verifier, reviewed pending → active lifecycle, and initial tenant-admin membership. Cloud-provider work remains in the Cloud Provider Service |
+| [Organization onboarding](../openspec/changes/build-org-onboarding/) | Proposal, spec, design, and tasks complete; cloud/provider ownership corrected 2026-09-23 | Tasks 2.1–2.4 complete with in-memory lifecycle and deterministic fake verifier: pending request → proof + digest-bound approval → active organization and recorded initial tenant-admin | A production domain/IdP proof mechanism and durable persistence remain separate future slices. Cloud-provider work remains in the Cloud Provider Service |
 | [Cloud Provider Service](../openspec/changes/build-cloud-provider-service/) | Proposal, four capability specs, design, and tasks complete | Tasks 1–5 complete using deterministic fake adapters: connection verification/inquiry, read-only discovery, reviewed attachment, and separately authorized container bootstrap | Keep live provider adapters disabled. Add a live adapter only as a separate verified implementation slice with current official-provider validation |
 | [Resource Scope bootstrap](../openspec/changes/build-resource-scope-bootstrap/) | Proposal, three capability specs, design, and tasks complete | No registry, authorization evaluator, or binding resolver code | Start task 1: typed Organization → BU → Team → PlatformOps Project → Environment records and an active-scope registry |
 | [Provision flow](../openspec/changes/build-provision-flow/) | Proposal only | Existing code has non-mutating provision preflight, but this change has no specs/design/tasks yet | After trusted scope resolution is available, complete specs, design, and tasks for resolved-context consumption and the later approval/execution stages |
@@ -71,8 +71,9 @@ execution authority.
 1. Finish user-registration domain discovery against active, verified
    organization-domain records. It returns a journey only; it creates no
    membership or provider access.
-2. Implement the organization-onboarding identity-boundary verifier and
-   reviewed activation lifecycle; do not add a provider connection to it.
+2. Select a production domain/IdP proof mechanism and durable organization
+   persistence as separate, reviewed onboarding follow-on work; do not add a
+   provider connection to it.
 3. Review the completed fake-adapter Cloud Provider Service slice before
    deciding whether a live AWS/GCP/Azure adapter is needed.
 4. Begin Resource Scope bootstrap task 1, then its deterministic access and

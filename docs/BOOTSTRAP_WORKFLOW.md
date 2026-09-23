@@ -29,7 +29,8 @@ explicit: a pending organization must prove its identity boundary, receive
 review, and activate before child scopes can become routable. Cloud-root and
 provider verification are separately owned by
 `build-cloud-provider-service`. Its OpenSpec proposal/specs/design are the
-authoritative delta; no onboarding runtime exists yet.
+authoritative delta. The first in-memory, fake-verifier onboarding lifecycle
+exists; durable persistence and a live domain/IdP proof mechanism do not.
 
 ## Real vs. Designed
 | Area | Status |
@@ -37,7 +38,7 @@ authoritative delta; no onboarding runtime exists yet.
 | Bootstrap workflow (any level) | Not implemented |
 | Bootstrap allow-list (`infra/bootstrap-allowed-resource-types.json`) | Not implemented — file does not exist yet |
 | Contracts (`BootstrapRequest`, `BootstrapPlan`, `WorkspaceIdentitySpec`, `ProjectRegistryEntry`) | Designed only — the recommended first build |
-| Organization onboarding | Designed as PR-reviewed config editing for MVP, not automated; `build-org-onboarding` specifies the identity-verified, approved → active lifecycle; provider verification is separate |
+| Organization onboarding | First deterministic in-memory slice is real: structured applicant → pending request → fake identity proof + digest-bound review → active record with initial tenant admin. Durable persistence and live domain/IdP proof are deferred; provider verification is separate |
 | Teardown paths | Explicitly deferred — separate admin path, not designed |
 | Existing `infra/allowed-resource-types.json` | Real — the normal-provisioning allow-list this design's disjointness rule builds on |
 
