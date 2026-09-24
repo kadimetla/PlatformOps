@@ -13,6 +13,7 @@ from gateway.organization_onboarding import (
     OrganizationOnboardingAlreadyRequested,
     OrganizationOnboardingActivationError,
     OrganizationOnboardingActivationService,
+    FakeOrganizationOnboardingReviewAuthorizer,
     OrganizationOnboardingService,
     OrganizationOnboardingStart,
     OrganizationState,
@@ -186,3 +187,16 @@ def test_pending_organization_is_not_routable_until_activation():
 
     assert store.resolve_routable_organization(request.organization_id) is None
     assert store.resolve_routable_organization("org_unknown") is None
+
+
+def test_reviewer_authorizer_is_explicit_and_deny_by_default():
+    authorizer = FakeOrganizationOnboardingReviewAuthorizer({"usr_reviewer"})
+
+    assert authorizer.may_review_onboarding(
+        reviewer=AuthenticatedApplicant(issuer="platformops", subject="usr_reviewer"),
+        request_id="orgreq_123",
+    ) is True
+    assert authorizer.may_review_onboarding(
+        reviewer=AuthenticatedApplicant(issuer="platformops", subject="usr_applicant"),
+        request_id="orgreq_123",
+    ) is False

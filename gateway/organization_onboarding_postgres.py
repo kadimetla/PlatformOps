@@ -102,7 +102,7 @@ class PostgresOrganizationOnboardingRepository:
             self._connection.execute(
                 """INSERT INTO organization_identity_proofs
                 (request_id, boundary_kind, boundary_reference, evidence_ref, verified_at)
-                VALUES (%s, %s, %s, %s, %s)""",
+                VALUES (%s, %s, %s, %s, %s) ON CONFLICT (request_id) DO NOTHING""",
                 (request.request_id, organization.identity_proof.kind.value,
                  organization.identity_proof.reference, organization.identity_proof.evidence_ref,
                  organization.identity_proof.verified_at),
@@ -133,6 +133,66 @@ class PostgresOrganizationOnboardingRepository:
                 (organization.organization_id, organization.initial_tenant_admin.subject,
                  organization.initial_tenant_admin.issuer, organization.activated_at),
             )
+
+    def record_identity_proof(self, request: OrganizationOnboardingRequest, proof: IdentityBoundaryVerificationEvidence) -> None:
+        if proof.kind != request.identity_boundary.kind or proof.reference != request.identity_boundary.reference:
+            raise OrganizationOnboardingActivationError("identity proof does not match pending request")
+        with self._connection.transaction():
+            row = self._connection.execute(
+                """SELECT request.request_id FROM organization_onboarding_requests AS request
+                   JOIN organizations AS organization ON organization.organization_id = request.organization_id
+                   WHERE request.request_id = %s AND organization.state = 'pending' FOR UPDATE""",
+                (request.request_id,),
+            ).fetchone()
+            if row is None:
+                raise OrganizationOnboardingActivationError("pending request does not exist")
+            self._connection.execute(
+                """INSERT INTO organization_identity_proofs
+                   (request_id, boundary_kind, boundary_reference, evidence_ref, verified_at)
+                   VALUES (%s, %s, %s, %s, %s) ON CONFLICT (request_id) DO NOTHING""",
+                (request.request_id, proof.kind.value, proof.reference, proof.evidence_ref, proof.verified_at),
+            )
+
+    def get_pending_request(self, request_id: str) -> OrganizationOnboardingRequest | None:
+        row = self._connection.execute(
+            """SELECT request.request_id, request.organization_id, organization.organization_name,
+                      request.applicant_issuer, request.applicant_subject,
+                      request.boundary_kind, request.boundary_reference, request.created_at
+               FROM organization_onboarding_requests AS request
+               JOIN organizations AS organization ON organization.organization_id = request.organization_id
+               WHERE request.request_id = %s AND organization.state = 'pending'""",
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return OrganizationOnboardingRequest(
+            request_id=row["request_id"], organization_id=row["organization_id"],
+            organization_name=row["organization_name"],
+            applicant=AuthenticatedApplicant(
+                issuer=row["applicant_issuer"], subject=row["applicant_subject"]
+            ),
+            identity_boundary=OrganizationIdentityBoundary(
+                kind=IdentityBoundaryKind(row["boundary_kind"]), reference=row["boundary_reference"]
+            ), state=OrganizationState.PENDING, created_at=row["created_at"],
+        )
+
+    def get_persisted_identity_proof(
+        self, request: OrganizationOnboardingRequest
+    ) -> IdentityBoundaryVerificationEvidence | None:
+        row = self._connection.execute(
+            """SELECT boundary_kind, boundary_reference, evidence_ref, verified_at
+               FROM organization_identity_proofs WHERE request_id = %s""",
+            (request.request_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        proof = IdentityBoundaryVerificationEvidence(
+            kind=IdentityBoundaryKind(row["boundary_kind"]), reference=row["boundary_reference"],
+            evidence_ref=row["evidence_ref"], verified_at=row["verified_at"],
+        )
+        if proof.kind != request.identity_boundary.kind or proof.reference != request.identity_boundary.reference:
+            raise OrganizationOnboardingActivationError("persisted identity proof does not match pending request")
+        return proof
 
     def resolve_routable_organization(self, organization_id: str) -> ActiveOrganization | None:
         row = self._connection.execute(

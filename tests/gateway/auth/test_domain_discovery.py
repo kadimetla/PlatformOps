@@ -1,5 +1,6 @@
 from gateway.auth.domain_discovery import (
     ActiveOrganizationDomain,
+    OrganizationIdpConfiguration,
     PostLoginDomainDiscoveryService,
     PostLoginJourney,
 )
@@ -32,3 +33,20 @@ def test_unknown_domain_returns_safe_personal_or_business_journeys_only():
         PostLoginJourney.BUSINESS_ORGANIZATION_CLAIM,
     ]
     assert result.organization_id is None
+
+
+def test_configured_organization_idp_is_a_journey_not_a_membership():
+    domains = FakeDomains(ActiveOrganizationDomain(
+        organization_id="org_acme",
+        canonical_domain="acme.example",
+        idp=OrganizationIdpConfiguration(
+            issuer="https://id.acme.example", audience="platformops-acme"
+        ),
+    ))
+
+    result = PostLoginDomainDiscoveryService(domains=domains).discover("alice@acme.example")
+
+    assert result.journeys == [PostLoginJourney.ORGANIZATION_IDP_AUTHENTICATION]
+    assert result.organization_id == "org_acme"
+    assert result.idp is not None
+    assert result.idp.issuer == "https://id.acme.example"

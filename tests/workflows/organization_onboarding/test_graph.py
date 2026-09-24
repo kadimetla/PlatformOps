@@ -16,7 +16,7 @@ from workflows.organization_onboarding.graph import build_organization_onboardin
 def test_deterministic_graph_activates_only_after_configured_proof_and_review():
     store = InMemoryOrganizationOnboardingStore()
     graph = build_organization_onboarding_graph(
-        onboarding=OrganizationOnboardingService(store=store),
+        onboarding=OrganizationOnboardingService(store=store), store=store,
         verification=IdentityBoundaryVerificationService(
             verifier=FakeIdentityBoundaryVerifier({(IdentityBoundaryKind.DOMAIN, "acme.example")})
         ),

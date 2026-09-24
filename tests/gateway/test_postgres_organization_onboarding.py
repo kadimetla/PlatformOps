@@ -160,8 +160,9 @@ def test_gateway_route_starts_postgres_backed_graph_without_payload_principal_or
         assert state["request"].applicant.subject == account.subject
         assert state["identity_proof"] is not None
         assert state["organization"] is None
-        assert PostgresOrganizationOnboardingRepository(connection).resolve_routable_organization(
-            state["request"].organization_id
-        ) is None
+        repository = PostgresOrganizationOnboardingRepository(connection)
+        assert repository.get_pending_request(state["request"].request_id) == state["request"]
+        assert repository.get_persisted_identity_proof(state["request"]) == state["identity_proof"]
+        assert repository.resolve_routable_organization(state["request"].organization_id) is None
     finally:
         connection.close()

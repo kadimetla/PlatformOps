@@ -2,6 +2,7 @@ from gateway.organization_onboarding import (
     IdentityBoundaryVerificationService,
     OrganizationOnboardingActivationService,
     OrganizationOnboardingService,
+    OrganizationOnboardingStore,
 )
 from workflows.organization_onboarding.state import OrganizationOnboardingState
 
@@ -18,6 +19,16 @@ def build_verify_identity(service: IdentityBoundaryVerificationService):
         return {"identity_proof": service.verify_pending(state["request"])}
 
     return verify_identity
+
+
+def build_persist_identity_proof(store: OrganizationOnboardingStore):
+    def persist_identity_proof(state: OrganizationOnboardingState) -> dict:
+        proof = state["identity_proof"]
+        if proof is not None:
+            store.record_identity_proof(state["request"], proof)
+        return {}
+
+    return persist_identity_proof
 
 
 def build_record_approval(service: OrganizationOnboardingActivationService):

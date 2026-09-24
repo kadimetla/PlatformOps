@@ -210,6 +210,28 @@ class OrganizationOnboardingActivationError(ValueError):
     """Raised when evidence or approval cannot activate the pending request."""
 
 
+class OrganizationOnboardingReviewAccessDenied(PermissionError):
+    """Raised unless an explicit control-plane reviewer permission exists."""
+
+
+class OrganizationOnboardingReviewAuthorizer(Protocol):
+    def may_review_onboarding(
+        self, *, reviewer: AuthenticatedApplicant, request_id: str
+    ) -> bool: ...
+
+
+class FakeOrganizationOnboardingReviewAuthorizer:
+    """Test-only explicit reviewer allow-list; production remains deny-by-default."""
+
+    def __init__(self, allowed_subjects: set[str]) -> None:
+        self._allowed_subjects = allowed_subjects
+
+    def may_review_onboarding(
+        self, *, reviewer: AuthenticatedApplicant, request_id: str
+    ) -> bool:
+        return reviewer.subject in self._allowed_subjects
+
+
 class OrganizationOnboardingActivationService:
     """Activate only an approved request with matching identity-proof evidence."""
 
@@ -273,6 +295,10 @@ class OrganizationOnboardingActivationService:
 class OrganizationOnboardingStore(Protocol):
     def save_pending(self, request: OrganizationOnboardingRequest) -> None: ...
 
+    def record_identity_proof(
+        self, request: OrganizationOnboardingRequest, proof: IdentityBoundaryVerificationEvidence
+    ) -> None: ...
+
     def activate(self, organization: ActiveOrganization) -> None: ...
 
     def resolve_routable_organization(self, organization_id: str) -> ActiveOrganization | None: ...
@@ -285,6 +311,7 @@ class InMemoryOrganizationOnboardingStore:
         self._requests_by_id: dict[str, OrganizationOnboardingRequest] = {}
         self._requests_by_identity: dict[tuple[str, IdentityBoundaryKind, str], str] = {}
         self._active_by_organization_id: dict[str, ActiveOrganization] = {}
+        self._proof_by_request_id: dict[str, IdentityBoundaryVerificationEvidence] = {}
         self._lock = Lock()
 
     def save_pending(self, request: OrganizationOnboardingRequest) -> None:
@@ -300,6 +327,16 @@ class InMemoryOrganizationOnboardingStore:
                 )
             self._requests_by_id[request.request_id] = request
             self._requests_by_identity[key] = request.request_id
+
+    def record_identity_proof(
+        self, request: OrganizationOnboardingRequest, proof: IdentityBoundaryVerificationEvidence
+    ) -> None:
+        if proof.kind != request.identity_boundary.kind or proof.reference != request.identity_boundary.reference:
+            raise OrganizationOnboardingActivationError("identity proof does not match pending request")
+        with self._lock:
+            if request.request_id not in self._requests_by_id:
+                raise OrganizationOnboardingActivationError("pending request does not exist")
+            self._proof_by_request_id[request.request_id] = proof
 
     def activate(self, organization: ActiveOrganization) -> None:
         with self._lock:

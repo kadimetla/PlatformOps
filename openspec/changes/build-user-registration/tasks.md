@@ -29,7 +29,7 @@
 
 - [x] 4.1 Add deterministic lookup of an active organization’s verified canonical domain and return only a next-journey result; verify tests exclude pending/unverified domains and create no membership, tenant-admin, provider-binding, or cloud grant.
 - [x] 4.2 Return personal-organization creation and business-claim request as the only unknown-domain journeys; verify unknown-domain tests do not infer organization ownership or a cloud provider.
-- [ ] 4.3 Direct a matching organization member journey to its configured IdP boundary rather than treating the email-link session as corporate authentication; verify fake-configuration tests return the configured IdP journey and no membership resolution.
+- [x] 4.3 Direct a matching organization member journey to its configured IdP boundary rather than treating the email-link session as corporate authentication; verify fake-configuration tests return the configured IdP journey and no membership resolution.
 
 ## 5. Verification and boundaries
 

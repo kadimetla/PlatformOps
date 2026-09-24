@@ -23,7 +23,7 @@ def build_organization_onboarding_handler(
     activation = OrganizationOnboardingActivationService(store=repository)
     verification = IdentityBoundaryVerificationService(verifier=verifier)
     graph = build_organization_onboarding_graph(
-        onboarding=onboarding, verification=verification, activation=activation
+        onboarding=onboarding, store=repository, verification=verification, activation=activation
     ).compile()
 
     async def handle(invocation: CommandInvocation):
