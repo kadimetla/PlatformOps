@@ -44,13 +44,13 @@
 - [x] 4.3 Add PostgreSQL integration tests for duplicate claims, pending
       non-routability, mismatched proof/approval, exactly-once activation, and
       active-organization lookup.
-- [ ] 4.4 Persist successful identity-proof evidence against the pending
+- [x] 4.4 Persist successful identity-proof evidence against the pending
       PostgreSQL request before HITL review; add a trusted reviewer-only resume
       path that records a digest-bound approval and activates exactly once.
 - [x] 4.4a Add an injected reviewer authorizer with an explicit deny-by-default
       test policy; reviewer authority must not be inferred from email, domain,
       applicant identity, or ordinary organization membership.
-- [ ] 4.5 Replace the deployed runtime path with the PostgreSQL repository and
+- [x] 4.5 Replace the deployed runtime path with the PostgreSQL repository and
       trusted review/resume composition; retain the in-memory store only as a
       unit-test double.
 

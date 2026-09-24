@@ -16,12 +16,15 @@ from gateway.organization_onboarding import (
     OrganizationOnboardingActivationError,
     OrganizationOnboardingActivationService,
     OrganizationOnboardingAlreadyRequested,
+    FakeOrganizationOnboardingReviewAuthorizer,
+    OrganizationOnboardingReviewAccessDenied,
     OrganizationOnboardingService,
     OrganizationOnboardingStart,
 )
 from gateway.organization_onboarding_postgres import apply_organization_onboarding_migrations
 from gateway.organization_onboarding_postgres import PostgresOrganizationOnboardingRepository
 from gateway.organization_onboarding_handler import build_organization_onboarding_handler
+from gateway.organization_onboarding_review_handler import build_organization_onboarding_review_handler
 
 
 DATABASE_URL = os.environ.get("PLATFORMOPS_DATABASE_URL")
@@ -164,5 +167,53 @@ def test_gateway_route_starts_postgres_backed_graph_without_payload_principal_or
         assert repository.get_pending_request(state["request"].request_id) == state["request"]
         assert repository.get_persisted_identity_proof(state["request"]) == state["identity_proof"]
         assert repository.resolve_routable_organization(state["request"].organization_id) is None
+    finally:
+        connection.close()
+
+
+def test_authorized_review_resume_activates_once_and_denies_other_reviewers():
+    connection = psycopg.connect(DATABASE_URL)
+    try:
+        apply_user_registration_migrations(connection)
+        apply_organization_onboarding_migrations(connection)
+        for table in (
+            "organization_initial_tenant_admin_memberships", "organization_identity_boundaries",
+            "organization_onboarding_approvals", "organization_identity_proofs",
+            "organization_onboarding_requests", "organizations",
+        ):
+            connection.execute(f"DELETE FROM {table}")
+        connection.commit()
+        users = PostgresUserRegistrationRepository(connection)
+        applicant = users.create_or_recover_verified_user("resume-owner@acme.example")
+        reviewer = users.create_or_recover_verified_user("resume-reviewer@platformops.example")
+        initial = build_organization_onboarding_handler(
+            connection, verifier=FakeIdentityBoundaryVerifier({(IdentityBoundaryKind.DOMAIN, "acme.example")})
+        )
+        router = ControlPlaneCommandRouter({"organization_onboarding": initial})
+        pending = asyncio.run(router.dispatch(
+            "/onboard-org",
+            {"organization_name": "Acme", "identity_boundary": {"kind": "domain", "reference": "acme.example"}},
+            principal=ValidatedPrincipal(issuer="platformops", subject=applicant.subject),
+        ))
+        review = build_organization_onboarding_review_handler(
+            connection,
+            authorizer=FakeOrganizationOnboardingReviewAuthorizer({reviewer.subject}),
+        )
+        reviewer_router = ControlPlaneCommandRouter({"organization_onboarding_review": review})
+        with pytest.raises(OrganizationOnboardingReviewAccessDenied):
+            asyncio.run(reviewer_router.dispatch(
+                "/review-onboard-org", {"request_id": pending["request"].request_id},
+                principal=ValidatedPrincipal(issuer="platformops", subject=applicant.subject),
+            ))
+        active = asyncio.run(reviewer_router.dispatch(
+            "/review-onboard-org", {"request_id": pending["request"].request_id},
+            principal=ValidatedPrincipal(issuer="platformops", subject=reviewer.subject),
+        ))
+        assert active["organization"].state.value == "active"
+        with pytest.raises(OrganizationOnboardingActivationError, match="not found"):
+            asyncio.run(reviewer_router.dispatch(
+                "/review-onboard-org", {"request_id": pending["request"].request_id},
+                principal=ValidatedPrincipal(issuer="platformops", subject=reviewer.subject),
+            ))
     finally:
         connection.close()

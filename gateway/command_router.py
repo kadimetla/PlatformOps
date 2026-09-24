@@ -8,6 +8,7 @@ from typing import Any
 class ControlPlaneCommand(str, Enum):
     LOGIN = "/login"
     ONBOARD_ORGANIZATION = "/onboard-org"
+    REVIEW_ONBOARDING = "/review-onboard-org"
     JOIN_ORGANIZATION = "/join-org"
     PROVISION = "/provision"
 
@@ -48,6 +49,9 @@ _ROUTES = {
     ),
     ControlPlaneCommand.ONBOARD_ORGANIZATION: CommandRoute(
         ControlPlaneCommand.ONBOARD_ORGANIZATION, "organization_onboarding", True
+    ),
+    ControlPlaneCommand.REVIEW_ONBOARDING: CommandRoute(
+        ControlPlaneCommand.REVIEW_ONBOARDING, "organization_onboarding_review", True
     ),
     ControlPlaneCommand.JOIN_ORGANIZATION: CommandRoute(
         ControlPlaneCommand.JOIN_ORGANIZATION, "organization_member_onboarding", True
