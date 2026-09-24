@@ -34,14 +34,14 @@
 
 ## 4. Durable PostgreSQL onboarding lifecycle
 
-- [ ] 4.1 Add PostgreSQL migrations for organizations, identity boundaries,
+- [x] 4.1 Add PostgreSQL migrations for organizations, identity boundaries,
       onboarding requests, approvals, and initial tenant-admin memberships;
       keep PlatformOps records in the PlatformOps database, separate from
       Authentik.
-- [ ] 4.2 Add a transaction-safe repository that creates pending requests and
+- [x] 4.2 Add a transaction-safe repository that creates pending requests and
       activates exactly once only when matching proof evidence and a matching
       approval digest are recorded.
-- [ ] 4.3 Add PostgreSQL integration tests for duplicate claims, pending
+- [x] 4.3 Add PostgreSQL integration tests for duplicate claims, pending
       non-routability, mismatched proof/approval, exactly-once activation, and
       active-organization lookup.
 - [ ] 4.4 Replace the deployed runtime path with the PostgreSQL repository;
@@ -53,3 +53,10 @@
       wizard only after the server-side onboarding API, lifecycle, and approval
       contracts are implemented and tested; the wizard must not own provider
       binding, approval, or cloud credentials.
+
+## 6. Deterministic LangGraph orchestration
+
+- [x] 6.1 Add a no-LLM organization-onboarding graph under
+      `workflows/organization_onboarding` with pending-request, proof,
+      recorded-review, and activation nodes; verify it delegates persistence
+      to the gateway repository/service boundary.

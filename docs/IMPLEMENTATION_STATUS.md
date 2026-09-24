@@ -45,8 +45,9 @@ deny-by-default and must explicitly resolve its own trusted context.
 
 | Change | Planning state | Implementation state | Review / next step |
 |---|---|---|---|
-| [User registration](../openspec/changes/build-user-registration/) | Proposal, specs, design, and tasks complete | Tasks 1–3 complete: passwordless registration, PostgreSQL persistence, scanner-safe confirmation, and an active unassociated session | Complete post-login organization-domain discovery (tasks 4.1–4.3), then run final boundary verification (5.1–5.3) |
-| [Organization onboarding](../openspec/changes/build-org-onboarding/) | Proposal, spec, design, and tasks complete; cloud/provider ownership corrected 2026-09-23 | Tasks 2.1–2.4 complete with in-memory lifecycle and deterministic fake verifier: pending request → proof + digest-bound approval → active organization and recorded initial tenant-admin | A production domain/IdP proof mechanism and durable persistence remain separate future slices. Cloud-provider work remains in the Cloud Provider Service |
+| [User registration](../openspec/changes/build-user-registration/) | Proposal, specs, design, and tasks complete | Tasks 1–4.2 complete: PostgreSQL identity records, deterministic `/login` initiation graph, scanner-safe confirmation, unassociated session, and safe domain journeys | Add configured organization-IdP routing (4.3), then final boundary verification (5.1–5.3) |
+| [Organization onboarding](../openspec/changes/build-org-onboarding/) | Proposal, spec, design, and tasks complete; cloud/provider ownership corrected 2026-09-23 | In-memory lifecycle plus PostgreSQL migration/repository/integration coverage are complete; `/onboard-org` starts the PostgreSQL-backed deterministic graph and waits for review | Add the trusted review/resume path before marking the deployed PostgreSQL runtime replacement complete; real DNS/IdP proof remains a separate slice |
+| [Control-plane command router](../openspec/changes/build-control-plane-command-router/) | Proposal, spec, design, and tasks complete | Explicit allow-list and validated issuer/subject principal are implemented; `/login` and `/onboard-org` handlers are wired | Add later `/join-org` and `/provision` handlers only when their own workflow prerequisites exist |
 | [Organization member onboarding](../openspec/changes/build-organization-member-onboarding/) | Proposal, spec, design, and tasks complete | Not implemented | Start PostgreSQL membership and invitation contracts, then deterministic gateway-routed `/join-org` workflow. Membership alone must not grant a Resource Scope or cloud access |
 | [Cloud Provider Service](../openspec/changes/build-cloud-provider-service/) | Proposal, four capability specs, design, and tasks complete | Tasks 1–5 complete using deterministic fake adapters: connection verification/inquiry, read-only discovery, reviewed attachment, and separately authorized container bootstrap | Keep live provider adapters disabled. Add a live adapter only as a separate verified implementation slice with current official-provider validation |
 | [Resource Scope bootstrap](../openspec/changes/build-resource-scope-bootstrap/) | Proposal, three capability specs, design, and tasks complete | No registry, authorization evaluator, or binding resolver code | Start task 1: typed Organization → BU → Team → PlatformOps Project → Environment records and an active-scope registry |
@@ -69,12 +70,10 @@ execution authority.
 
 ## Recommended next review sequence
 
-1. Finish user-registration domain discovery against active, verified
-   organization-domain records. It returns a journey only; it creates no
-   membership or provider access.
-2. Select a production domain/IdP proof mechanism and durable organization
-   persistence as separate, reviewed onboarding follow-on work; do not add a
-   provider connection to it.
+1. Add configured organization-IdP routing for matching corporate users; it
+   remains a journey and does not create membership.
+2. Add trusted organization-onboarding review/resume, then activate the
+   PostgreSQL-backed organization record exactly once.
 3. Build organization-member onboarding: PostgreSQL membership/invitation
    records, then the deterministic `/join-org` workflow.
 4. Begin Resource Scope bootstrap task 1, then its deterministic access and
