@@ -47,9 +47,10 @@ deny-by-default and must explicitly resolve its own trusted context.
 |---|---|---|---|
 | [User registration](../openspec/changes/build-user-registration/) | Proposal, specs, design, and tasks complete | Tasks 1–3 complete: passwordless registration, PostgreSQL persistence, scanner-safe confirmation, and an active unassociated session | Complete post-login organization-domain discovery (tasks 4.1–4.3), then run final boundary verification (5.1–5.3) |
 | [Organization onboarding](../openspec/changes/build-org-onboarding/) | Proposal, spec, design, and tasks complete; cloud/provider ownership corrected 2026-09-23 | Tasks 2.1–2.4 complete with in-memory lifecycle and deterministic fake verifier: pending request → proof + digest-bound approval → active organization and recorded initial tenant-admin | A production domain/IdP proof mechanism and durable persistence remain separate future slices. Cloud-provider work remains in the Cloud Provider Service |
+| [Organization member onboarding](../openspec/changes/build-organization-member-onboarding/) | Proposal, spec, design, and tasks complete | Not implemented | Start PostgreSQL membership and invitation contracts, then deterministic gateway-routed `/join-org` workflow. Membership alone must not grant a Resource Scope or cloud access |
 | [Cloud Provider Service](../openspec/changes/build-cloud-provider-service/) | Proposal, four capability specs, design, and tasks complete | Tasks 1–5 complete using deterministic fake adapters: connection verification/inquiry, read-only discovery, reviewed attachment, and separately authorized container bootstrap | Keep live provider adapters disabled. Add a live adapter only as a separate verified implementation slice with current official-provider validation |
 | [Resource Scope bootstrap](../openspec/changes/build-resource-scope-bootstrap/) | Proposal, three capability specs, design, and tasks complete | No registry, authorization evaluator, or binding resolver code | Start task 1: typed Organization → BU → Team → PlatformOps Project → Environment records and an active-scope registry |
-| [Provision flow](../openspec/changes/build-provision-flow/) | Proposal only | Existing code has non-mutating provision preflight, but this change has no specs/design/tasks yet | After trusted scope resolution is available, complete specs, design, and tasks for resolved-context consumption and the later approval/execution stages |
+| [Provision flow](../openspec/changes/build-provision-flow/) | Proposal, spec, design, and tasks complete | Existing code has non-mutating provision preflight only | Integrate active membership and resolved Resource Scope context only after their separate changes are implemented |
 
 ## Confirmed vocabulary and security boundaries
 
@@ -74,12 +75,12 @@ execution authority.
 2. Select a production domain/IdP proof mechanism and durable organization
    persistence as separate, reviewed onboarding follow-on work; do not add a
    provider connection to it.
-3. Review the completed fake-adapter Cloud Provider Service slice before
-   deciding whether a live AWS/GCP/Azure adapter is needed.
+3. Build organization-member onboarding: PostgreSQL membership/invitation
+   records, then the deterministic `/join-org` workflow.
 4. Begin Resource Scope bootstrap task 1, then its deterministic access and
    binding-resolution tasks.
-5. Turn the provision-flow proposal into specs, design, and tasks only when
-   the resolved Resource Scope context contract is stable.
+5. Integrate membership and resolved Resource Scope context into the already
+   planned provision workflow.
 
 ## Explicitly not built yet
 

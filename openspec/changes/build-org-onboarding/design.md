@@ -40,6 +40,19 @@ activation. The normal intake and provision paths can only read active
 registry rows. This preserves the bootstrap design's disjoint allow-list and
 prevents an LLM-classified request from creating future authority.
 
+### Organization onboarding is a deterministic gateway-routed LangGraph workflow
+
+The gateway routes `/onboard-org` only for an authenticated active PlatformOps
+user. Its LangGraph nodes are ordinary Python: create pending request, obtain
+identity-boundary proof, collect recorded review, activate the organization,
+and record initial tenant-admin membership. HITL may pause at review, but no
+LLM node decides proof validity, approval, activation, or membership.
+
+PostgreSQL is the deployed authority source. Graph state contains only safe
+request, organization, applicant, proof-evidence, and approval IDs/statuses;
+it never contains a raw JWT, domain challenge secret, provider credential, or
+cloud credential. The current in-memory lifecycle is a test double only.
+
 Organization-control proof for this workflow is control of the configured
 identity boundary. The precise customer-facing challenge (for example a domain
 DNS challenge or configured IdP-administration proof) is an implementation

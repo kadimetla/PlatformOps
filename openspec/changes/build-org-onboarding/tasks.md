@@ -32,9 +32,24 @@
       status/document-map rows to distinguish the implemented slice from the
       deferred Cloud Provider Service and Resource Scope bootstrap work.
 
-## 4. Deferred follow-on: administrator UI
+## 4. Durable PostgreSQL onboarding lifecycle
 
-- [ ] 4.1 Create a separate OpenSpec change for an onboarding administrator
+- [ ] 4.1 Add PostgreSQL migrations for organizations, identity boundaries,
+      onboarding requests, approvals, and initial tenant-admin memberships;
+      keep PlatformOps records in the PlatformOps database, separate from
+      Authentik.
+- [ ] 4.2 Add a transaction-safe repository that creates pending requests and
+      activates exactly once only when matching proof evidence and a matching
+      approval digest are recorded.
+- [ ] 4.3 Add PostgreSQL integration tests for duplicate claims, pending
+      non-routability, mismatched proof/approval, exactly-once activation, and
+      active-organization lookup.
+- [ ] 4.4 Replace the deployed runtime path with the PostgreSQL repository;
+      retain the in-memory store only as a unit-test double.
+
+## 5. Deferred follow-on: administrator UI
+
+- [ ] 5.1 Create a separate OpenSpec change for an onboarding administrator
       wizard only after the server-side onboarding API, lifecycle, and approval
       contracts are implemented and tested; the wizard must not own provider
       binding, approval, or cloud credentials.

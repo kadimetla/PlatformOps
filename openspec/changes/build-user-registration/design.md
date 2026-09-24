@@ -46,6 +46,21 @@ subject, as the PlatformOps primary key. Email addresses can change and one
 person can authenticate through several IdPs; PlatformOps must retain a stable
 identity across those events.
 
+### Registration is a deterministic gateway-routed LangGraph workflow
+
+The gateway routes an explicit `/login` command to the login-registration
+workflow. The graph uses deterministic Python nodes and conditional edges only:
+validate email, create a protected attempt, request delivery, inspect intent,
+confirm once, create or recover the user, issue a session, and return a next
+journey. No LLM node may decide account existence, token validity, session
+issuance, membership, or authorization.
+
+The browser/chat surface is only a workflow launcher. Verification-link GET
+and same-origin confirmation POST remain gateway security handlers and call
+the same service and PostgreSQL repository as graph nodes. Raw tokens never
+enter graph state, checkpoints, events, or logs; safe state holds only IDs and
+lifecycle statuses.
+
 ### PostgreSQL is the durable store in every deployed environment
 
 PostgreSQL is the authoritative store for user accounts, verified email
