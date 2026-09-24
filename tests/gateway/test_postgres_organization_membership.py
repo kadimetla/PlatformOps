@@ -1,10 +1,14 @@
+import asyncio
+import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 
 import psycopg
 import pytest
+from pydantic import ValidationError
 
 from gateway.auth.postgres import PostgresUserRegistrationRepository, apply_user_registration_migrations
+from gateway.command_router import ControlPlaneCommandRouter, ValidatedPrincipal
 from gateway.organization_membership import DuplicateActiveOrganizationMembership, OrganizationInvitation
 from gateway.organization_membership_postgres import (
     OrganizationInvitationNotUsable,
@@ -13,6 +17,7 @@ from gateway.organization_membership_postgres import (
     PostgresOrganizationMembershipRepository,
     apply_organization_membership_migrations,
 )
+from gateway.organization_member_onboarding_handler import build_organization_member_onboarding_handler
 from gateway.organization_onboarding_postgres import apply_organization_onboarding_migrations
 
 
@@ -157,6 +162,47 @@ def test_expired_invitation_and_duplicate_active_membership_are_rejected_without
         assert repository.get_active_membership(user_subject=user.subject, organization_id=organization_id) is not None
         with pytest.raises(DuplicateActiveOrganizationMembership):
             repository.accept_invitation(token_digest=second.token_digest, user_subject=user.subject, accepted_at=now)
+    finally:
+        _clean(connection, organization_id)
+        connection.close()
+
+
+def test_join_org_route_derives_user_from_principal_and_keeps_raw_token_out_of_result():
+    connection = psycopg.connect(DATABASE_URL)
+    organization_id = "org_member_join_route"
+    raw_token = "x" * 48
+    try:
+        apply_user_registration_migrations(connection)
+        apply_organization_onboarding_migrations(connection)
+        apply_organization_membership_migrations(connection)
+        _clean(connection, organization_id)
+        _create_organization(connection, organization_id, "active")
+        user = PostgresUserRegistrationRepository(connection).create_or_recover_verified_user("join@acme.example")
+        repository = PostgresOrganizationMembershipRepository(connection)
+        repository.create_invitation(_invite(
+            organization_id=organization_id,
+            email="join@acme.example",
+            digest=hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        ))
+        router = ControlPlaneCommandRouter({
+            "organization_member_onboarding": build_organization_member_onboarding_handler(connection)
+        })
+        with pytest.raises(ValidationError, match="Extra inputs"):
+            asyncio.run(router.dispatch(
+                "/join-org",
+                {"invitation_token": raw_token, "user_subject": "attacker"},
+                principal=ValidatedPrincipal(issuer="platformops", subject=user.subject),
+            ))
+
+        result = asyncio.run(router.dispatch(
+            "/join-org",
+            {"invitation_token": raw_token},
+            principal=ValidatedPrincipal(issuer="platformops", subject=user.subject),
+        ))
+
+        assert result["membership"].user_subject == user.subject
+        assert raw_token not in str(result)
     finally:
         _clean(connection, organization_id)
         connection.close()

@@ -9,9 +9,9 @@
 
 ## 2. Deterministic member-onboarding workflow
 
-- [ ] 2.1 Add authenticated `/join-org` gateway routing to a deterministic
+- [x] 2.1 Add authenticated `/join-org` gateway routing to a deterministic
       LangGraph workflow; no LLM node or free-text membership mutation.
-- [ ] 2.2 Add invitation-validation and membership-activation nodes; verify
+- [x] 2.2 Add invitation-validation and membership-activation nodes; verify
       tokens and credentials are absent from graph state and diagnostics.
 - [ ] 2.3 Test pending organization, expired/consumed invitation, duplicate
       relationship, revoked membership, and multi-organization membership.

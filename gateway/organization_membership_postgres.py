@@ -134,6 +134,31 @@ class PostgresOrganizationMembershipRepository:
         except psycopg.errors.UniqueViolation as error:
             raise DuplicateActiveOrganizationMembership("active membership already exists") from error
 
+    def inspect_invitation(self, *, token_digest: str, user_subject: str) -> str:
+        """Validate current invitation eligibility without consuming it.
+
+        Consumption is deliberately repeated by ``accept_invitation`` under a
+        transaction and row lock, so this preflight cannot authorize a race.
+        """
+        now = datetime.now(timezone.utc)
+        with self._connection.transaction():
+            invitation = self._connection.execute(
+                """SELECT organization_id, canonical_email, expires_at, consumed_at
+                   FROM organization_invitations WHERE token_digest = %s""",
+                (token_digest,),
+            ).fetchone()
+            if invitation is None or invitation["consumed_at"] is not None or invitation["expires_at"] <= now:
+                raise OrganizationInvitationNotUsable("invitation is expired, consumed, or unknown")
+            self._require_active_organization(invitation["organization_id"])
+            recipient = self._connection.execute(
+                """SELECT 1 FROM auth_verified_email_contacts
+                   WHERE user_subject = %s AND canonical_email = %s""",
+                (user_subject, invitation["canonical_email"]),
+            ).fetchone()
+            if recipient is None:
+                raise OrganizationInvitationRecipientMismatch("invitation recipient does not match user")
+            return invitation["organization_id"]
+
     def get_active_membership(
         self, *, user_subject: str, organization_id: str
     ) -> OrganizationMembership | None:
