@@ -4,7 +4,7 @@
 
 - [x] 1.1 Add typed membership, invitation, source, role-reference, and
       lifecycle contracts; test incomplete records and duplicates.
-- [ ] 1.2 Add PostgreSQL migration and repository for memberships and
+- [x] 1.2 Add PostgreSQL migration and repository for memberships and
       single-use invitations; test active-organization and invitation checks.
 
 ## 2. Deterministic member-onboarding workflow
