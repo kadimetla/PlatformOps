@@ -13,12 +13,12 @@
       LangGraph workflow; no LLM node or free-text membership mutation.
 - [x] 2.2 Add invitation-validation and membership-activation nodes; verify
       tokens and credentials are absent from graph state and diagnostics.
-- [ ] 2.3 Test pending organization, expired/consumed invitation, duplicate
+- [x] 2.3 Test pending organization, expired/consumed invitation, duplicate
       relationship, revoked membership, and multi-organization membership.
 
 ## 3. Authorization handoff
 
-- [ ] 3.1 Add active-membership lookup as deterministic input to later scope
+- [x] 3.1 Add active-membership lookup as deterministic input to later scope
       authorization; verify it creates no grant, binding, or cloud access.
 - [ ] 3.2 Verify revoked membership denies a newly started provision request.
 

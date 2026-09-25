@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 from threading import Lock
+from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -58,6 +59,15 @@ class OrganizationInvitation(BaseModel):
     token_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
     expires_at: datetime
     consumed_at: datetime | None = None
+
+
+@runtime_checkable
+class ActiveOrganizationMembershipLookup(Protocol):
+    """Authorization handoff for tenant affiliation, not Resource Scope access."""
+
+    def get_active_membership(
+        self, *, user_subject: str, organization_id: str
+    ) -> OrganizationMembership | None: ...
 
 
 class DuplicateActiveOrganizationMembership(ValueError):

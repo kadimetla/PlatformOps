@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from gateway.organization_membership import (
+    ActiveOrganizationMembershipLookup,
     DuplicateActiveOrganizationMembership,
     InMemoryOrganizationMembershipStore,
     OrganizationMembership,
@@ -28,3 +29,12 @@ def test_duplicate_active_membership_is_rejected_but_other_organizations_are_ind
     with pytest.raises(DuplicateActiveOrganizationMembership):
         store.save(first.model_copy(update={"membership_id": "member_second"}))
     store.save(first.model_copy(update={"membership_id": "member_contoso", "organization_id": "org_contoso"}))
+
+
+def test_active_membership_lookup_contract_returns_tenant_affiliation_only():
+    store = InMemoryOrganizationMembershipStore()
+
+    assert isinstance(store, ActiveOrganizationMembershipLookup) is False
+    assert "scope_id" not in OrganizationMembership.model_fields
+    assert "provider_binding" not in OrganizationMembership.model_fields
+    assert "cloud_credential" not in OrganizationMembership.model_fields

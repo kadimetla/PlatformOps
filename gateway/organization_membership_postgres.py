@@ -10,6 +10,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from gateway.organization_membership import (
+    ActiveOrganizationMembershipLookup,
     DuplicateActiveOrganizationMembership,
     OrganizationInvitation,
     OrganizationMembership,
@@ -38,6 +39,10 @@ class OrganizationMembershipOrganizationInactive(OrganizationMembershipPersisten
     pass
 
 
+class OrganizationMembershipNotActive(OrganizationMembershipPersistenceError):
+    pass
+
+
 def apply_organization_membership_migrations(connection: psycopg.Connection) -> None:
     """Apply membership tables after user-registration and organization migrations."""
     with connection.transaction():
@@ -48,7 +53,7 @@ def apply_organization_membership_migrations(connection: psycopg.Connection) -> 
         )
 
 
-class PostgresOrganizationMembershipRepository:
+class PostgresOrganizationMembershipRepository(ActiveOrganizationMembershipLookup):
     """Transaction-safe invitation and membership store for PlatformOps."""
 
     def __init__(self, connection: psycopg.Connection) -> None:
@@ -162,24 +167,38 @@ class PostgresOrganizationMembershipRepository:
     def get_active_membership(
         self, *, user_subject: str, organization_id: str
     ) -> OrganizationMembership | None:
-        row = self._connection.execute(
-            """SELECT membership_id, user_subject, organization_id, source, role_ids, state, version, created_at
-               FROM organization_memberships
-               WHERE user_subject = %s AND organization_id = %s AND state = 'active'""",
-            (user_subject, organization_id),
-        ).fetchone()
-        if row is None:
-            return None
-        return OrganizationMembership(
-            membership_id=row["membership_id"],
-            user_subject=row["user_subject"],
-            organization_id=row["organization_id"],
-            source=OrganizationMembershipSource(row["source"]),
-            role_refs=[OrganizationRoleReference(role_id=role_id) for role_id in row["role_ids"]],
-            state=OrganizationMembershipState(row["state"]),
-            version=row["version"],
-            created_at=row["created_at"],
-        )
+        with self._connection.transaction():
+            row = self._connection.execute(
+                """SELECT membership_id, user_subject, organization_id, source, role_ids, state, version, created_at
+                   FROM organization_memberships
+                   WHERE user_subject = %s AND organization_id = %s AND state = 'active'""",
+                (user_subject, organization_id),
+            ).fetchone()
+            if row is None:
+                return None
+            return OrganizationMembership(
+                membership_id=row["membership_id"],
+                user_subject=row["user_subject"],
+                organization_id=row["organization_id"],
+                source=OrganizationMembershipSource(row["source"]),
+                role_refs=[OrganizationRoleReference(role_id=role_id) for role_id in row["role_ids"]],
+                state=OrganizationMembershipState(row["state"]),
+                version=row["version"],
+                created_at=row["created_at"],
+            )
+
+    def revoke_active_membership(self, *, membership_id: str) -> None:
+        """Persist an internal lifecycle transition; authorization is a later boundary."""
+        with self._connection.transaction():
+            row = self._connection.execute(
+                """UPDATE organization_memberships
+                   SET state = 'revoked', version = version + 1
+                   WHERE membership_id = %s AND state = 'active'
+                   RETURNING membership_id""",
+                (membership_id,),
+            ).fetchone()
+            if row is None:
+                raise OrganizationMembershipNotActive("membership is not active")
 
     def _require_active_organization(self, organization_id: str) -> None:
         row = self._connection.execute(
