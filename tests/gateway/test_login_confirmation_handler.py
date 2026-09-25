@@ -3,6 +3,12 @@ from gateway.auth.registration import (
     InMemoryVerificationAttemptStore,
     RegistrationService,
 )
+from gateway.browser_sessions import (
+    BrowserSessionIssuer,
+    BrowserSessionSigningKey,
+    InMemoryBrowserSessionRepository,
+    StaticBrowserSessionSigningKeyProvider,
+)
 from gateway.login_confirmation_handler import LoginConfirmationHandler
 
 
@@ -23,14 +29,29 @@ def test_intent_does_not_consume_and_confirmation_issues_one_unassociated_sessio
         token_hmac_key=b"test-key",
     )
     service.request_registration("alice@example.com")
-    handler = LoginConfirmationHandler(service)
+    handler = LoginConfirmationHandler(
+        service,
+        browser_sessions=BrowserSessionIssuer(
+            repository=InMemoryBrowserSessionRepository(csrf_hmac_key=b"test-csrf-key"),
+            signing_keys=StaticBrowserSessionSigningKeyProvider(
+                BrowserSessionSigningKey(
+                    key_id="test-key", secret=b"test-signing-key-that-is-at-least-32-bytes"
+                )
+            ),
+            csrf_hmac_key=b"test-csrf-key",
+        ),
+    )
 
     assert delivery.token is not None
     assert handler.inspect_intent(delivery.token).valid is True
-    session = handler.confirm(delivery.token)
+    confirmation = handler.confirm(delivery.token)
 
-    assert session is not None
-    assert session.actor.user_id.startswith("usr_")
-    assert session.actor.execution_grants == []
-    assert session.actor.approval_grants == []
+    assert confirmation is not None
+    assert confirmation.body.subject.startswith("usr_")
+    assert confirmation.body.csrf_proof
+    assert "HttpOnly" in confirmation.set_cookie.as_header()
+    assert "Secure" in confirmation.set_cookie.as_header()
+    assert "SameSite=Lax" in confirmation.set_cookie.as_header()
+    assert confirmation.set_cookie._token not in confirmation.body.model_dump_json()
+    assert confirmation.set_cookie._token not in repr(confirmation)
     assert handler.confirm(delivery.token) is None

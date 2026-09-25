@@ -1,7 +1,16 @@
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 
+from gateway.browser_sessions import (
+    BrowserSessionAuthenticationError,
+    BrowserSessionAuthenticator,
+    BrowserSessionIssuer,
+    BrowserSessionSigningKey,
+    InMemoryBrowserSessionRepository,
+    StaticBrowserSessionSigningKeyProvider,
+)
 from gateway.command_router import (
     CommandAuthenticationRequired,
     CommandRouteUnavailable,
@@ -42,3 +51,32 @@ def test_router_rejects_unknown_command_and_missing_workflow():
         asyncio.run(router.dispatch("/anything", {}, principal=None))
     with pytest.raises(CommandRouteUnavailable, match="not enabled"):
         asyncio.run(router.dispatch("/login", {}, principal=None))
+
+
+def test_browser_mutation_derives_principal_before_protected_handler_invocation():
+    now = datetime.now(timezone.utc)
+    repository = InMemoryBrowserSessionRepository(csrf_hmac_key=b"test-csrf-key")
+    keys = StaticBrowserSessionSigningKeyProvider(BrowserSessionSigningKey(
+        key_id="test-key", secret=b"test-signing-key-that-is-at-least-32-bytes"
+    ))
+    issued = BrowserSessionIssuer(
+        repository=repository, signing_keys=keys, csrf_hmac_key=b"test-csrf-key"
+    ).issue(subject="usr_alice", now=now)
+    authenticator = BrowserSessionAuthenticator(
+        repository=repository, signing_keys=keys, expected_origin="https://platformops.example"
+    )
+    router = ControlPlaneCommandRouter({"organization_onboarding": _onboard})
+
+    result = asyncio.run(router.dispatch_browser_mutation(
+        "/onboard-org", {}, browser_session_token=issued.set_cookie._token,
+        origin="https://platformops.example", csrf_proof=issued.csrf_proof,
+        session_authenticator=authenticator,
+    ))
+
+    assert result["principal"].subject == "usr_alice"
+    with pytest.raises(BrowserSessionAuthenticationError):
+        asyncio.run(router.dispatch_browser_mutation(
+            "/onboard-org", {}, browser_session_token=issued.set_cookie._token,
+            origin="https://evil.example", csrf_proof=issued.csrf_proof,
+            session_authenticator=authenticator,
+        ))

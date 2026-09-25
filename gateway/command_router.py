@@ -2,7 +2,7 @@
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Protocol
 
 
 class ControlPlaneCommand(str, Enum):
@@ -41,6 +41,12 @@ class CommandRouteUnavailable(ValueError):
 
 class CommandAuthenticationRequired(PermissionError):
     pass
+
+
+class BrowserMutationAuthenticator(Protocol):
+    def authenticate_mutation(
+        self, token: str, *, origin: str | None, csrf_proof: str | None
+    ) -> ValidatedPrincipal: ...
 
 
 _ROUTES = {
@@ -84,3 +90,14 @@ class ControlPlaneCommandRouter:
         except KeyError as error:
             raise CommandRouteUnavailable("workflow is not enabled") from error
         return await handler(CommandInvocation(route=route, principal=principal, payload=payload))
+
+    async def dispatch_browser_mutation(
+        self, command: str, payload: dict[str, Any], *, browser_session_token: str,
+        origin: str | None, csrf_proof: str | None,
+        session_authenticator: BrowserMutationAuthenticator,
+    ) -> Any:
+        """Authenticate a browser mutation before handler lookup or invocation."""
+        principal = session_authenticator.authenticate_mutation(
+            browser_session_token, origin=origin, csrf_proof=csrf_proof
+        )
+        return await self.dispatch(command, payload, principal=principal)
