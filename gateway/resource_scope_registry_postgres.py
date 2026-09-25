@@ -128,3 +128,28 @@ class PostgresReviewedResourceScopeRegistry:
                 state=ResourceScopeState(row["scope_state"]), version=row["version"],
                 canonical_path=row["canonical_path"],
             )
+
+    def find_active_by_legacy_segments(
+        self, *, organization_slug: str, business_unit_slug: str,
+        project_slug: str, environment_slug: str,
+    ) -> tuple[ResourceScope, ...]:
+        """Temporary boundary lookup; callers receive only modern scope records."""
+        with self._connection.transaction():
+            rows = self._connection.execute(
+                """SELECT scope.scope_id
+                   FROM resource_scopes AS scope
+                   JOIN organizations AS organization ON organization.organization_id = scope.organization_id
+                   JOIN resource_scope_business_units AS bu ON bu.business_unit_id = scope.business_unit_id
+                   JOIN resource_scope_projects AS project ON project.project_id = scope.project_id
+                   JOIN resource_scope_environments AS environment ON environment.environment_id = scope.environment_id
+                   WHERE scope.state = 'active' AND organization.state = 'active'
+                     AND bu.state = 'active' AND project.state = 'active' AND environment.state = 'active'
+                     AND scope.organization_slug = %s AND bu.slug = %s
+                     AND project.slug = %s AND environment.slug = %s
+                   ORDER BY scope.scope_id""",
+                (organization_slug, business_unit_slug, project_slug, environment_slug),
+            ).fetchall()
+        return tuple(
+            scope for row in rows
+            if (scope := self.resolve_active(row["scope_id"])) is not None
+        )

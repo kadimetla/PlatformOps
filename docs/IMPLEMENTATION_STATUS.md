@@ -1,6 +1,6 @@
 # PlatformOps implementation status
 
-**Last reviewed:** 2026-09-23  
+**Last reviewed:** 2026-09-25
 **Purpose:** Cross-change review dashboard. This is a navigation and
 status note, not a source of behavioral requirements. Each OpenSpec
 change remains authoritative for its proposal, requirements, design,
@@ -28,7 +28,7 @@ flowchart LR
     Registration["User registration\npartial implementation"]
     Organization["Organization onboarding\nplanned; boundary correction pending"]
     Provider["Cloud Provider Service\nimplemented with fake adapters"]
-    Scope["Resource Scope bootstrap\nplanned"]
+    Scope["Resource Scope bootstrap\nimplemented"]
     Provision["Provision flow\nproposal only; preflight exists"]
 
     Registration --> Organization
@@ -48,10 +48,10 @@ deny-by-default and must explicitly resolve its own trusted context.
 | [User registration](../openspec/changes/build-user-registration/) | Proposal, specs, design, and tasks complete | Tasks 1–4.2 complete: PostgreSQL identity records, deterministic `/login` initiation graph, scanner-safe confirmation, unassociated session, and safe domain journeys | Add configured organization-IdP routing (4.3), then final boundary verification (5.1–5.3) |
 | [Organization onboarding](../openspec/changes/build-org-onboarding/) | Proposal, spec, design, and tasks complete; cloud/provider ownership corrected 2026-09-23 | In-memory lifecycle plus PostgreSQL migration/repository/integration coverage are complete; `/onboard-org` starts the PostgreSQL-backed deterministic graph and waits for review | Add the trusted review/resume path before marking the deployed PostgreSQL runtime replacement complete; real DNS/IdP proof remains a separate slice |
 | [Control-plane command router](../openspec/changes/build-control-plane-command-router/) | Proposal, spec, design, and tasks complete | Explicit allow-list and validated issuer/subject principal are implemented; `/login` and `/onboard-org` handlers are wired | Add later `/join-org` and `/provision` handlers only when their own workflow prerequisites exist |
-| [Organization member onboarding](../openspec/changes/build-organization-member-onboarding/) | Proposal, spec, design, and tasks complete | Not implemented | Start PostgreSQL membership and invitation contracts, then deterministic gateway-routed `/join-org` workflow. Membership alone must not grant a Resource Scope or cloud access |
+| [Organization member onboarding](../openspec/changes/build-organization-member-onboarding/) | Proposal, spec, design, and tasks complete | PostgreSQL membership/invitation records, deterministic `/join-org`, active-membership lookup, and revoked-member provision denial are implemented | Add tenant IdP/SCIM synchronization only through a separate deterministic adapter change; membership alone still grants no Resource Scope or cloud access |
 | [Cloud Provider Service](../openspec/changes/build-cloud-provider-service/) | Proposal, four capability specs, design, and tasks complete | Tasks 1–5 complete using deterministic fake adapters: connection verification/inquiry, read-only discovery, reviewed attachment, and separately authorized container bootstrap | Keep live provider adapters disabled. Add a live adapter only as a separate verified implementation slice with current official-provider validation |
-| [Resource Scope bootstrap](../openspec/changes/build-resource-scope-bootstrap/) | Proposal, three capability specs, design, and tasks complete | No registry, authorization evaluator, or binding resolver code | Start task 1: typed Organization → BU → Team → PlatformOps Project → Environment records and an active-scope registry |
-| [Provision flow](../openspec/changes/build-provision-flow/) | Proposal, spec, design, and tasks complete | Existing code has non-mutating provision preflight only | Integrate active membership and resolved Resource Scope context only after their separate changes are implemented |
+| [Resource Scope bootstrap](../openspec/changes/build-resource-scope-bootstrap/) | Proposal, three capability specs, design, and tasks complete | Durable PostgreSQL scope/binding registries, deny-by-default access and governance evaluators, legacy edge normalization, and non-mutating resolved-context preflight are implemented | Keep scope/bootstrap administration and cloud-container attach/create workflows separate; integrate the resolved preflight through the provision-flow change |
+| [Provision flow](../openspec/changes/build-provision-flow/) | Proposal, spec, design, and tasks complete | Authenticated gateway handoff, deterministic active-membership/scope/binding preflight, sealed plan/policy approval, checkpointed reviewer separation, and fake-only execution evidence are implemented | Wire a reviewed live provider executor only in a separate, provider-validated change; this change supplies none |
 
 ## Confirmed vocabulary and security boundaries
 
@@ -86,5 +86,4 @@ execution authority.
 - Personal-organization creation or business-organization claiming
 - Organization memberships, invitations, SCIM, or tenant IdP configuration
 - Live AWS, GCP, or Azure adapters or cloud mutations
-- Resource Scope registry, grants, governance evaluator, or provider-binding resolver
 - Provision approval, execution, evidence, or a frontend for these workflows

@@ -54,9 +54,11 @@ class _RecordingFake(_DirectFake):
     def __init__(self, *responses):
         super().__init__(*responses)
         self.bind_tool_kwargs = []
+        self.bound_tool_names = []
 
-    def bind_tools(self, _tools, **kwargs):
+    def bind_tools(self, tools, **kwargs):
         self.bind_tool_kwargs.append(kwargs)
+        self.bound_tool_names.append(tuple(tool.name for tool in tools))
         return self
 
 
@@ -99,6 +101,34 @@ def test_tool_choice_uses_provider_compatible_required_mode():
         {"tool_choice": "required"},
         {"tool_choice": "required"},
     ]
+    assert model.bound_tool_names == [
+        ("select_deployment_profile",),
+        ("extract_aws_static_web_request",),
+    ]
+
+
+def test_typed_preflight_exposes_no_execution_authority_or_cloud_routing_data():
+    model = _RecordingFake(
+        _tool_call("select_deployment_profile", profile_id="aws-static-web"),
+        _tool_call(
+            "extract_aws_static_web_request",
+            frontend_artifact_uri="s3://releases/invoices-ui.tar.gz",
+            frontend_hostname="invoices.dev.example.com",
+        ),
+    )
+
+    result = asyncio.run(
+        prepare_provision_request(_invocation(), model, [_scope()], [_grant()])
+    )
+
+    assert result.ready is True
+    assert model.bound_tool_names == [
+        ("select_deployment_profile",),
+        ("extract_aws_static_web_request",),
+    ]
+    assert not {"credential", "token", "provider", "account_id", "execution_identity"} & set(
+        type(result.application_request).model_fields
+    )
 
 
 def test_scope_failure_stops_before_any_model_call():

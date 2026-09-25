@@ -20,10 +20,10 @@
 
 - [x] 3.1 Add active-membership lookup as deterministic input to later scope
       authorization; verify it creates no grant, binding, or cloud access.
-- [ ] 3.2 Verify revoked membership denies a newly started provision request.
+- [x] 3.2 Verify revoked membership denies a newly started provision request.
 
 ## 4. Verification
 
-- [ ] 4.1 Run focused tests without live IdP, SCIM, cloud, model credential,
+- [x] 4.1 Run focused tests without live IdP, SCIM, cloud, model credential,
       or frontend.
-- [ ] 4.2 Run `openspec validate build-organization-member-onboarding --strict`.
+- [x] 4.2 Run `openspec validate build-organization-member-onboarding --strict`.

@@ -127,6 +127,15 @@ class ReviewedResourceScopeRegistry(Protocol):
     def resolve_active(self, scope_id: str) -> ResourceScope | None: ...
 
 
+class LegacyResourceScopeEdgeLookup(Protocol):
+    """Temporary lookup surface for the retired org:bu/project/workspace edge."""
+
+    def find_active_by_legacy_segments(
+        self, *, organization_slug: str, business_unit_slug: str,
+        project_slug: str, environment_slug: str,
+    ) -> tuple[ResourceScope, ...]: ...
+
+
 class DuplicateCanonicalResourceScope(ValueError):
     pass
 
@@ -153,6 +162,19 @@ class InMemoryReviewedResourceScopeRegistry:
     def resolve_active(self, scope_id: str) -> ResourceScope | None:
         scope = self._by_scope_id.get(scope_id)
         return scope if scope is not None and scope.is_complete_and_active else None
+
+    def find_active_by_legacy_segments(
+        self, *, organization_slug: str, business_unit_slug: str,
+        project_slug: str, environment_slug: str,
+    ) -> tuple[ResourceScope, ...]:
+        return tuple(
+            scope for scope in self._by_scope_id.values()
+            if scope.is_complete_and_active
+            and scope.organization.slug == organization_slug
+            and scope.business_unit.slug == business_unit_slug
+            and scope.project.slug == project_slug
+            and scope.environment.slug == environment_slug
+        )
 
 
 def non_routable_resource_scope_fixture(scope: ResourceScope) -> ResourceScope:
