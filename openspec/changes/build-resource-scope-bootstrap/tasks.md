@@ -2,16 +2,17 @@
 
 ## 1. Resource Scope registry contracts
 
-- [ ] 1.1 Add typed Organization, Business Unit, Team, PlatformOps Project, Environment, and Resource Scope contracts with immutable `scope_id`, canonical-path validation, and lifecycle state; verify focused unit tests cover valid paths, incomplete hierarchies, duplicate canonical paths, and stable IDs after a permitted rename.
-- [ ] 1.2 Add an administrator-owned reviewed registry interface that resolves only active complete Resource Scopes by `scope_id`; verify tests reject missing, inactive, malformed, sibling, parent, and provider-default fallback resolution.
-- [ ] 1.3 Add non-routable registry fixtures for dependent workflow tests without creating user, organization-claiming, provider-connection, or cloud-mutation behavior; verify the fixtures contain no cloud credentials or live provider calls.
+- [x] 1.1 Add typed Organization, Business Unit, Team, PlatformOps Project, Environment, and Resource Scope contracts with immutable `scope_id`, canonical-path validation, and lifecycle state; verify focused unit tests cover valid paths, incomplete hierarchies, duplicate canonical paths, and stable IDs after a permitted rename.
+- [x] 1.2 Add an administrator-owned reviewed registry interface that resolves only active complete Resource Scopes by `scope_id`; verify tests reject missing, inactive, malformed, sibling, parent, and provider-default fallback resolution.
+- [x] 1.3 Add non-routable registry fixtures for dependent workflow tests without creating user, organization-claiming, provider-connection, or cloud-mutation behavior; verify the fixtures contain no cloud credentials or live provider calls.
+- [x] 1.4 Add PostgreSQL migrations and a reviewed registry repository for the logical hierarchy, canonical-path uniqueness, immutable scope IDs, and active-only lookup; verify PostgreSQL integration coverage preserves scope ID through a rename and rejects inactive hierarchy resolution.
 
 ## 2. Principal grants and governance evaluation
 
-- [ ] 2.1 Add typed user, identity-group, and service-principal references plus role-binding contracts for principal, action set, Resource Scope or ancestor, explicit inheritance, and conditions; verify unit tests distinguish `bu` ownership records from identity groups.
-- [ ] 2.2 Implement deterministic deny-by-default scope authorization using exact bindings and explicitly inheriting ancestor bindings only; verify focused tests cover no grant, exact grant, non-inheriting parent grant, inheriting parent grant, and revoked group access.
-- [ ] 2.3 Implement restrictive governance-guardrail evaluation across Organization, BU, Team, Project, and Environment; verify tests show a child can narrow but cannot widen a parent provider restriction and an applicable deny overrides an allow.
-- [ ] 2.4 Require scope authorization to be evaluated for every requested action rather than trusted from a saved selection; verify a previously listed or selected scope is denied after its applicable binding is revoked.
+- [x] 2.1 Add typed user, identity-group, and service-principal references plus role-binding contracts for principal, action set, Resource Scope or ancestor, explicit inheritance, and conditions; verify unit tests distinguish `bu` ownership records from identity groups.
+- [x] 2.2 Implement deterministic deny-by-default scope authorization using exact bindings and explicitly inheriting ancestor bindings only; verify focused tests cover no grant, exact grant, non-inheriting parent grant, inheriting parent grant, and revoked group access.
+- [x] 2.3 Implement restrictive governance-guardrail evaluation across Organization, BU, Team, Project, and Environment; verify tests show a child can narrow but cannot widen a parent provider restriction and an applicable deny overrides an allow.
+- [x] 2.4 Require scope authorization to be evaluated for every requested action rather than trusted from a saved selection; verify a previously listed or selected scope is denied after its applicable binding is revoked.
 
 ## 3. Cloud Resource Container binding resolution
 
