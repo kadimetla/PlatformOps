@@ -1,0 +1,41 @@
+# Tasks
+
+## 1. Context contracts and deterministic command boundary
+
+- [ ] 1.1 Define constrained active-context, workflow-run, and safe summary
+  schemas; verify they contain no role, grant, provider, credential, approval,
+  or raw workflow-state fields.
+- [ ] 1.2 Add allow-listed parsing for `/login`, `/context`, `/resume`, and
+  `/cancel`; verify unknown slash commands cannot route to a workflow.
+- [ ] 1.3 Derive guest and authenticated available-context projections from
+  live server state; verify guest projections reveal no protected tenant,
+  target, provider, or review data.
+
+## 2. Durable context and draft lifecycle
+
+- [ ] 2.1 Persist owner-scoped active and suspended workflow-run metadata in
+  PostgreSQL; verify users cannot read, resume, or cancel another principal's
+  draft.
+- [ ] 2.2 Implement context switch, suspend, resume, and cancel transitions;
+  verify completed audit records are retained and protected workflow checks are
+  repeated on resume.
+
+## 3. Intake and browser interaction
+
+- [ ] 3.1 Produce constrained candidate intents from ordinary chat input and
+  emit A2UI switch confirmation when meaningful active work would be suspended.
+- [ ] 3.2 Render a persistent context indicator, context picker, and resumable
+  draft list through AG-UI/A2UI; verify browser state is presentation only.
+- [ ] 3.3 Render safe header projections for Guest, signed-in user, and
+  organization member states; verify roles, grants, targets, provider data,
+  tokens, and raw IdP claims are absent.
+- [ ] 3.4 Integrate `/login` as the guest chat entry point, then connect
+  provision intake without bypassing session, membership, grant, governance,
+  or provider-binding checks.
+
+## 4. Verification
+
+- [ ] 4.1 Add focused gateway, workflow, transport, and frontend tests using
+  fake sessions and no live model, cloud, or provider credentials.
+- [ ] 4.2 Run `openspec validate build-chat-workflow-context --strict` and
+  document the context-versus-authorization boundary.
