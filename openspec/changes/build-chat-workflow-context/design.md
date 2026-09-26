@@ -110,6 +110,32 @@ and session validation remain owned by their existing gateway boundaries. The
 chat adapter never receives a JWT, creates a session, or embeds a magic-link
 token in an A2UI surface.
 
+### In-chat login delivery sequence
+
+`unify-browser-agui-control-plane` first replaces the browser `/runs` local
+actor-session dependency with a cookie/session-aware transport. That transport
+must allow the public guest router to handle `/login` without requiring an
+authenticated principal, while requiring validated session and CSRF proof
+before every protected route.
+
+The login path is then:
+
+```text
+guest sends /login
+  -> deterministic command parser
+  -> guest chat router
+  -> safe A2UI email-entry surface
+  -> narrow public login submission handler
+  -> existing registration service sends magic link
+  -> existing confirmation endpoint consumes link once
+  -> existing browser-session issuer sets HttpOnly cookie and returns CSRF proof
+  -> browser refreshes safe identity/context projection
+```
+
+An email form submit is a narrow public action with an `email` field only. It
+is not an AG-UI interrupt resume and cannot contain route, organization,
+provider, target, role, grant, credential, token, cookie, or CSRF fields.
+
 ### Natural-language intake proposes, rather than silently changes, context
 
 For ordinary chat text, intake produces a constrained candidate intent and its

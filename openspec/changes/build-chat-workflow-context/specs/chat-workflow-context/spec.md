@@ -67,6 +67,35 @@ data, target data, provider data, or authorization data.
 - **AND THEN** the surface contains no session, verification, provider, target,
   organization, role, or grant data
 
+### Requirement: In-chat login submission is narrow and public
+The system SHALL accept an in-chat login submission only through a strict
+public command containing an email address. It SHALL delegate to the existing
+login/registration handler. It SHALL reject route, organization, target,
+provider, role, grant, credential, token, cookie, and CSRF fields. It SHALL
+NOT require a browser session to initiate login.
+
+#### Scenario: Guest submits email from login surface
+- **WHEN** a guest submits a valid email address from the in-chat login surface
+- **THEN** the system starts the existing passwordless registration flow
+- **AND THEN** it returns the existing enumeration-safe delivery response
+
+#### Scenario: Login submission includes authority-bearing fields
+- **WHEN** a guest login submission includes a provider, target, role, token,
+  cookie, or CSRF field
+- **THEN** the system rejects the submission
+- **AND THEN** it does not create a session or start a protected workflow
+
+### Requirement: Browser authentication begins only after confirmation
+The system SHALL preserve the existing magic-link confirmation and browser
+session issuance boundary. Successful confirmation SHALL set the HttpOnly
+browser-session cookie and return the CSRF proof only to browser memory.
+
+#### Scenario: Login confirmation completes
+- **WHEN** a valid magic link is consumed exactly once
+- **THEN** the system issues the existing browser session cookie
+- **AND THEN** subsequent protected chat routes validate that cookie and the
+  CSRF proof before workflow dispatch
+
 ### Requirement: Chat header shows safe identity, organization, and context state
 The system SHALL show a safe chat-header projection of identity state,
 authorized selected-organization state when present, and active conversation

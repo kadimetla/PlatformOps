@@ -35,10 +35,18 @@
 - [x] 3.5 Adapt guest-router outcomes to allow-listed AG-UI/A2UI chat surfaces;
   verify the login surface contains no JWT, cookie, CSRF proof, magic-link
   token, organization, target, provider, or authorization data.
-- [ ] 3.6 Integrate `/login` as the guest chat entry point with the existing
-  login/registration and magic-link confirmation boundary, then connect
-  provision intake without bypassing session, membership, grant, governance,
-  or provider-binding checks.
+- [ ] 3.6 Define a strict public in-chat login-submission command containing
+  only email; verify route, organization, target, provider, role, grant,
+  credential, token, cookie, and CSRF fields are rejected.
+- [ ] 3.7 After `unify-browser-agui-control-plane` browser `/runs` migration,
+  route guest `/login` and the login-submit action through the existing
+  registration handler; verify no authenticated principal is required for this
+  public path and protected paths still require cookie and CSRF validation.
+- [ ] 3.8 Connect successful magic-link confirmation to safe browser identity
+  and context refresh; verify the JWT remains HttpOnly-only and the CSRF proof
+  remains browser-memory-only.
+- [ ] 3.9 Connect authenticated provision intake without bypassing session,
+  membership, grant, governance, or provider-binding checks.
 
 ## 4. Verification
 

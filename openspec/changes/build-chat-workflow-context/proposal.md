@@ -24,6 +24,9 @@ authorization or provider-routing decision.
 - Adapt guest-router outcomes to AG-UI/A2UI chat surfaces, beginning with an
   in-chat `/login` entry point and preserving the existing magic-link session
   confirmation boundary.
+- Deliver guest login incrementally after the browser AG-UI transport has
+  replaced its local actor-session dependency with the validated browser
+  session boundary.
 - Keep the existing browser AG-UI transport change responsible for session and
   transport mechanics; this change owns conversation orchestration only.
 
