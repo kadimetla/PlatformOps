@@ -33,6 +33,6 @@
 
 ## 5. Verification and boundaries
 
-- [ ] 5.1 Run focused registration, verification, session, and domain-discovery tests with fake delivery and no real model credentials or email provider; record the commands in developer documentation.
-- [ ] 5.2 Verify this change does not implement personal-organization creation, business claims, membership/invites, SCIM, customer IdP setup, cloud-provider connection, password storage, or a frontend; record any newly required behavior as a separate OpenSpec change before coding it.
-- [ ] 5.3 Run `openspec validate build-user-registration --strict` and update the change status only after all implementation tasks and their verifications are complete.
+- [x] 5.1 Run focused registration, verification, session, and domain-discovery tests with fake delivery and no real model credentials or email provider; record the commands in developer documentation.
+- [x] 5.2 Verify this change does not implement personal-organization creation, business claims, membership/invites, SCIM, customer IdP setup, cloud-provider connection, password storage, or a frontend; record any newly required behavior as a separate OpenSpec change before coding it.
+- [x] 5.3 Run `openspec validate build-user-registration --strict` and update the change status only after all implementation tasks and their verifications are complete.

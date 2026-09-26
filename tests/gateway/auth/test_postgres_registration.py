@@ -22,9 +22,16 @@ pytestmark = [
 def repository():
     connection = psycopg.connect(DATABASE_URL)
     apply_user_registration_migrations(connection)
-    connection.execute("DELETE FROM auth_verification_attempts")
-    connection.execute("DELETE FROM auth_verified_email_contacts")
-    connection.execute("DELETE FROM auth_user_accounts")
+    # Do not truncate global identity tables: other control-plane integration
+    # tests may hold foreign-key references to their users.
+    connection.execute(
+        "DELETE FROM auth_verification_attempts WHERE canonical_email = %s",
+        ("alice@example.com",),
+    )
+    connection.execute(
+        "DELETE FROM auth_verified_email_contacts WHERE canonical_email IN (%s, %s)",
+        ("alice@example.com", "Alice+receipts@example.com"),
+    )
     connection.commit()
     try:
         yield PostgresUserRegistrationRepository(connection)

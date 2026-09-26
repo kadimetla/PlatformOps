@@ -56,7 +56,7 @@
 
 ## 5. Deferred follow-on: administrator UI
 
-- [ ] 5.1 Create a separate OpenSpec change for an onboarding administrator
+- [x] 5.1 Create a separate OpenSpec change for an onboarding administrator
       wizard only after the server-side onboarding API, lifecycle, and approval
       contracts are implemented and tested; the wizard must not own provider
       binding, approval, or cloud credentials.
