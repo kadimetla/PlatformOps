@@ -34,6 +34,26 @@ workflow.
 - **AND THEN** no provision workflow, authorization evaluation, or provider
   lookup starts
 
+### Requirement: Guest chat routing is public and deterministic
+The system SHALL treat `Guest` as the absence of a validated browser session,
+not as a durable workflow or a low-privilege PlatformOps principal. Before
+login, a deterministic guest chat router SHALL reach only login, registration,
+organization-membership entry, and help paths. It SHALL NOT invoke protected
+workflow handlers or load protected control-plane data.
+
+#### Scenario: Guest requests onboarding review
+- **WHEN** a guest asks to review an organization-onboarding request
+- **THEN** the guest router renders a login prompt or public guidance
+- **AND THEN** it does not look up the review request, reviewer access,
+  organization, target, provider, or binding
+
+#### Scenario: Guest completes login
+- **WHEN** a guest completes the login confirmation flow
+- **THEN** the browser receives a validated session through the existing
+  browser-session boundary
+- **AND THEN** subsequent context availability is derived as an authenticated
+  user rather than as a guest
+
 ### Requirement: Chat header shows safe identity, organization, and context state
 The system SHALL show a safe chat-header projection of identity state,
 authorized selected-organization state when present, and active conversation

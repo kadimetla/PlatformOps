@@ -2,12 +2,12 @@
 
 ## 1. Context contracts and deterministic command boundary
 
-- [ ] 1.1 Define constrained active-context, workflow-run, and safe summary
+- [x] 1.1 Define constrained active-context, workflow-run, and safe summary
   schemas; verify they contain no role, grant, provider, credential, approval,
   or raw workflow-state fields.
-- [ ] 1.2 Add allow-listed parsing for `/login`, `/context`, `/resume`, and
+- [x] 1.2 Add allow-listed parsing for `/login`, `/context`, `/resume`, and
   `/cancel`; verify unknown slash commands cannot route to a workflow.
-- [ ] 1.3 Derive guest and authenticated available-context projections from
+- [x] 1.3 Derive guest and authenticated available-context projections from
   live server state; verify guest projections reveal no protected tenant,
   target, provider, or review data.
 
@@ -29,7 +29,10 @@
 - [ ] 3.3 Render safe header projections for Guest, signed-in user, and
   organization member states; verify roles, grants, targets, provider data,
   tokens, and raw IdP claims are absent.
-- [ ] 3.4 Integrate `/login` as the guest chat entry point, then connect
+- [x] 3.4 Add a deterministic guest chat router that permits only public
+  login, registration, membership-entry, and help routes; verify a guest
+  provision/review request starts no protected workflow or lookup.
+- [ ] 3.5 Integrate `/login` as the guest chat entry point, then connect
   provision intake without bypassing session, membership, grant, governance,
   or provider-binding checks.
 

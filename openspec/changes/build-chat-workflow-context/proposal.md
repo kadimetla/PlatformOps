@@ -19,6 +19,8 @@ authorization or provider-routing decision.
   changes context.
 - Define guest, registered-user, member, and authorized-provisioner context
   availability and messaging.
+- Add a deterministic guest chat router that reaches only public login,
+  registration, membership-entry, and help paths before a session exists.
 - Keep the existing browser AG-UI transport change responsible for session and
   transport mechanics; this change owns conversation orchestration only.
 

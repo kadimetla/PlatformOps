@@ -80,6 +80,26 @@ workflow starts. The server derives available contexts from live state and
 does not expose organization names, review requests, targets, or bindings to
 an unauthorized guest.
 
+### Guest is a state with a public router, not a durable workflow
+
+`Guest` means no validated browser session exists; it is not a user record,
+workflow run, or implicit low-privilege principal. A deterministic guest chat
+router accepts only public direct commands and constrained public intake
+outcomes:
+
+```text
+/login                         -> login/registration entry
+register-account request       -> user registration entry
+join-organization request      -> membership entry, with login when needed
+help                           -> public guidance
+protected request              -> login prompt; no protected workflow starts
+```
+
+The router is placed before protected workflow dispatch. It may render safe
+A2UI forms and guidance, but it does not query provider bindings, targets,
+organization review requests, or authorization state. On successful login,
+the normal browser session and authenticated context resolver take over.
+
 ### Natural-language intake proposes, rather than silently changes, context
 
 For ordinary chat text, intake produces a constrained candidate intent and its
@@ -124,5 +144,6 @@ control plane when it creates or executes a protected action.
    projections.
 3. Connect constrained intake results to context-switch proposals and A2UI.
 4. Render safe guest, authenticated-user, and member header projections.
-5. Integrate individual workflows incrementally, beginning with guest login
-   and provision intake, while retaining their existing authorization checks.
+5. Add guest routing and integrate individual workflows incrementally,
+   beginning with guest login and provision intake, while retaining their
+   existing authorization checks.
