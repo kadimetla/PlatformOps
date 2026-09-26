@@ -3,8 +3,8 @@
 ## 1. Safe review API boundary
 
 - [x] 1.1 Define allow-listed pending-request and review-outcome projections; verify raw verification tokens, session tokens, credentials, and provider fields are absent.
-- [ ] 1.2 Add authenticated reviewer-only read and review command handlers that delegate to the existing onboarding lifecycle; verify unauthorized, stale, and duplicate requests fail closed.
-- [ ] 1.3 Add strict action payload validation; verify provider, binding, account, credential, and browser-derived digest fields are rejected.
+- [x] 1.2 Add authenticated reviewer-only read and review command handlers that delegate to the existing onboarding lifecycle; verify unauthorized, stale, and duplicate requests fail closed.
+- [x] 1.3 Add strict action payload validation; verify provider, binding, account, credential, and browser-derived digest fields are rejected.
 
 ## 2. Browser administrator wizard
 

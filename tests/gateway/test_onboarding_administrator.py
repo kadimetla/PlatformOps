@@ -1,13 +1,19 @@
 from datetime import datetime, timezone
 
+import pytest
+from pydantic import ValidationError
+
 from gateway.onboarding_administrator import (
-    OnboardingReviewOutcomeProjection, PendingOnboardingReviewProjection,
+    OnboardingAdministratorReadService, OnboardingReviewOutcomeProjection,
+    PendingOnboardingReviewProjection,
 )
 from gateway.organization_onboarding import (
     ActiveOrganization, AuthenticatedApplicant, IdentityBoundaryKind,
     IdentityBoundaryVerificationEvidence, OrganizationIdentityBoundary,
     OrganizationOnboardingApproval, OrganizationOnboardingRequest,
+    FakeOrganizationOnboardingReviewAuthorizer, OrganizationOnboardingReviewAccessDenied,
 )
+from gateway.organization_onboarding_review_handler import ReviewOnboardingCommand
 
 
 def _request() -> OrganizationOnboardingRequest:
@@ -49,3 +55,46 @@ def test_review_outcome_projection_excludes_approval_and_identity_evidence():
     assert not {"approval", "identity_proof", "credential", "provider"} & set(
         OnboardingReviewOutcomeProjection.model_fields
     )
+
+
+class PendingRepository:
+    def __init__(self, request):
+        self.request = request
+
+    def get_pending_request(self, request_id):
+        return self.request if request_id == self.request.request_id else None
+
+    def get_persisted_identity_proof(self, request):
+        return None
+
+
+def test_read_service_rechecks_reviewer_and_fails_closed_for_stale_or_unauthorized_request():
+    request = _request()
+    reviewer = AuthenticatedApplicant(issuer="platformops", subject="usr_reviewer")
+    service = OnboardingAdministratorReadService(
+        repository=PendingRepository(request),
+        authorizer=FakeOrganizationOnboardingReviewAuthorizer({reviewer.subject}),
+    )
+
+    assert service.get_pending_review(reviewer=reviewer, request_id=request.request_id).request_id == request.request_id
+    with pytest.raises(OrganizationOnboardingReviewAccessDenied):
+        service.get_pending_review(
+            reviewer=AuthenticatedApplicant(issuer="platformops", subject="usr_other"), request_id=request.request_id,
+        )
+    with pytest.raises(ValueError, match="not found"):
+        service.get_pending_review(reviewer=reviewer, request_id="orgreq_missing")
+
+
+def test_wizard_commands_reject_provider_credential_and_browser_derived_authority_fields():
+    from gateway.onboarding_administrator import OnboardingAdministratorReadCommand
+
+    forbidden = {
+        "provider": "aws", "account_id": "123456789012", "binding_id": "binding_prod",
+        "credential": "secret", "approval_digest": "a" * 64,
+    }
+    for field, value in forbidden.items():
+        payload = {"request_id": "orgreq_checkout", field: value}
+        with pytest.raises(ValidationError, match="Extra inputs"):
+            OnboardingAdministratorReadCommand.model_validate(payload)
+        with pytest.raises(ValidationError, match="Extra inputs"):
+            ReviewOnboardingCommand.model_validate(payload)

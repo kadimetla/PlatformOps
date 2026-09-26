@@ -23,6 +23,10 @@ async def _onboard(invocation):
     return {"workflow": "organization_onboarding", "principal": invocation.principal}
 
 
+async def _read_onboarding(invocation):
+    return {"workflow": "onboarding_administrator_read", "principal": invocation.principal}
+
+
 def test_authenticated_explicit_command_dispatches_to_trusted_handler():
     router = ControlPlaneCommandRouter({"organization_onboarding": _onboard})
 
@@ -42,6 +46,19 @@ def test_protected_command_requires_authenticated_session_before_handler_lookup(
 
     with pytest.raises(CommandAuthenticationRequired):
         asyncio.run(router.dispatch("/provision", {}, principal=None))
+
+
+def test_onboarding_review_read_route_is_authenticated_and_separate_from_activation_route():
+    router = ControlPlaneCommandRouter({"onboarding_administrator_read": _read_onboarding})
+
+    result = asyncio.run(router.dispatch(
+        "/onboarding-review", {"request_id": "orgreq_checkout"},
+        principal=ValidatedPrincipal(issuer="platformops", subject="usr_reviewer"),
+    ))
+
+    assert result["workflow"] == "onboarding_administrator_read"
+    with pytest.raises(CommandAuthenticationRequired):
+        asyncio.run(router.dispatch("/onboarding-review", {"request_id": "orgreq_checkout"}, principal=None))
 
 
 def test_router_rejects_unknown_command_and_missing_workflow():

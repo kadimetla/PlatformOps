@@ -9,6 +9,7 @@ class ControlPlaneCommand(str, Enum):
     LOGIN = "/login"
     ONBOARD_ORGANIZATION = "/onboard-org"
     REVIEW_ONBOARDING = "/review-onboard-org"
+    VIEW_ONBOARDING_REVIEW = "/onboarding-review"
     JOIN_ORGANIZATION = "/join-org"
     PROVISION = "/provision"
 
@@ -58,6 +59,9 @@ _ROUTES = {
     ),
     ControlPlaneCommand.REVIEW_ONBOARDING: CommandRoute(
         ControlPlaneCommand.REVIEW_ONBOARDING, "organization_onboarding_review", True
+    ),
+    ControlPlaneCommand.VIEW_ONBOARDING_REVIEW: CommandRoute(
+        ControlPlaneCommand.VIEW_ONBOARDING_REVIEW, "onboarding_administrator_read", True
     ),
     ControlPlaneCommand.JOIN_ORGANIZATION: CommandRoute(
         ControlPlaneCommand.JOIN_ORGANIZATION, "organization_member_onboarding", True
