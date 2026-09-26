@@ -21,6 +21,9 @@ authorization or provider-routing decision.
   availability and messaging.
 - Add a deterministic guest chat router that reaches only public login,
   registration, membership-entry, and help paths before a session exists.
+- Adapt guest-router outcomes to AG-UI/A2UI chat surfaces, beginning with an
+  in-chat `/login` entry point and preserving the existing magic-link session
+  confirmation boundary.
 - Keep the existing browser AG-UI transport change responsible for session and
   transport mechanics; this change owns conversation orchestration only.
 

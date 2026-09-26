@@ -32,7 +32,11 @@
 - [x] 3.4 Add a deterministic guest chat router that permits only public
   login, registration, membership-entry, and help routes; verify a guest
   provision/review request starts no protected workflow or lookup.
-- [ ] 3.5 Integrate `/login` as the guest chat entry point, then connect
+- [x] 3.5 Adapt guest-router outcomes to allow-listed AG-UI/A2UI chat surfaces;
+  verify the login surface contains no JWT, cookie, CSRF proof, magic-link
+  token, organization, target, provider, or authorization data.
+- [ ] 3.6 Integrate `/login` as the guest chat entry point with the existing
+  login/registration and magic-link confirmation boundary, then connect
   provision intake without bypassing session, membership, grant, governance,
   or provider-binding checks.
 

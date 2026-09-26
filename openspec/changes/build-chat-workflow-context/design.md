@@ -100,6 +100,16 @@ A2UI forms and guidance, but it does not query provider bindings, targets,
 organization review requests, or authorization state. On successful login,
 the normal browser session and authenticated context resolver take over.
 
+### Guest routes adapt to chat surfaces without owning login security
+
+The browser chat adapter converts `GuestChatRoute` outcomes to allow-listed
+AG-UI/A2UI presentation data. In particular, `/login` renders an email-entry
+surface that starts the existing login/registration flow. Email verification,
+single-use magic-link consumption, browser cookie issuance, CSRF-proof return,
+and session validation remain owned by their existing gateway boundaries. The
+chat adapter never receives a JWT, creates a session, or embeds a magic-link
+token in an A2UI surface.
+
 ### Natural-language intake proposes, rather than silently changes, context
 
 For ordinary chat text, intake produces a constrained candidate intent and its
@@ -144,6 +154,6 @@ control plane when it creates or executes a protected action.
    projections.
 3. Connect constrained intake results to context-switch proposals and A2UI.
 4. Render safe guest, authenticated-user, and member header projections.
-5. Add guest routing and integrate individual workflows incrementally,
-   beginning with guest login and provision intake, while retaining their
-   existing authorization checks.
+5. Add guest routing, adapt public outcomes to chat surfaces, and integrate
+   individual workflows incrementally, beginning with guest login and
+   provision intake, while retaining their existing authorization checks.

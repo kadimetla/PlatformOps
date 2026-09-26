@@ -54,6 +54,19 @@ workflow handlers or load protected control-plane data.
 - **AND THEN** subsequent context availability is derived as an authenticated
   user rather than as a guest
 
+### Requirement: Guest routes render only safe chat interaction surfaces
+The system SHALL adapt guest chat routes to allow-listed AG-UI/A2UI
+presentation data. The `/login` route SHALL render an email-entry surface that
+starts the existing login/registration flow. A guest chat surface SHALL NOT
+include a browser JWT, cookie value, CSRF proof, magic-link token, organization
+data, target data, provider data, or authorization data.
+
+#### Scenario: Guest opens the in-chat login form
+- **WHEN** a guest enters `/login`
+- **THEN** chat renders an email-entry interaction surface
+- **AND THEN** the surface contains no session, verification, provider, target,
+  organization, role, or grant data
+
 ### Requirement: Chat header shows safe identity, organization, and context state
 The system SHALL show a safe chat-header projection of identity state,
 authorized selected-organization state when present, and active conversation
