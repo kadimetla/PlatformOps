@@ -18,6 +18,9 @@ resource.
 - Define the staged downstream contract: deterministic plan construction and
   checks first, then approval bound to a plan/context digest, then a separately
   authorized execution and evidence path.
+- Define immutable provision-request revisions for user corrections, with
+  supersession evidence and mandatory re-planning/re-approval when sealed
+  inputs change.
 - Keep user registration, organization claiming, cloud-provider connection,
   Resource Scope bootstrap, frontend work, and account vending in their own changes.
 

@@ -19,6 +19,12 @@
 - [x] 3.2 Add deterministic plan/policy sealing and approval-digest checks.
 - [x] 3.3 Add checkpointed HITL approval with requester/approver separation.
 - [x] 3.4 Add separately authorized execution and terminal evidence after gates.
+- [ ] 3.5 Define and persist immutable provision-request revision, typed patch,
+  supersession, and evidence contracts; invalidate sealed plans and approvals
+  on changed inputs.
+- [ ] 3.6 Add confirmed correction flows for typed UI and chat candidate
+  patches; test correction before sealing, after sealing, after approval, and
+  after execution has started.
 
 ## 4. Verification
 
