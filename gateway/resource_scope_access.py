@@ -80,8 +80,8 @@ class ResourceScopeRoleBinding(BaseModel):
 
     @model_validator(mode="after")
     def _validate_inheritance(self) -> "ResourceScopeRoleBinding":
-        if self.target.kind is ScopeBindingTargetKind.SCOPE and self.target.inherit_to_descendants:
-            raise ValueError("a complete Resource Scope has no descendant Resource Scope")
+        if self.target.kind in {ScopeBindingTargetKind.SCOPE, ScopeBindingTargetKind.ENVIRONMENT} and self.target.inherit_to_descendants:
+            raise ValueError(f"a {self.target.kind.value} target has no descendant Resource Scope")
         return self
 
 
@@ -175,6 +175,8 @@ def _principal_matches(binding_principal: PrincipalReference, request: ResourceS
 def _target_matches(target: ScopeBindingTarget, scope: ResourceScope) -> bool:
     if target.kind is ScopeBindingTargetKind.SCOPE:
         return target.resource_id == scope.scope_id
+    if target.kind is ScopeBindingTargetKind.ENVIRONMENT:
+        return target.resource_id == scope.environment.environment_id
     if not target.inherit_to_descendants:
         return False
     ancestor_ids = {

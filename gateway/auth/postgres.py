@@ -144,6 +144,37 @@ class PostgresUserRegistrationRepository:
         ).fetchone()
         return VerificationAttempt(**row) if row is not None else None
 
+    def find_active_by_digest(self, digest: str, *, now: datetime) -> VerificationAttempt | None:
+        row = self._connection.execute(
+            """
+            SELECT attempt_id, canonical_email, token_digest, expires_at, created_at, consumed_at, invalidated_at
+            FROM auth_verification_attempts
+            WHERE token_digest = %s
+              AND expires_at > %s
+              AND consumed_at IS NULL
+              AND invalidated_at IS NULL
+            """,
+            (digest, now),
+        ).fetchone()
+        return VerificationAttempt(**row) if row is not None else None
+
+    def consume_email_by_digest(self, digest: str, *, now: datetime) -> str | None:
+        """Atomically consume one active attempt and return its canonical email."""
+        with self._connection.transaction():
+            row = self._connection.execute(
+                """
+                UPDATE auth_verification_attempts
+                SET consumed_at = %s
+                WHERE token_digest = %s
+                  AND expires_at > %s
+                  AND consumed_at IS NULL
+                  AND invalidated_at IS NULL
+                RETURNING canonical_email
+                """,
+                (now, digest, now),
+            ).fetchone()
+            return row["canonical_email"] if row is not None else None
+
     def consume_attempt_create_or_recover_user(
         self,
         attempt_id: str,

@@ -2,10 +2,10 @@
 
 ## 1. Authentication and secret safety — merge blockers
 
-- [ ] 1.1 Add repository protocol methods and durable PostgreSQL implementations
+- [x] 1.1 Add repository protocol methods and durable PostgreSQL implementations
   for verification intent/confirmation; remove silent `getattr` fallbacks and
   verify valid durable magic links confirm exactly once.
-- [ ] 1.2 Replace diagnostic secret redaction with a fail-closed approach that
+- [x] 1.2 Replace diagnostic secret redaction with a fail-closed approach that
   redacts query-, path-, and free-text-borne magic-link tokens; add regression
   tests.
 - [ ] 1.3 Return verified browser-session claims structurally from the first
@@ -14,7 +14,7 @@
 
 ## 2. Authorization and approval correctness — merge blockers
 
-- [ ] 2.1 Match environment-targeted scope bindings or reject unsupported
+- [x] 2.1 Match environment-targeted scope bindings or reject unsupported
   environment binding targets; add positive and negative tests.
 - [ ] 2.2 Make approval-required governance produce a satisfiable approval
   lifecycle and re-evaluate before execution; add plan/approval tests.

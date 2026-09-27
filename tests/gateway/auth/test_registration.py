@@ -260,11 +260,14 @@ def test_registration_delivery_failure_returns_generic_response():
     assert response == RegistrationPendingResponse()
 
 
-def test_registration_redaction_removes_token_and_full_url_fragment():
-    redacted = redact_registration_secret("https://platformops.test/verify?token=secret&next=home#fragment")
-    assert "secret" not in redacted
-    assert "#fragment" not in redacted
-    assert "token=%5BREDACTED%5D" in redacted
+@pytest.mark.parametrize("detail", [
+    "https://platformops.test/verify?token=secret&next=home#fragment",
+    "https://platformops.test/verify/AbC123",
+    "delivery failed with code=opaque-secret",
+])
+def test_registration_redaction_fails_closed_for_url_and_free_text_secrets(detail):
+    redacted = redact_registration_secret(detail)
+    assert redacted == "[REDACTED]"
     assert redact_registration_secret("secret") == "[REDACTED]"
 
 
@@ -288,7 +291,29 @@ def test_delivery_failure_diagnostics_redact_verification_url():
     ).request_registration("alice@example.com")
 
     assert "secret-token" not in diagnostics.details[0]
-    assert "token=%5BREDACTED%5D" in diagnostics.details[0]
+    assert diagnostics.details[0] == "[REDACTED]"
+
+
+def test_delivery_failure_diagnostics_redact_path_borne_verification_url():
+    class FailingDelivery:
+        def send_verification(self, *, email: str, token: str) -> None:
+            raise RuntimeError("https://platformops.test/verify/secret-token")
+
+    class Diagnostics:
+        details: list[str] = []
+
+        def record_delivery_failure(self, *, detail: str) -> None:
+            self.details.append(detail)
+
+    diagnostics = Diagnostics()
+    RegistrationService(
+        attempts=InMemoryVerificationAttemptStore(),
+        delivery=FailingDelivery(),
+        token_hmac_key=b"test-key",
+        diagnostics=diagnostics,
+    ).request_registration("alice@example.com")
+
+    assert diagnostics.details == ["[REDACTED]"]
 
 
 def test_verification_intent_validates_without_consuming_scanner_link():

@@ -10,7 +10,6 @@ from enum import Enum
 import hashlib
 import hmac
 import secrets
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from threading import Lock
 from typing import Protocol
 from uuid import uuid4
@@ -22,14 +21,7 @@ PLATFORMOPS_ISSUER = "platformops"
 
 
 def redact_registration_secret(value: str) -> str:
-    """Remove verification tokens from diagnostics without changing routing."""
-    parsed = urlsplit(value)
-    if parsed.scheme or parsed.netloc or parsed.query:
-        query = urlencode(
-            [(key, "[REDACTED]" if key.lower() in {"token", "verification_token"} else item)
-             for key, item in parse_qsl(parsed.query, keep_blank_values=True)]
-        )
-        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, ""))
+    """Fail closed: delivery errors must never become a verification-secret oracle."""
     return "[REDACTED]" if value else value
 
 
@@ -258,6 +250,20 @@ class VerificationAttemptWriter(Protocol):
     def save_new_attempt(self, attempt: VerificationAttempt, *, now: datetime | None = None) -> None: ...
 
 
+class VerificationAttemptRepository(VerificationAttemptWriter, Protocol):
+    """Required attempt operations; incomplete durable wiring must fail loudly."""
+
+    def find_active_by_digest(self, digest: str, *, now: datetime) -> VerificationAttempt | None: ...
+
+    def consume_email_by_digest(self, digest: str, *, now: datetime) -> str | None: ...
+
+
+class VerifiedUserStore(Protocol):
+    def create_or_recover_verified_user(
+        self, email: str, *, verified_at: datetime | None = None,
+    ) -> UserAccount: ...
+
+
 class VerificationEmailDelivery(Protocol):
     def send_verification(self, *, email: str, token: str) -> None: ...
 
@@ -312,12 +318,12 @@ class RegistrationService:
     def __init__(
         self,
         *,
-        attempts: VerificationAttemptWriter,
+        attempts: VerificationAttemptRepository,
         delivery: VerificationEmailDelivery,
         token_hmac_key: bytes,
         rate_limiter: RegistrationRateLimiter | None = None,
         diagnostics: RegistrationDiagnostics | None = None,
-        users: InMemoryUserRegistrationStore | None = None,
+        users: VerifiedUserStore | None = None,
         token_ttl_seconds: int = 900,
     ) -> None:
         if not token_hmac_key:
@@ -357,7 +363,7 @@ class RegistrationService:
             self.begin_verification(email, now=started_at)
         except Exception as error:
             # Delivery outcomes are internal; callers receive no account or
-            # delivery-state signal. Token/log redaction is added in task 2.3.
+            # delivery-state signal.
             if self._diagnostics is not None:
                 self._diagnostics.record_delivery_failure(detail=redact_registration_secret(str(error)))
         return RegistrationPendingResponse()
@@ -379,28 +385,25 @@ class RegistrationService:
     def verification_intent(self, token: str, *, now: datetime | None = None) -> bool:
         """Validate a link without consuming it; safe for mail link scanners."""
         current = now or _utc_now()
-        finder = getattr(self._attempts, "find_active_by_digest", None)
-        if finder is None:
-            return False
-        return finder(digest_verification_token(token, hmac_key=self._token_hmac_key), now=current) is not None
+        return self._attempts.find_active_by_digest(
+            digest_verification_token(token, hmac_key=self._token_hmac_key), now=current,
+        ) is not None
 
     def confirm_verification(self, token: str, *, now: datetime | None = None) -> bool:
         """Consume an active token exactly once; session issuance is separate."""
         current = now or _utc_now()
-        consumer = getattr(self._attempts, "consume_email_by_digest", None)
-        if consumer is None:
-            return False
-        return consumer(digest_verification_token(token, hmac_key=self._token_hmac_key), now=current) is not None
+        return self._attempts.consume_email_by_digest(
+            digest_verification_token(token, hmac_key=self._token_hmac_key), now=current,
+        ) is not None
 
     def confirm_and_issue_session(self, token: str, *, now: datetime | None = None):
         """Confirm once and issue an active, unassociated token-free session."""
         if self._users is None:
             return None
         current = now or _utc_now()
-        consumer = getattr(self._attempts, "consume_email_by_digest", None)
-        if consumer is None:
-            return None
-        email = consumer(digest_verification_token(token, hmac_key=self._token_hmac_key), now=current)
+        email = self._attempts.consume_email_by_digest(
+            digest_verification_token(token, hmac_key=self._token_hmac_key), now=current,
+        )
         if email is None:
             return None
         from gateway.auth.claims import OIDCClaims

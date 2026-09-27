@@ -92,6 +92,15 @@ def test_binding_requires_explicit_actions_and_forbids_free_form_policy_or_inval
                 inherit_to_descendants=True,
             ),
         )
+    with pytest.raises(ValidationError, match="environment target has no descendant"):
+        ResourceScopeRoleBinding(
+            principal=principal,
+            actions=frozenset({ResourceScopeAction.VIEW}),
+            target=ScopeBindingTarget(
+                kind=ScopeBindingTargetKind.ENVIRONMENT, resource_id="env_prod",
+                inherit_to_descendants=True,
+            ),
+        )
     with pytest.raises(ValidationError, match="Extra inputs"):
         ResourceScopeRoleBinding.model_validate({
             "principal": {"kind": "user", "principal_id": "usr_alice"},
@@ -137,6 +146,31 @@ def test_authorizer_denies_by_default_and_allows_exact_or_explicitly_inheriting_
     assert ResourceScopeAuthorizer(
         registry=registry, bindings=InMemoryResourceScopeRoleBindingStore((inheriting,)), memberships=memberships
     ).authorize(request).allowed is True
+
+
+def test_authorizer_allows_an_exact_environment_target_binding():
+    scope = _active_scope()
+    registry = InMemoryReviewedResourceScopeRegistry()
+    registry.register_reviewed(scope)
+    user = PrincipalReference(kind=PrincipalKind.USER, principal_id="usr_alice")
+    binding = ResourceScopeRoleBinding(
+        principal=user,
+        actions=frozenset({ResourceScopeAction.REQUEST_PROVISION}),
+        target=ScopeBindingTarget(
+            kind=ScopeBindingTargetKind.ENVIRONMENT,
+            resource_id=scope.environment.environment_id,
+        ),
+    )
+    decision = ResourceScopeAuthorizer(
+        registry=registry,
+        bindings=InMemoryResourceScopeRoleBindingStore((binding,)),
+        memberships=ActiveMemberships({"usr_alice"}),
+    ).authorize(ResourceScopeAuthorizationRequest(
+        principal=user, action=ResourceScopeAction.REQUEST_PROVISION, scope_id=scope.scope_id,
+    ))
+
+    assert decision.allowed is True
+    assert decision.matched_binding_ids == (binding.binding_id,)
 
 
 def test_revoked_identity_group_binding_denies_later_request():

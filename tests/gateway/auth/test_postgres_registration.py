@@ -8,7 +8,7 @@ from gateway.auth.postgres import (
     PostgresUserRegistrationRepository,
     apply_user_registration_migrations,
 )
-from gateway.auth.registration import VerificationAttempt, digest_verification_token
+from gateway.auth.registration import RegistrationService, VerificationAttempt, digest_verification_token
 
 
 DATABASE_URL = os.environ.get("PLATFORMOPS_DATABASE_URL")
@@ -92,3 +92,26 @@ def test_postgres_repository_consumes_once_and_creates_or_recovers_user(reposito
 
     assert account is not None
     assert replay is None
+
+
+def test_postgres_repository_supports_magic_link_intent_and_exactly_once_confirmation(repository):
+    class Delivery:
+        token: str | None = None
+
+        def send_verification(self, *, email: str, token: str) -> None:
+            self.token = token
+
+    delivery = Delivery()
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+    service = RegistrationService(
+        attempts=repository, users=repository, delivery=delivery, token_hmac_key=b"test-key",
+    )
+
+    service.begin_verification("alice@example.com", now=now)
+
+    assert delivery.token is not None
+    assert service.verification_intent(delivery.token, now=now + timedelta(minutes=1))
+    session = service.confirm_and_issue_session(delivery.token, now=now + timedelta(minutes=1))
+    assert session is not None
+    assert session.actor.email == "alice@example.com"
+    assert service.confirm_and_issue_session(delivery.token, now=now + timedelta(minutes=2)) is None
