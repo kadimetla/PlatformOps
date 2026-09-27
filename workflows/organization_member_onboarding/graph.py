@@ -12,7 +12,6 @@ def build_organization_member_onboarding_graph(
         return {
             "organization_id": repository.inspect_invitation(
                 token_digest=state["invitation_token_digest"],
-                legacy_token_digest=state["legacy_invitation_token_digest"],
                 user_subject=state["user_subject"],
             )
         }
@@ -21,7 +20,6 @@ def build_organization_member_onboarding_graph(
         return {
             "membership": repository.accept_invitation(
                 token_digest=state["invitation_token_digest"],
-                legacy_token_digest=state["legacy_invitation_token_digest"],
                 user_subject=state["user_subject"],
             )
         }

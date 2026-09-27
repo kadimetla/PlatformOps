@@ -56,3 +56,12 @@ CREATE TABLE IF NOT EXISTS resource_scopes (
 );
 
 ALTER TABLE resource_scopes ADD COLUMN IF NOT EXISTS organization_slug TEXT;
+
+-- Upgrade-shaped databases may have received the column through the early
+-- nullable ALTER above. Backfill from the organization name before runtime
+-- resolution constructs its non-null Organization model.
+UPDATE resource_scopes AS scope
+SET organization_slug = split_part(scope.canonical_path, ':', 2)
+WHERE scope.organization_slug IS NULL OR scope.organization_slug = '';
+
+ALTER TABLE resource_scopes ALTER COLUMN organization_slug SET NOT NULL;

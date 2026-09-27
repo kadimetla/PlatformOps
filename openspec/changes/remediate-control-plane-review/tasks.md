@@ -26,30 +26,30 @@
 - [x] 2.5 Strip chat input before slash-command recognition; verify whitespace
   prefixed protected guest commands receive login guidance and never invoke
   model-backed intake.
-- [ ] 2.6 Carry distinct approver identity into sealed approval/evidence and
+- [x] 2.6 Carry distinct approver identity into sealed approval/evidence and
   remove execution states that cannot occur.
 
 ## 3. Durable lifecycle and migration correctness — merge blockers unless deferred enablement
 
 - [x] 3.1 Align in-memory organization-onboarding dedupe with the PostgreSQL
   identity-boundary uniqueness constraint; add cross-name regression tests.
-- [ ] 3.2 Canonicalize invitation emails at command and persistence boundaries
+- [x] 3.2 Canonicalize invitation emails at command and persistence boundaries
   and convert invitation token digests to keyed HMAC; add compatibility/migration
   handling and recipient-match tests.
-- [ ] 3.3 Correct resource-scope migration backfill so upgrade-shaped rows meet
+- [x] 3.3 Correct resource-scope migration backfill so upgrade-shaped rows meet
   runtime non-null model requirements; test fresh and upgrade paths.
-- [ ] 3.4 Persist/retrieve IdP identity-boundary configuration so the
+- [x] 3.4 Persist/retrieve IdP identity-boundary configuration so the
   post-login IdP journey is reachable; add PostgreSQL integration tests.
 - [x] 3.5 Set `extra="forbid"` on provider resolution contracts and add a
   strict-extra-field regression test.
 
 ## 4. Documentation and reproducible verification
 
-- [ ] 4.1 Reconcile `IMPLEMENTATION_STATUS.md` with actual completion state and
+- [x] 4.1 Reconcile `IMPLEMENTATION_STATUS.md` with actual completion state and
   correct remaining `org:group:team:project:env` terminology with a correction
   note.
 - [x] 4.2 Make the full test command isolated from developer `.env` loading;
   verify no test triggers live model/cloud/network behavior.
-- [ ] 4.3 Run focused regressions, PostgreSQL tests, isolated `uv run pytest`,
+- [x] 4.3 Run focused regressions, PostgreSQL tests, isolated `uv run pytest`,
   `openspec validate remediate-control-plane-review --strict`, and a final
   merge-readiness review.

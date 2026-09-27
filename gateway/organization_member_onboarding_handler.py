@@ -1,5 +1,4 @@
 """Gateway composition for the authenticated `/join-org` command."""
-from hashlib import sha256
 import hmac
 
 import psycopg
@@ -40,9 +39,6 @@ def build_organization_member_onboarding_handler(
                 "invitation_token_digest": _invitation_token_digest(
                     acceptance.invitation_token, hmac_key=invitation_hmac_key,
                 ),
-                "legacy_invitation_token_digest": sha256(
-                    acceptance.invitation_token.encode("utf-8")
-                ).hexdigest(),
                 "organization_id": None,
                 "membership": None,
             }

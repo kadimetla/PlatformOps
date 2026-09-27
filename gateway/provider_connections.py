@@ -151,6 +151,8 @@ class ProvisioningContainerResolutionStatus(str, Enum):
 class ProvisioningContainerResolution(BaseModel):
     """Provider-boundary result consumed by later ordinary provisioning."""
 
+    model_config = ConfigDict(extra="forbid")
+
     status: ProvisioningContainerResolutionStatus
     binding: CloudResourceContainerBinding | None = None
 

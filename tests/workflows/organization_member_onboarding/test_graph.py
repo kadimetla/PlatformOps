@@ -10,11 +10,11 @@ class RecordingMembershipRepository:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, str]] = []
 
-    def inspect_invitation(self, *, token_digest: str, user_subject: str, legacy_token_digest: str | None = None) -> str:
+    def inspect_invitation(self, *, token_digest: str, user_subject: str) -> str:
         self.calls.append(("inspect", token_digest, user_subject))
         return "org_acme"
 
-    def accept_invitation(self, *, token_digest: str, user_subject: str, legacy_token_digest: str | None = None) -> OrganizationMembership:
+    def accept_invitation(self, *, token_digest: str, user_subject: str) -> OrganizationMembership:
         self.calls.append(("accept", token_digest, user_subject))
         return OrganizationMembership(
             membership_id="member_alice_acme",
@@ -35,7 +35,6 @@ def test_graph_uses_only_a_digest_and_activates_membership_after_validation():
         {
             "user_subject": "usr_alice",
             "invitation_token_digest": digest,
-            "legacy_invitation_token_digest": None,
             "organization_id": None,
             "membership": None,
         }

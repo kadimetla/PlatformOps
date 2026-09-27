@@ -1,6 +1,6 @@
 # PlatformOps implementation status
 
-**Last reviewed:** 2026-09-25
+**Last reviewed:** 2026-09-27
 **Purpose:** Cross-change review dashboard. This is a navigation and
 status note, not a source of behavioral requirements. Each OpenSpec
 change remains authoritative for its proposal, requirements, design,
@@ -64,6 +64,10 @@ deny-by-default and must explicitly resolve its own trusted context.
 | **Provider Binding** | A trusted mapping from a Resource Scope to a Cloud Resource Container and execution identity; never accepted from a client token/request |
 | **Deployment Destination** | Runtime location inside a container, such as an EKS namespace or Cloud Run service; separate from the Resource Scope |
 
+The removed temporary `org:bu/project/workspace` normalization edge and its
+replacement with `scope_id` registry resolution are documented in
+[RESOURCE_SCOPE_TRANSITION.md](RESOURCE_SCOPE_TRANSITION.md).
+
 An authenticated login establishes a principal only. It does not establish
 organization membership, Resource Scope access, a provider binding, or cloud
 execution authority.
@@ -81,9 +85,15 @@ execution authority.
 5. Integrate membership and resolved Resource Scope context into the already
    planned provision workflow.
 
+## Correction note
+
+Earlier status notes used `org:group:team:project:env`. That was incorrect:
+`group` is an identity/access principal, while business ownership is `bu`.
+The canonical Resource Scope path is `org:…:bu:…:team:…:project:…:env:…`.
+
 ## Explicitly not built yet
 
 - Personal-organization creation or business-organization claiming
-- Organization memberships, invitations, SCIM, or tenant IdP configuration
+- SCIM synchronization or live tenant-IdP federation
 - Live AWS, GCP, or Azure adapters or cloud mutations
-- Provision approval, execution, evidence, or a frontend for these workflows
+- A reviewed live provision executor or frontend for these workflows

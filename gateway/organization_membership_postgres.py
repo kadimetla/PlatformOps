@@ -82,7 +82,6 @@ class PostgresOrganizationMembershipRepository(ActiveOrganizationMembershipLooku
 
     def accept_invitation(
         self, *, token_digest: str, user_subject: str, accepted_at: datetime | None = None,
-        legacy_token_digest: str | None = None,
     ) -> OrganizationMembership:
         """Consume one valid invite and create one active tenant membership.
 
@@ -95,8 +94,8 @@ class PostgresOrganizationMembershipRepository(ActiveOrganizationMembershipLooku
                 invitation = self._connection.execute(
                     """SELECT invitation_id, organization_id, canonical_email, token_digest,
                               expires_at, consumed_at
-                       FROM organization_invitations WHERE token_digest = ANY(%s) FOR UPDATE""",
-                    ([token_digest, legacy_token_digest] if legacy_token_digest else [token_digest],),
+                       FROM organization_invitations WHERE token_digest = %s FOR UPDATE""",
+                    (token_digest,),
                 ).fetchone()
                 if invitation is None or invitation["consumed_at"] is not None or invitation["expires_at"] <= now:
                     raise OrganizationInvitationNotUsable("invitation is expired, consumed, or unknown")
@@ -144,7 +143,7 @@ class PostgresOrganizationMembershipRepository(ActiveOrganizationMembershipLooku
             raise DuplicateActiveOrganizationMembership("active membership already exists") from error
 
     def inspect_invitation(
-        self, *, token_digest: str, user_subject: str, legacy_token_digest: str | None = None,
+        self, *, token_digest: str, user_subject: str,
     ) -> str:
         """Validate current invitation eligibility without consuming it.
 
@@ -155,8 +154,8 @@ class PostgresOrganizationMembershipRepository(ActiveOrganizationMembershipLooku
         with self._connection.transaction():
             invitation = self._connection.execute(
                 """SELECT organization_id, canonical_email, expires_at, consumed_at
-                   FROM organization_invitations WHERE token_digest = ANY(%s)""",
-                ([token_digest, legacy_token_digest] if legacy_token_digest else [token_digest],),
+                   FROM organization_invitations WHERE token_digest = %s""",
+                (token_digest,),
             ).fetchone()
             if invitation is None or invitation["consumed_at"] is not None or invitation["expires_at"] <= now:
                 raise OrganizationInvitationNotUsable("invitation is expired, consumed, or unknown")

@@ -6,6 +6,7 @@ import json
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from gateway.resolved_resource_scope import ResolvedResourceScopeContext
+from gateway.resource_scope_access import PrincipalReference
 
 
 def _digest(value: object) -> str:
@@ -65,16 +66,17 @@ class SealedProvisionPlan(BaseModel):
 
 
 class ProvisionApprovalDigest(BaseModel):
-    """Minimal approval binding; actor and checkpoint evidence arrive in task 3.3."""
+    """Approval evidence bound to a sealed plan and authenticated approver."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     plan_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
     approval_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    approved_by: PrincipalReference
 
     @classmethod
-    def for_plan(cls, plan: SealedProvisionPlan) -> "ProvisionApprovalDigest":
-        return cls(plan_digest=plan.plan_digest, approval_digest=plan.approval_digest)
+    def for_plan(cls, plan: SealedProvisionPlan, *, approved_by: PrincipalReference) -> "ProvisionApprovalDigest":
+        return cls(plan_digest=plan.plan_digest, approval_digest=plan.approval_digest, approved_by=approved_by)
 
     def matches(self, plan: SealedProvisionPlan) -> bool:
         return (

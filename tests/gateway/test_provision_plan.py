@@ -5,7 +5,7 @@ from gateway.provision_plan import (
     ProvisionApprovalDigest, ProvisionPlanInputs, SealedProvisionPlan, TrustedProvisionPolicy,
 )
 from gateway.resolved_resource_scope import ResolvedResourceScopeContext
-from gateway.resource_scope_access import ResourceScopeAuthorizationDecision
+from gateway.resource_scope_access import PrincipalKind, PrincipalReference, ResourceScopeAuthorizationDecision
 from gateway.resource_scope_bindings import (
     CloudProvider, CloudResourceContainerBinding, CloudResourceContainerType, ProviderBindingState,
 )
@@ -70,13 +70,14 @@ def test_plan_seal_deterministically_binds_inputs_policy_and_resolved_context():
 
 def test_approval_must_match_the_exact_sealed_plan_and_policy_version():
     original = _plan()
-    approval = ProvisionApprovalDigest.for_plan(original)
+    approver = PrincipalReference(kind=PrincipalKind.USER, principal_id="usr_bob")
+    approval = ProvisionApprovalDigest.for_plan(original, approved_by=approver)
 
     assert approval.matches(original) is True
     assert approval.matches(_plan(policy_version=2)) is False
     assert approval.matches(_plan(hostname="other.example.com")) is False
     assert ProvisionApprovalDigest(
-        plan_digest=original.plan_digest, approval_digest="0" * 64,
+        plan_digest=original.plan_digest, approval_digest="0" * 64, approved_by=approver,
     ).matches(original) is False
 
 

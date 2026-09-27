@@ -26,6 +26,7 @@ class ProvisionApprovalState(TypedDict):
     requester: PrincipalReference
     reviewer: PrincipalReference | None
     approved: bool | None
+    approval: ProvisionApprovalDigest | None
 
 
 class ProvisionApprovalDenied(PermissionError):
@@ -50,6 +51,7 @@ def build_provision_approval_graph(*, authorizer: ResourceScopeAuthorizer):
             return {"approved": False}
         if not ProvisionApprovalDigest(
             plan_digest=response.plan_digest, approval_digest=response.approval_digest,
+            approved_by=reviewer,
         ).matches(plan):
             raise ProvisionApprovalDenied("approval does not match the sealed provision plan")
         decision = authorizer.authorize(ResourceScopeAuthorizationRequest(
@@ -58,7 +60,9 @@ def build_provision_approval_graph(*, authorizer: ResourceScopeAuthorizer):
         ))
         if not decision.allowed:
             raise ProvisionApprovalDenied("reviewer lacks provision approval permission")
-        return {"approved": True}
+        return {"approved": True, "approval": ProvisionApprovalDigest(
+            plan_digest=plan.plan_digest, approval_digest=plan.approval_digest, approved_by=reviewer,
+        )}
 
     builder = StateGraph(ProvisionApprovalState)
     builder.add_node("review_plan", review)
