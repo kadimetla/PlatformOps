@@ -44,21 +44,30 @@ class ProvisionExecutionDenied(PermissionError):
     pass
 
 
+class ProvisionApprovalReceiptRepository(Protocol):
+    """Trusted persistence boundary; execution never accepts receipt input."""
+
+    def find_active_by_plan_digest(self, *, plan_digest: str) -> ProvisionApprovalDigest | None: ...
+
+
 class ProvisionExecutionGate:
     """Revalidates approval and registry freshness before any executor call."""
 
     def __init__(
         self, executor: ProvisionExecutor, *, governance: ResourceScopeGovernanceEvaluator,
+        approvals: ProvisionApprovalReceiptRepository,
     ) -> None:
         self._executor = executor
         self._governance = governance
+        self._approvals = approvals
 
     def execute(
-        self, *, plan: SealedProvisionPlan, approval: ProvisionApprovalDigest,
+        self, *, plan: SealedProvisionPlan,
         scope: ResourceScope | None, bindings: tuple[CloudResourceContainerBinding, ...],
         now: datetime | None = None,
     ) -> ProvisionExecutionEvidence:
-        if not approval.matches(plan):
+        approval = self._approvals.find_active_by_plan_digest(plan_digest=plan.plan_digest)
+        if approval is None or not approval.matches(plan):
             raise ProvisionExecutionDenied("approval does not match the sealed provision plan")
         if requires_fresh_resolution(plan.context, scope=scope, bindings=bindings):
             raise ProvisionExecutionDenied("resolved scope context changed; a fresh provision run is required")

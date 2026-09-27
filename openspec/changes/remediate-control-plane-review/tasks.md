@@ -35,8 +35,8 @@
 - [x] 3.1 Align in-memory organization-onboarding dedupe with the PostgreSQL
   identity-boundary uniqueness constraint; add cross-name regression tests.
 - [x] 3.2 Canonicalize invitation emails at command and persistence boundaries
-  and convert invitation token digests to keyed HMAC; add compatibility/migration
-  handling and recipient-match tests.
+  and convert invitation token digests to keyed HMAC; do not retain an unkeyed
+  digest compatibility path; add recipient-match tests.
 - [x] 3.3 Correct resource-scope migration backfill so upgrade-shaped rows meet
   runtime non-null model requirements; test fresh and upgrade paths.
 - [x] 3.4 Persist/retrieve IdP identity-boundary configuration so the

@@ -24,6 +24,14 @@ class FakeExecutor:
         self.calls.append(plan.plan_digest)
 
 
+class ApprovalReceipts:
+    def __init__(self, approval: ProvisionApprovalDigest | None) -> None:
+        self.approval = approval
+
+    def find_active_by_plan_digest(self, *, plan_digest: str) -> ProvisionApprovalDigest | None:
+        return self.approval if self.approval and self.approval.plan_digest == plan_digest else None
+
+
 def _governance(*policies: ResourceScopeGovernancePolicy) -> ResourceScopeGovernanceEvaluator:
     return ResourceScopeGovernanceEvaluator(InMemoryResourceScopeGovernancePolicyStore(policies))
 
@@ -66,8 +74,8 @@ def test_execution_gate_calls_only_injected_executor_after_matching_approval_and
     plan, scope, binding = _plan()
     executor = FakeExecutor()
 
-    evidence = ProvisionExecutionGate(executor, governance=_governance()).execute(
-        plan=plan, approval=_approval(plan), scope=scope, bindings=(binding,),
+    evidence = ProvisionExecutionGate(executor, governance=_governance(), approvals=ApprovalReceipts(_approval(plan))).execute(
+        plan=plan, scope=scope, bindings=(binding,),
         now=datetime(2026, 9, 25, tzinfo=timezone.utc),
     )
 
@@ -80,16 +88,15 @@ def test_execution_gate_calls_only_injected_executor_after_matching_approval_and
 def test_execution_gate_denies_bad_approval_or_binding_drift_without_calling_executor():
     plan, scope, binding = _plan()
     executor = FakeExecutor()
-    gate = ProvisionExecutionGate(executor, governance=_governance())
+    gate = ProvisionExecutionGate(executor, governance=_governance(), approvals=ApprovalReceipts(None))
 
     with pytest.raises(ProvisionExecutionDenied, match="approval"):
         gate.execute(
-            plan=plan, approval=ProvisionApprovalDigest(plan_digest="0" * 64, approval_digest=plan.approval_digest, approved_by=PrincipalReference(kind=PrincipalKind.USER, principal_id="usr_bob")),
-            scope=scope, bindings=(binding,),
+            plan=plan, scope=scope, bindings=(binding,),
         )
     with pytest.raises(ProvisionExecutionDenied, match="context changed"):
-        gate.execute(
-            plan=plan, approval=_approval(plan), scope=scope,
+        ProvisionExecutionGate(executor, governance=_governance(), approvals=ApprovalReceipts(_approval(plan))).execute(
+            plan=plan, scope=scope,
             bindings=(binding.model_copy(update={"state": ProviderBindingState.SUSPENDED}),),
         )
     assert executor.calls == []
@@ -103,8 +110,8 @@ def test_execution_gate_rechecks_current_governance_with_the_recorded_approval_p
         target_id=scope.environment.environment_id,
         require_approval_for_provision=True,
     )
-    evidence = ProvisionExecutionGate(executor, governance=_governance(approval_policy)).execute(
-        plan=plan, approval=_approval(plan), scope=scope, bindings=(binding,),
+    evidence = ProvisionExecutionGate(executor, governance=_governance(approval_policy), approvals=ApprovalReceipts(_approval(plan))).execute(
+        plan=plan, scope=scope, bindings=(binding,),
     )
 
     assert evidence.status is ProvisionExecutionStatus.SUCCEEDED
@@ -121,8 +128,8 @@ def test_execution_gate_denies_when_current_governance_has_changed():
     )
 
     with pytest.raises(ProvisionExecutionDenied, match="current governance"):
-        ProvisionExecutionGate(executor, governance=_governance(denied_policy)).execute(
-            plan=plan, approval=_approval(plan), scope=scope, bindings=(binding,),
+        ProvisionExecutionGate(executor, governance=_governance(denied_policy), approvals=ApprovalReceipts(_approval(plan))).execute(
+            plan=plan, scope=scope, bindings=(binding,),
         )
 
     assert executor.calls == []

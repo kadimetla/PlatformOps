@@ -365,7 +365,9 @@ class RegistrationService:
             # Delivery outcomes are internal; callers receive no account or
             # delivery-state signal.
             if self._diagnostics is not None:
-                self._diagnostics.record_delivery_failure(detail=redact_registration_secret(str(error)))
+                self._diagnostics.record_delivery_failure(
+                    detail=f"{type(error).__name__}: {redact_registration_secret(str(error))}"
+                )
         return RegistrationPendingResponse()
 
     def begin_verification(self, email: str, *, now: datetime | None = None) -> None:
