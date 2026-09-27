@@ -309,17 +309,13 @@ class InMemoryOrganizationOnboardingStore:
 
     def __init__(self) -> None:
         self._requests_by_id: dict[str, OrganizationOnboardingRequest] = {}
-        self._requests_by_identity: dict[tuple[str, IdentityBoundaryKind, str], str] = {}
+        self._requests_by_identity: dict[tuple[IdentityBoundaryKind, str], str] = {}
         self._active_by_organization_id: dict[str, ActiveOrganization] = {}
         self._proof_by_request_id: dict[str, IdentityBoundaryVerificationEvidence] = {}
         self._lock = Lock()
 
     def save_pending(self, request: OrganizationOnboardingRequest) -> None:
-        key = (
-            request.organization_name.casefold(),
-            request.identity_boundary.kind,
-            request.identity_boundary.reference.casefold(),
-        )
+        key = (request.identity_boundary.kind, request.identity_boundary.reference.casefold())
         with self._lock:
             if key in self._requests_by_identity:
                 raise OrganizationOnboardingAlreadyRequested(

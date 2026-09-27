@@ -85,6 +85,22 @@ def test_duplicate_organization_identity_request_is_rejected():
         service.start(applicant=_applicant(), onboarding=_start())
 
 
+def test_duplicate_identity_boundary_is_rejected_even_when_organization_name_differs():
+    service = OrganizationOnboardingService(store=InMemoryOrganizationOnboardingStore())
+    service.start(applicant=_applicant(), onboarding=_start())
+
+    with pytest.raises(OrganizationOnboardingAlreadyRequested, match="identity boundary"):
+        service.start(
+            applicant=_applicant(),
+            onboarding=OrganizationOnboardingStart(
+                organization_name="Acme Commerce",
+                identity_boundary=OrganizationIdentityBoundary(
+                    kind=IdentityBoundaryKind.DOMAIN, reference="acme.example",
+                ),
+            ),
+        )
+
+
 def test_boundary_requires_a_structured_non_email_reference():
     with pytest.raises(ValidationError, match="whitespace-free"):
         OrganizationIdentityBoundary(

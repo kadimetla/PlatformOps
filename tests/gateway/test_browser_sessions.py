@@ -182,6 +182,33 @@ def test_logout_revokes_server_session_and_returns_a_secure_cookie_clear_header(
     assert clear_header == "platformops_session=; HttpOnly; Max-Age=0; Path=/; SameSite=Lax; Secure"
 
 
+def test_mutation_and_logout_reuse_verified_claims_without_an_unverified_second_decode(monkeypatch):
+    now = datetime(2026, 9, 24, tzinfo=timezone.utc)
+    signing_secret = b"test-signing-key-that-is-at-least-32-bytes"
+    repository = InMemoryBrowserSessionRepository(csrf_hmac_key=b"test-csrf-key")
+    keys = StaticBrowserSessionSigningKeyProvider(
+        BrowserSessionSigningKey(key_id="test-key", secret=signing_secret)
+    )
+    issued = BrowserSessionIssuer(
+        repository=repository, signing_keys=keys, csrf_hmac_key=b"test-csrf-key", ttl_seconds=60,
+    ).issue(subject="usr_alice", now=now)
+    authenticator = BrowserSessionAuthenticator(
+        repository=repository, signing_keys=keys, expected_origin="https://platformops.example",
+    )
+    original_decode = jwt.decode
+
+    def decode_without_unverified_fallback(*args, **kwargs):
+        assert kwargs.get("options", {}).get("verify_signature") is not False
+        return original_decode(*args, **kwargs)
+
+    monkeypatch.setattr("gateway.browser_sessions.jwt.decode", decode_without_unverified_fallback)
+    assert authenticator.authenticate_mutation(
+        issued.set_cookie._token, origin="https://platformops.example",
+        csrf_proof=issued.csrf_proof, now=now,
+    ).subject == "usr_alice"
+    assert authenticator.logout(issued.set_cookie._token, now=now).subject == "usr_alice"
+
+
 def test_local_signing_key_provider_is_explicit_nonproduction_and_supports_previous_key_verification():
     current = base64.urlsafe_b64encode(b"current-signing-key-that-is-at-least-32-bytes").decode().rstrip("=")
     previous = base64.urlsafe_b64encode(b"previous-signing-key-that-is-at-least-32-bytes").decode().rstrip("=")

@@ -8,7 +8,7 @@
 - [x] 1.2 Replace diagnostic secret redaction with a fail-closed approach that
   redacts query-, path-, and free-text-borne magic-link tokens; add regression
   tests.
-- [ ] 1.3 Return verified browser-session claims structurally from the first
+- [x] 1.3 Return verified browser-session claims structurally from the first
   JWT verification; remove the signature-disabled second decode and test CSRF
   and logout paths.
 
@@ -23,7 +23,7 @@
 - [ ] 2.4 Require explicit organization affiliation for every supported
   principal kind; derive identity-group IDs only from an authoritative
   server-side source and reject caller-asserted group membership.
-- [ ] 2.5 Strip chat input before slash-command recognition; verify whitespace
+- [x] 2.5 Strip chat input before slash-command recognition; verify whitespace
   prefixed protected guest commands receive login guidance and never invoke
   model-backed intake.
 - [ ] 2.6 Carry distinct approver identity into sealed approval/evidence and
@@ -31,7 +31,7 @@
 
 ## 3. Durable lifecycle and migration correctness — merge blockers unless deferred enablement
 
-- [ ] 3.1 Align in-memory organization-onboarding dedupe with the PostgreSQL
+- [x] 3.1 Align in-memory organization-onboarding dedupe with the PostgreSQL
   identity-boundary uniqueness constraint; add cross-name regression tests.
 - [ ] 3.2 Canonicalize invitation emails at command and persistence boundaries
   and convert invitation token digests to keyed HMAC; add compatibility/migration

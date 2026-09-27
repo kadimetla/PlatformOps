@@ -38,6 +38,16 @@ def test_guest_protected_commands_require_login_without_starting_a_protected_rou
     assert route.context_kind is None
 
 
+def test_whitespace_prefixed_guest_protected_command_requires_login_without_intake():
+    raw_text = " /provision"
+    route = GuestChatRouter().route(
+        command=parse_chat_command(raw_text), candidate_intent=None, raw_text=raw_text,
+    )
+
+    assert route.action is GuestChatAction.LOGIN_REQUIRED
+    assert route.context_kind is None
+
+
 @pytest.mark.parametrize(
     ("intent", "action", "context_kind"),
     [

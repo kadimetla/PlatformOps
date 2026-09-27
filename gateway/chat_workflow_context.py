@@ -63,9 +63,12 @@ def parse_chat_command(text: str) -> ParsedChatCommand | None:
     non-routable so a slash-prefixed string can never select an arbitrary
     workflow or mutate control-plane state.
     """
-    if not isinstance(text, str) or not text.startswith("/"):
+    if not isinstance(text, str):
         return None
-    parts = text.strip().split()
+    normalized = text.strip()
+    if not normalized.startswith("/"):
+        return None
+    parts = normalized.split()
     if not parts:
         return ParsedChatCommand(kind=ChatCommandKind.UNKNOWN)
     command, *arguments = parts

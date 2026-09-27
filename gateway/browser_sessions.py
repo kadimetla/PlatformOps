@@ -254,6 +254,12 @@ class BrowserSessionAuthenticationError(PermissionError):
     """Generic deny-by-default result for an untrusted browser session."""
 
 
+@dataclass(frozen=True)
+class _VerifiedBrowserSessionIdentity:
+    principal: ValidatedPrincipal
+    session_id: str
+
+
 class BrowserSessionAuthenticator:
     """Validates a cookie token and derives the only principal router may use."""
 
@@ -272,6 +278,11 @@ class BrowserSessionAuthenticator:
         self._expected_origin = expected_origin
 
     def authenticate(self, token: str, *, now: datetime | None = None) -> ValidatedPrincipal:
+        return self._authenticate_identity(token, now=now).principal
+
+    def _authenticate_identity(
+        self, token: str, *, now: datetime | None = None,
+    ) -> _VerifiedBrowserSessionIdentity:
         if not token:
             raise BrowserSessionAuthenticationError("invalid browser session")
         try:
@@ -303,31 +314,29 @@ class BrowserSessionAuthenticator:
         )
         if session is None or session.issuer != claims["iss"]:
             raise BrowserSessionAuthenticationError("invalid browser session")
-        return ValidatedPrincipal(issuer=claims["iss"], subject=claims["sub"])
+        return _VerifiedBrowserSessionIdentity(
+            principal=ValidatedPrincipal(issuer=claims["iss"], subject=claims["sub"]),
+            session_id=claims["sid"],
+        )
 
     def authenticate_mutation(
         self, token: str, *, origin: str | None, csrf_proof: str | None,
         now: datetime | None = None,
     ) -> ValidatedPrincipal:
-        principal = self.authenticate(token, now=now)
+        authenticated = self._authenticate_identity(token, now=now)
         if origin != self._expected_origin or not csrf_proof:
             raise BrowserSessionAuthenticationError("invalid browser session")
-        claims = self._decode_identity_claims(token)
         if not self._repository.verify_csrf(
-            session_id=claims["sid"], subject=principal.subject, proof=csrf_proof, now=now
+            session_id=authenticated.session_id, subject=authenticated.principal.subject,
+            proof=csrf_proof, now=now,
         ):
             raise BrowserSessionAuthenticationError("invalid browser session")
-        return principal
+        return authenticated.principal
 
     def logout(self, token: str, *, now: datetime | None = None) -> ValidatedPrincipal:
-        principal = self.authenticate(token, now=now)
-        claims = self._decode_identity_claims(token)
-        self._repository.revoke(session_id=claims["sid"], reason="logout", now=now)
-        return principal
-
-    def _decode_identity_claims(self, token: str) -> dict:
-        """Authentication already verified this token; retain one parsing boundary."""
-        return jwt.decode(token, options={"verify_signature": False})
+        authenticated = self._authenticate_identity(token, now=now)
+        self._repository.revoke(session_id=authenticated.session_id, reason="logout", now=now)
+        return authenticated.principal
 
 
 def build_browser_session(

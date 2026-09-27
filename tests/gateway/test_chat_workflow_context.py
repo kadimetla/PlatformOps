@@ -105,6 +105,13 @@ def test_parser_leaves_ordinary_chat_text_for_model_backed_intake():
     assert parse_chat_command("I need to provision checkout") is None
 
 
+def test_parser_normalizes_leading_whitespace_before_command_recognition():
+    command = parse_chat_command("  /provision")
+
+    assert command is not None
+    assert command.kind is ChatCommandKind.UNKNOWN
+
+
 class _Memberships:
     def __init__(self, active_subjects=()):
         self.active_subjects = set(active_subjects)
