@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-24
+goal: Establish a minimal secure browser session boundary after passwordless
+  registration without putting authorization or cloud context in the browser.

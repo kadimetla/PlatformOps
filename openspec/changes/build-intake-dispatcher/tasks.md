@@ -53,4 +53,4 @@
 
 - [x] 6.1 Run `tests/workflows/intake/` and `tests/harness/`; all pass
       with no real model credentials configured anywhere
-- [ ] 6.2 `openspec validate build-intake-dispatcher --strict` passes
+- [x] 6.2 `openspec validate build-intake-dispatcher --strict` passes

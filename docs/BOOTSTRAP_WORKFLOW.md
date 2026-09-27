@@ -15,13 +15,30 @@ example); surfaced an unresolved gap between the registry's scalar
 `max_capability` and `ceiling.py`'s intent-keyed `CeilingEntry` while
 doing so.
 
+**Corrected 2026-09-23 by
+[`build-org-onboarding`](../openspec/changes/build-org-onboarding/README.md):**
+the canonical PlatformOps target vocabulary is now
+`org:bu:team:project:env`, not `org:bu:project:workspace`. `bu` is a
+business-ownership hierarchy record; an identity/access `group` is a separate
+principal type. `env`
+is the platform-facing environment; a provider/tool-specific workspace
+is an optional binding detail, never a synonym for it.  The earlier
+examples below remain as historical design context until their matching
+runtime migration lands. The same change makes organization onboarding
+explicit: a pending organization must prove its identity boundary, receive
+review, and activate before child scopes can become routable. Cloud-root and
+provider verification are separately owned by
+`build-cloud-provider-service`. Its OpenSpec proposal/specs/design are the
+authoritative delta. The first in-memory, fake-verifier onboarding lifecycle
+exists; durable persistence and a live domain/IdP proof mechanism do not.
+
 ## Real vs. Designed
 | Area | Status |
 |---|---|
 | Bootstrap workflow (any level) | Not implemented |
 | Bootstrap allow-list (`infra/bootstrap-allowed-resource-types.json`) | Not implemented — file does not exist yet |
 | Contracts (`BootstrapRequest`, `BootstrapPlan`, `WorkspaceIdentitySpec`, `ProjectRegistryEntry`) | Designed only — the recommended first build |
-| Org/BU onboarding | Designed as PR-reviewed config editing for MVP, not automated |
+| Organization onboarding | First deterministic in-memory slice is real: structured applicant → pending request → fake identity proof + digest-bound review → active record with initial tenant admin. Durable persistence and live domain/IdP proof are deferred; provider verification is separate |
 | Teardown paths | Explicitly deferred — separate admin path, not designed |
 | Existing `infra/allowed-resource-types.json` | Real — the normal-provisioning allow-list this design's disjointness rule builds on |
 

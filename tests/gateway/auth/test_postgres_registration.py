@@ -1,0 +1,117 @@
+import os
+from datetime import datetime, timedelta, timezone
+
+import psycopg
+import pytest
+
+from gateway.auth.postgres import (
+    PostgresUserRegistrationRepository,
+    apply_user_registration_migrations,
+)
+from gateway.auth.registration import RegistrationService, VerificationAttempt, digest_verification_token
+
+
+DATABASE_URL = os.environ.get("PLATFORMOPS_DATABASE_URL")
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(not DATABASE_URL, reason="PLATFORMOPS_DATABASE_URL is not configured"),
+]
+
+
+@pytest.fixture
+def repository():
+    connection = psycopg.connect(DATABASE_URL)
+    apply_user_registration_migrations(connection)
+    # Do not truncate global identity tables: other control-plane integration
+    # tests may hold foreign-key references to their users.
+    connection.execute(
+        "DELETE FROM auth_verification_attempts WHERE canonical_email = %s",
+        ("alice@example.com",),
+    )
+    connection.execute(
+        "DELETE FROM auth_verified_email_contacts WHERE canonical_email IN (%s, %s)",
+        ("alice@example.com", "Alice+receipts@example.com"),
+    )
+    connection.commit()
+    try:
+        yield PostgresUserRegistrationRepository(connection)
+    finally:
+        connection.close()
+
+
+def test_postgres_repository_enforces_canonical_email_uniqueness(repository):
+    first = repository.create_or_recover_verified_user("Alice+receipts@EXAMPLE.com")
+    returning = repository.create_or_recover_verified_user("Alice+receipts@example.com")
+
+    assert returning.subject == first.subject
+
+
+def test_postgres_repository_invalidates_previous_attempt(repository):
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+    first = VerificationAttempt(
+        canonical_email="alice@example.com",
+        token_digest=digest_verification_token("first", hmac_key=b"test-key"),
+        created_at=now,
+        expires_at=now + timedelta(minutes=15),
+    )
+    second = VerificationAttempt(
+        canonical_email="alice@example.com",
+        token_digest=digest_verification_token("second", hmac_key=b"test-key"),
+        created_at=now + timedelta(minutes=1),
+        expires_at=now + timedelta(minutes=16),
+    )
+
+    repository.save_new_attempt(first, now=now)
+    repository.save_new_attempt(second, now=now + timedelta(minutes=1))
+
+    assert repository.get_attempt(first.attempt_id).invalidated_at == now + timedelta(minutes=1)
+    assert repository.get_attempt(second.attempt_id).invalidated_at is None
+
+
+def test_postgres_repository_consumes_once_and_creates_or_recovers_user(repository):
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+    digest = digest_verification_token("opaque", hmac_key=b"test-key")
+    attempt = VerificationAttempt(
+        canonical_email="alice@example.com",
+        token_digest=digest,
+        created_at=now,
+        expires_at=now + timedelta(minutes=15),
+    )
+    repository.save_new_attempt(attempt, now=now)
+
+    account = repository.consume_attempt_create_or_recover_user(
+        attempt.attempt_id,
+        digest,
+        now=now + timedelta(minutes=1),
+    )
+    replay = repository.consume_attempt_create_or_recover_user(
+        attempt.attempt_id,
+        digest,
+        now=now + timedelta(minutes=2),
+    )
+
+    assert account is not None
+    assert replay is None
+
+
+def test_postgres_repository_supports_magic_link_intent_and_exactly_once_confirmation(repository):
+    class Delivery:
+        token: str | None = None
+
+        def send_verification(self, *, email: str, token: str) -> None:
+            self.token = token
+
+    delivery = Delivery()
+    now = datetime(2026, 9, 22, tzinfo=timezone.utc)
+    service = RegistrationService(
+        attempts=repository, users=repository, delivery=delivery, token_hmac_key=b"test-key",
+    )
+
+    service.begin_verification("alice@example.com", now=now)
+
+    assert delivery.token is not None
+    assert service.verification_intent(delivery.token, now=now + timedelta(minutes=1))
+    session = service.confirm_and_issue_session(delivery.token, now=now + timedelta(minutes=1))
+    assert session is not None
+    assert session.actor.email == "alice@example.com"
+    assert service.confirm_and_issue_session(delivery.token, now=now + timedelta(minutes=2)) is None

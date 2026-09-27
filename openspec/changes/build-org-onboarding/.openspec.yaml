@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-17
+goal: Define and implement the minimum deterministic, approval-gated
+  organization onboarding slice with a trusted registry boundary.
