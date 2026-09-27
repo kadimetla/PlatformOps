@@ -52,6 +52,37 @@ policy version, or Resource Scope/binding context.
 This task deliberately creates no approval record, HITL checkpoint, executor,
 or cloud call. Those remain tasks 3.3 and 3.4.
 
+### User corrections create immutable request revisions
+
+Before a plan is sealed, a clarification or confirmed typed correction may
+update the active draft through a workflow event. Once a plan exists, the
+system never patches that plan, its input snapshot, or its approval in place.
+A user correction creates a new monotonically increasing provision-request
+revision with a typed before/after patch, actor, timestamp, reason or source,
+and a `supersedes` reference to the prior revision. The new revision repeats
+resolved-context and governance evaluation, produces a fresh plan digest, and
+requires fresh approval when approval policy applies. Earlier revisions and
+their plan/approval records remain immutable evidence.
+
+The correction interface may be chat or a typed UI control. Natural language
+can be interpreted as a *candidate* patch only; the workflow validates and,
+where needed, asks the user to confirm the typed change. A correction to
+governance itself (for example, requesting a different approval policy) is a
+separate governed-setting or workflow-change request, never a hidden change to
+the active provision revision. An execution that has started cannot be edited;
+later desired-state changes use a separate controlled change or rollback path.
+
+### LLM context is non-authoritative and bounded
+
+An optional LLM may receive a minimum safe working view—active workflow,
+unsealed draft inputs, allowed next input types, and safe explanation text—to
+help collect or explain a correction. It does not receive credentials, raw
+grants, provider bindings, policy evaluator traces, cross-user history, or
+unrestricted preference data. Confirmed corrections, plans, approvals, and
+execution outcomes are PostgreSQL-backed workflow/evidence records, not LLM
+memory. The LLM is never asked to remember a prior provision decision as an
+authority source.
+
 ### Checkpointed approval receives reviewer identity only from the gateway
 
 The approval graph pauses with LangGraph `interrupt` and a plan/approval digest

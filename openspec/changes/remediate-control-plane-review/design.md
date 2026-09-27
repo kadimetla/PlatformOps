@@ -49,9 +49,9 @@ the plan alone.
 
 Identity-boundary deduplication keys, invitation email canonicalization, and
 token protection must agree across implementations. Invitation lookup uses a
-keyed HMAC digest, with an explicit migration/compatibility plan if existing
-development data needs replacement. Migration paths must leave all fields that
-runtime models require populated and non-null.
+keyed HMAC digest. This pre-production branch retains no unkeyed digest
+compatibility path. Migration paths must leave all fields that runtime models
+require populated and non-null.
 
 ### Verification must not depend on developer dotenv side effects
 

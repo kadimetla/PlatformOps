@@ -44,6 +44,37 @@ require a fresh plan and approval.
 - **THEN** the prior approval does not match the new plan and cannot authorize
   further processing
 
+### Requirement: User corrections create a new provision revision
+
+The system SHALL record a confirmed user correction to sealed provision inputs
+as a new immutable provision-request revision. The new revision SHALL record
+its actor, typed before/after input change, source or reason, and superseded
+revision reference. It SHALL re-evaluate current context and governance,
+generate a fresh plan digest, and require a fresh approval when policy
+requires one. It SHALL NOT edit a sealed plan or reuse its approval.
+
+#### Scenario: Requester changes environment after plan preparation
+- **WHEN** a requester changes a prepared plan from production to staging
+- **THEN** the system creates a new request revision and records the prior
+  revision as superseded
+- **AND THEN** it produces a new plan from current context and policy
+- **AND THEN** any approval for the production plan cannot authorize the
+  staging plan
+
+### Requirement: LLM assistance is not provision memory or authority
+
+The system MAY use an LLM to interpret a correction candidate or explain a
+workflow outcome, but it SHALL persist confirmed inputs and evidence in
+server-owned records. It SHALL NOT use LLM working memory, episodic memory, or
+user preference recall to determine authorization, provider binding, policy,
+plan validity, approval, or execution.
+
+#### Scenario: LLM suggests a prior environment preference
+- **WHEN** an LLM suggests staging based on a safe user preference
+- **THEN** the workflow treats it as an untrusted candidate input
+- **AND THEN** it evaluates current authorization, governance, and binding
+  eligibility before accepting it
+
 ### Requirement: Approval is checkpointed and separated from the requester
 The system SHALL pause an eligible sealed plan at a checkpointed HITL approval
 step. On resume, the gateway SHALL inject the authenticated reviewer principal;

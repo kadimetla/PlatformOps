@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlatformOps workflow chat and Work wireframe — review v2</title>
+  <style>
+    :root { --bg:#f7f8fb; --panel:#fff; --ink:#172033; --muted:#667085; --line:#e5e8ef; --brand:#3259d9; --soft:#eef3ff; --good:#087443; --warn:#9a6700; }
+    * { box-sizing:border-box } body { margin:0; color:var(--ink); font:14px/1.45 Inter,ui-sans-serif,system-ui,sans-serif; background:var(--bg) }
+    .app { display:grid; grid-template-columns:248px minmax(460px,820px) 292px; min-height:100vh; max-width:1440px; margin:auto }
+    aside { background:var(--panel); border-right:1px solid var(--line); padding:18px 14px } .brand { font-weight:750; font-size:17px; padding:6px 10px 20px }
+    button { font:inherit; cursor:pointer; border-radius:8px; border:1px solid var(--line); background:#fff; color:var(--ink); padding:9px 11px } button.primary { background:var(--brand); border-color:var(--brand); color:#fff; width:100%; text-align:left }
+    .nav { margin:20px 0 } .nav button { width:100%; border:0; text-align:left; margin:2px 0; color:var(--muted) } .nav button.active { background:var(--soft); color:var(--brand); font-weight:650 } .nav .subnav { display:block; padding:5px 11px 5px 29px; font-size:12px; color:var(--muted); text-decoration:none; border-radius:7px } .nav .subnav:hover { background:#f2f4f7 }
+    h2 { font-size:12px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; margin:24px 10px 8px } .conversation { padding:10px; border-radius:8px; margin:2px 0 } .conversation.active { background:#f2f4f7 } .conversation small { display:block; color:var(--muted); margin-top:2px }
+    main { display:flex; min-width:0; flex-direction:column; background:var(--bg) }.header { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:18px 28px; background:rgba(255,255,255,.9); border-bottom:1px solid var(--line) }.crumbs { display:flex; align-items:center; gap:8px; color:var(--muted) }.pill { border:1px solid #d8e2ff; background:var(--soft); color:#294aaf; padding:3px 8px; border-radius:999px; font-size:12px; font-weight:600 }.guest { background:#f2f4f7; border-color:#e4e7ec; color:#475467 }
+    .timeline { width:min(100%,760px); margin:0 auto; padding:32px 24px 130px; flex:1 }.date { text-align:center; color:var(--muted); font-size:12px; margin:8px 0 22px }.message { max-width:82%; margin:14px 0; padding:12px 14px; border-radius:12px; background:#fff; border:1px solid var(--line) }.message.user { margin-left:auto; background:#eaf0ff; border-color:#d8e2ff }.label { color:var(--muted); font-size:12px; margin-bottom:4px }
+    .surface { margin:18px 0; background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 1px 2px #1018280a }.surface header { padding:12px 15px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center }.surface header strong { font-size:13px }.surface .body { padding:16px }.status { color:var(--good); font-weight:650; font-size:12px }.steps { padding:0; list-style:none; margin:12px 0 0 }.steps li { padding:7px 0; color:var(--muted) }.steps li.done { color:var(--good) }.steps li.current { color:var(--ink); font-weight:650 }
+    .choices { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px }.choices button.selected { border-color:var(--brand); color:var(--brand); background:var(--soft) }.citation { color:#4059a9; font-size:12px; margin-top:12px }
+    .composer-wrap { position:fixed; left:max(calc((100vw - 1440px)/2 + 248px),248px); right:max(calc((100vw - 1440px)/2 + 292px),292px); bottom:0; padding:16px 28px 22px; background:linear-gradient(transparent,var(--bg) 28%) }.composer { max-width:760px; margin:auto; display:flex; gap:8px; padding:8px; background:#fff; border:1px solid #cfd5e2; border-radius:13px; box-shadow:0 10px 28px #10182818 }.composer input { border:0; outline:0; flex:1; padding:7px; font:inherit }.composer button { background:var(--brand); color:#fff; border-color:var(--brand) }
+    .right { border-left:1px solid var(--line); background:#fff; padding:18px }.card { border:1px solid var(--line); border-radius:10px; padding:14px; margin:10px 0 }.card p { color:var(--muted); margin:7px 0 }.protocol { margin-top:22px; padding:12px; border-radius:9px; background:#101828; color:#d0d5dd; font:12px/1.55 ui-monospace,SFMono-Regular,monospace; white-space:pre-wrap }
+    @media(max-width:900px){.app{grid-template-columns:208px minmax(0,1fr)}.right{display:none}.composer-wrap{left:208px;right:0}}@media(max-width:620px){.app{display:block}.app aside{display:none}.header{padding:14px 16px}.timeline{padding:20px 16px 116px}.message{max-width:94%}.composer-wrap{left:0;padding:12px}.crumbs span:nth-child(2){display:none}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <div class="brand">PlatformOps</div><button class="primary">＋ New conversation</button>
+      <div class="nav"><button class="active">▣ Chat</button><button>✓ Work <span class="pill">4</span></button><a class="subnav" href="#">My requests</a><a class="subnav" href="#">Needs my review <span class="pill">2</span></a><a class="subnav" href="#">Needs my action <span class="pill">1</span></a><a class="subnav" href="#">Architecture reviews <span class="pill">1</span></a><a class="subnav" href="#">Completed</a></div>
+      <h2>Conversations</h2>
+      <div class="conversation active">Checkout production readiness<small>Provision · 4 min ago</small></div>
+      <div class="conversation">Acme organization onboarding<small>Onboarding · Yesterday</small></div>
+      <div class="conversation">EKS deployment guidance<small>Help · Sep 25</small></div>
+    </aside>
+    <main>
+      <div class="header"><div class="crumbs"><span class="pill guest">Guest</span><span>›</span><span>Checkout production readiness</span><span>›</span><button class="pill">Provision context⌄</button></div><button>⋯</button></div>
+      <section class="timeline">
+        <div class="date">Today</div>
+        <div class="message user"><div class="label">You</div>Prepare a static web deployment for Checkout production.</div>
+        <div class="message"><div class="label">PlatformOps</div>I can prepare a non-mutating provision plan. First select the approved Resource Scope.</div>
+        <article class="surface"><header><strong>Resource Scope</strong><span class="status">● Needs selection</span></header><div class="body"><div>Select a target made available by the server. This card never carries provider credentials or routing details.</div><div class="choices"><button class="selected">checkout · production</button><button>checkout · staging</button></div></div></article>
+        <article class="surface"><header><strong>Provision workflow</strong><span class="pill">A2UI surface</span></header><div class="body"><ul class="steps"><li class="done">✓ Authenticate principal</li><li class="done">✓ Resolve active Resource Scope</li><li class="current">• Build non-mutating plan</li><li>○ Reviewer approval, if required</li><li>○ Executor (not enabled)</li></ul></div></article>
+        <article class="surface"><header><strong>Architecture review finding</strong><span class="pill">Advisory</span></header><div class="body"><strong>Production approval boundary is required</strong><p>This diagram shows a production deployment path but no human approval boundary. This is a finding, not an approval or a cloud action.</p><div class="citation">Source: PlatformOps reference architecture · reviewed 2026-09-27</div><div class="choices"><button>Request change</button><button>Acknowledge</button></div></div></article>
+      </section>
+      <div class="composer-wrap"><div class="composer"><input value="Ask about this workflow…" aria-label="Message"><button>Send ↑</button></div></div>
+    </main>
+    <aside class="right"><strong>Workflow context</strong><div class="card"><strong>Provision</strong><p>Non-mutating preflight. Provider binding and authorization remain server-owned.</p></div><div class="card"><strong>Safe identity projection</strong><p>Guest · Sign in to continue protected work.</p><button>Sign in</button></div><div class="protocol">AG-UI event flow
+RUN_STARTED
+CUSTOM: context projection
+CUSTOM: A2UI surface
+RUN_FINISHED / interrupt
+
+Button action → resume event
+Server re-checks session,
+CSRF, workflow state, policy.</div></aside>
+  </div>
+</body>
+</html>

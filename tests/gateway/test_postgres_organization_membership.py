@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import hmac
 import os
 from datetime import datetime, timedelta, timezone
@@ -285,11 +284,11 @@ def test_active_membership_lookup_excludes_every_non_active_lifecycle_state():
         repository.create_invitation(_invite(
             organization_id=organization_id,
             email="lookup@acme.example",
-            digest=hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
+            digest=hmac.new(INVITATION_HMAC_KEY, raw_token.encode("utf-8"), "sha256").hexdigest(),
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
         ))
         membership = repository.accept_invitation(
-            token_digest=hashlib.sha256(raw_token.encode("utf-8")).hexdigest(), user_subject=user.subject
+            token_digest=hmac.new(INVITATION_HMAC_KEY, raw_token.encode("utf-8"), "sha256").hexdigest(), user_subject=user.subject
         )
         assert repository.get_active_membership(
             user_subject=user.subject, organization_id=organization_id

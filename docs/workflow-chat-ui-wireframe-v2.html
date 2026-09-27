@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PlatformOps workflow wireframe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ---------------------------------------------------------------------------
+   PlatformOps workflow wireframe — Chat and Work
+
+   Light only. Two views share one shell: Chat (a conversation driving a
+   workflow) and Work (the queues from build-work-items). Click the rail to
+   switch; the segmented control filters the Work list.
+
+   The rules below are what make it read as calm rather than busy. Keep them.
+
+   1. TWO TONES. --ground for passive surfaces, --surface (white) for active
+      ones. Everything else is a hairline or empty space. No third fill.
+
+   2. IMPORTANT = BRIGHTER. White is the emphasis, not a darker box. The
+      workflow panel, the card blocking you, the open conversation, and any
+      work item still needing someone are white. Completed work loses its
+      surface. This is the whole tonal idea — if you add a surface, decide
+      which side of it you are on.
+
+   3. HIERARCHY FROM TYPE AND SPACE, NOT CONTAINERS. The current step is
+      larger, darker, with air around it. It is not in a filled box. Reach for
+      size, weight and spacing before reaching for a border.
+
+   4. ONE ACCENT, ONE MEANING. --signal means "live, and waiting on a person":
+      the current step, the primary action, and queue counts. Nothing else.
+
+   5. ONE HOME PER FACT. Step state belongs to the workflow panel only; queue
+      counts are derived from the queues. Never mirror either into the header
+      or the timeline — two copies drift.
+
+   6. QUEUES ARE FILTERS, NOT DESTINATIONS. The five Work queues are segments
+      inside one view, not five rail entries. The rail stays at two items and
+      does not grow when a queue is added.
+
+   7. STATE IS NEVER COLOUR ALONE. Every state has a glyph and a word.
+--------------------------------------------------------------------------- */
+
+:root {
+  --ground:      #EDEFEE;  /* app ground: passive */
+  --surface:     #FFFFFF;  /* raised: active, live, or blocking */
+  --line:        #DBDFDC;  /* hairlines */
+  --line-soft:   #E6E9E6;
+  --ink:         #1A2321;  /* primary text */
+  --muted:       #5B6865;  /* secondary text */
+  --rule:        #C9D1CD;  /* connectors and glyphs only, never text */
+  --signal:      #0E7C86;  /* the only accent */
+  --signal-wash: #E8F2F3;
+
+  --step: 0.5rem;
+  --measure: 62ch;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+
+/* An explicit display on an element cancels the hidden attribute, and the
+   queue filter relies on it. Keep this above every display rule. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* --- shell ---------------------------------------------------------------- */
+
+.app {
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr) 312px;
+  grid-template-rows: minmax(0, 1fr); /* without this the row grows to content and the composer falls off */
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* The workflow panel belongs to a conversation, so Work reclaims its column. */
+.app[data-view="work"] { grid-template-columns: 224px minmax(0, 1fr); }
+.app[data-view="work"] .workflow,
+.app[data-view="work"] .workflow-compact,
+.app[data-view="work"] .composer,
+.app[data-view="work"] .view-chat { display: none; }
+.app[data-view="chat"] .view-work,
+.app[data-view="chat"] .queues { display: none; }
+
+/* --- left rail: passive, so it stays on the ground tone ------------------- */
+
+.rail {
+  border-right: 1px solid var(--line);
+  padding: calc(var(--step) * 3);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.brand {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-bottom: calc(var(--step) * 3);
+}
+
+.new-conversation {
+  width: 100%;
+  text-align: left;
+  padding: calc(var(--step) * 1.125) calc(var(--step) * 1.5);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.new-conversation:hover { border-color: var(--muted); }
+
+.rail nav { margin: calc(var(--step) * 3) 0; }
+
+.rail nav a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--step);
+  padding: calc(var(--step) * 0.875) calc(var(--step) * 1.25);
+  margin: 1px 0;
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+}
+.rail nav a:hover { background: #E4E7E5; }
+.rail nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+
+/* Count of things waiting on a person, so it carries the accent. */
+.count {
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--signal-wash);
+  color: var(--signal);
+  display: grid;
+  place-items: center;
+}
+
+.rail h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: calc(var(--step) * 3.5) 0 calc(var(--step) * 1.25);
+}
+
+.conversations { list-style: none; margin: 0; padding: 0; }
+
+.conversations a {
+  display: block;
+  padding: calc(var(--step) * 1.25) calc(var(--step) * 1.5);
+  margin-bottom: 2px;
+  border-radius: 7px;
+  text-decoration: none;
+  color: var(--ink);
+  font-size: 14px;
+}
+.conversations a:hover { background: #E4E7E5; }
+
+/* Open conversation is live, so it is white. */
+.conversations a[aria-current="page"] {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-weight: 500;
+}
+
+.conversations .when {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+/* --- centre ---------------------------------------------------------------
+   Flex, not grid: the compact workflow bar and the composer are display:none
+   in some states and flex reflows without them. Explicit grid rows would
+   mis-place whatever follows.                                              */
+
+main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--step) * 1.5);
+  padding: calc(var(--step) * 2.25) calc(var(--step) * 4);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar h1 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Only reachable once the rail is hidden; it opens the rail as a drawer. */
+.open-rail {
+  display: none;
+  flex: none;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.identity {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 1.5);
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.context-summary {
+  max-width: min(360px, 30vw);
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+}
+.context-summary:hover { border-color: var(--muted); color: var(--ink); }
+
+.sign-in {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.sign-in:hover { border-color: var(--muted); }
+
+.view-chat, .view-work {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* --- chat view ------------------------------------------------------------ */
+
+.view-chat { padding: calc(var(--step) * 5) calc(var(--step) * 4); }
+
+.thread { max-width: var(--measure); margin: 0 auto; }
+
+.turn { margin-bottom: calc(var(--step) * 4); }
+
+.who {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.turn p { margin: 0; }
+
+.turn.you .said {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 11px 11px 11px 3px;
+  padding: calc(var(--step) * 1.375) calc(var(--step) * 1.875);
+  display: inline-block;
+}
+
+/* Tier 1 — blocking. The workflow cannot advance until this is answered,
+   so it is white and carries the accent edge. */
+.blocking {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--signal);
+  border-radius: 4px 10px 10px 4px;
+  padding: calc(var(--step) * 2.75);
+  margin-bottom: calc(var(--step) * 4);
+}
+
+.blocking h3 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+
+.asks {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--signal);
+  margin-bottom: calc(var(--step) * 1.75);
+}
+
+.blocking p { margin: 0 0 calc(var(--step) * 2.5); color: var(--muted); font-size: 14.5px; }
+
+.options { display: flex; flex-wrap: wrap; gap: var(--step); }
+
+.options button {
+  padding: calc(var(--step) * 1) calc(var(--step) * 2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  font-size: 14.5px;
+}
+.options button:hover { border-color: var(--muted); }
+.options button[aria-pressed="true"] {
+  border-color: var(--signal);
+  background: var(--signal-wash);
+  color: var(--signal);
+  font-weight: 600;
+}
+
+/* Tier 2 — advisory. No surface at all; an indent rule only.
+   It may offer actions, it just never blocks the workflow. */
+.advisory {
+  border-left: 2px solid var(--rule);
+  padding-left: calc(var(--step) * 2.75);
+  margin-bottom: calc(var(--step) * 4);
+}
+
+.advisory h3 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+.kind { font-size: 12.5px; color: var(--muted); margin-bottom: calc(var(--step) * 1.25); }
+.advisory p { margin: 0 0 calc(var(--step) * 1.75); color: var(--muted); font-size: 14.5px; }
+.source { font-size: 12.5px; color: var(--muted); margin-bottom: calc(var(--step) * 2.25); }
+
+/* --- composer ------------------------------------------------------------- */
+
+.composer {
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding: calc(var(--step) * 2.25) calc(var(--step) * 4) calc(var(--step) * 3);
+}
+
+.composer form {
+  max-width: var(--measure);
+  margin: 0 auto;
+  display: flex;
+  gap: var(--step);
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: calc(var(--step) * 0.75);
+}
+.composer form:focus-within { border-color: var(--signal); }
+
+.composer input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: none;
+  padding: var(--step);
+  font: inherit;
+}
+
+.composer button {
+  padding: calc(var(--step) * 1.125) calc(var(--step) * 2.25);
+  border: 0;
+  border-radius: 7px;
+  background: var(--signal);
+  color: #fff;
+  font-weight: 500;
+}
+.composer button:hover { background: #0B646C; }
+
+/* --- work view ------------------------------------------------------------
+   Five queues from build-work-items, as segments over one list.            */
+
+.queues {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  padding: calc(var(--step) * 1.5) calc(var(--step) * 4);
+  border-bottom: 1px solid var(--line);
+}
+
+.queues button {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 0.875);
+  padding: calc(var(--step) * 1) calc(var(--step) * 1.75);
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+}
+.queues button:hover { background: #E4E7E5; }
+
+/* Selected queue is the live one, so it takes the white surface. */
+.queues button[aria-pressed="true"] {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.queues .count { min-width: 19px; height: 19px; }
+
+.view-work { padding: calc(var(--step) * 4); }
+
+.items { list-style: none; margin: 0 auto; padding: 0; max-width: 860px; }
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 2);
+  padding: calc(var(--step) * 2.25) calc(var(--step) * 2.5);
+  margin-bottom: var(--step);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.item-main { flex: 1; min-width: 0; }
+.item h3 { font-size: 15.5px; font-weight: 600; margin: 0 0 2px; }
+.item .meta { font-size: 13.5px; color: var(--muted); margin: 0; }
+
+.item-side {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 2);
+}
+
+.age { font-size: 13px; color: var(--muted); }
+
+.act {
+  padding: calc(var(--step) * 0.875) calc(var(--step) * 1.75);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: 500;
+}
+.act:hover { border-color: var(--muted); }
+
+/* Finished work is no longer live, so it loses its surface. */
+.item.finished {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  margin-bottom: 0;
+}
+.item.finished h3 { font-weight: 500; color: var(--muted); }
+
+.empty {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: calc(var(--step) * 6) 0;
+  text-align: center;
+  color: var(--muted);
+}
+.empty strong { display: block; color: var(--ink); font-size: 16px; margin-bottom: 4px; }
+
+/* --- right: the workflow. White, because it is the live instrument. ------- */
+
+.workflow {
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  padding: calc(var(--step) * 3.5);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.workflow-head { margin-bottom: calc(var(--step) * 4); }
+
+.workflow h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.progress { font-size: 13.5px; color: var(--muted); margin: 2px 0 0; }
+
+/* A real connected sequence, so a connector rule is information, not decoration. */
+.steps { list-style: none; margin: 0; padding: 0; }
+
+.steps li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: calc(var(--step) * 1.5);
+  padding-bottom: calc(var(--step) * 3.25);
+}
+
+.steps li::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 21px;
+  bottom: 0;
+  width: 1px;
+  background: var(--rule);
+}
+.steps li:last-child { padding-bottom: 0; }
+.steps li:last-child::before { display: none; }
+
+.mark {
+  font-size: 13px;
+  line-height: 1.55;
+  text-align: center;
+  color: var(--rule);
+}
+
+.name { font-size: 15px; color: var(--muted); }
+
+.state {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.steps .done .mark { color: var(--muted); }
+.steps .done .name { color: var(--muted); }
+
+/* The current step: bigger, darker, more air. No filled box. */
+.steps .now { padding-bottom: calc(var(--step) * 3.75); }
+.steps .now .mark { color: var(--signal); font-size: 15px; line-height: 1.35; }
+.steps .now .name { font-size: 17px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+.steps .now .state { color: var(--signal); font-weight: 500; }
+
+.steps .off .name,
+.steps .off .state { color: #8A9793; }
+
+.guardrail {
+  margin-top: calc(var(--step) * 4);
+  padding-top: calc(var(--step) * 2.5);
+  border-top: 1px solid var(--line-soft);
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+/* One deliberate motion: the current step breathes, so "live" is legible. */
+@media (prefers-reduced-motion: no-preference) {
+  .steps .now .mark { animation: breathe 2.6s ease-in-out infinite; }
+  @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+}
+
+/* --- narrow: the workflow becomes a summary bar, never disappears --------- */
+
+.workflow-compact { display: none; }
+
+@media (max-width: 1080px) {
+  .app,
+  .app[data-view="work"] { grid-template-columns: 224px minmax(0, 1fr); }
+  .workflow { display: none; }
+
+  .app[data-view="chat"] .workflow-compact {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    gap: calc(var(--step) * 1.5);
+    padding: calc(var(--step) * 1.5) calc(var(--step) * 4);
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    font-size: 14.5px;
+    font-weight: 600;
+  }
+  .workflow-compact .progress { font-weight: 400; margin: 0; }
+  .ticks { display: flex; gap: 3px; margin-left: auto; align-self: center; }
+  .ticks i { width: 18px; height: 3px; border-radius: 2px; background: var(--line); }
+  .ticks i.filled { background: var(--signal); }
+}
+
+@media (max-width: 720px) {
+  .app,
+  .app[data-view="work"] { grid-template-columns: minmax(0, 1fr); }
+  .rail { display: none; }
+  .open-rail { display: block; }
+  .topbar, .view-chat, .view-work, .composer, .workflow-compact, .queues {
+    padding-left: calc(var(--step) * 2.25);
+    padding-right: calc(var(--step) * 2.25);
+  }
+  .topbar h1 { font-size: 17px; }
+  .context-summary { display: none; }
+  .identity span { display: none; }
+  .workflow-compact { flex-wrap: wrap; }
+  .workflow-compact .ticks { display: none; }
+  .view-chat { padding-top: calc(var(--step) * 3.5); }
+  .item { flex-wrap: wrap; }
+  .item-side { width: 100%; justify-content: space-between; }
+}
+</style>
+</head>
+<body>
+<div class="app" data-view="chat">
+
+  <aside class="rail">
+    <div class="brand">PlatformOps</div>
+    <button class="new-conversation">Start a conversation</button>
+
+    <!-- Two entries only. Work queues are segments inside the Work view, so
+         this list does not grow when a queue is added. -->
+    <nav aria-label="Sections">
+      <a href="#" data-goto="chat" aria-current="page">Chat</a>
+      <a href="#" data-goto="work">Work <span class="count">4</span></a>
+    </nav>
+
+    <h2>Recent</h2>
+    <ul class="conversations">
+      <li><a href="#" aria-current="page">Checkout production readiness<span class="when">Provision, 4 min ago</span></a></li>
+      <li><a href="#">Acme organization onboarding<span class="when">Onboarding, yesterday</span></a></li>
+      <li><a href="#">EKS deployment guidance<span class="when">Question, 25 Sep</span></a></li>
+    </ul>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <button class="open-rail" aria-label="Show conversations">Conversations</button>
+      <h1>Checkout production readiness</h1>
+      <div class="identity">
+        <button class="context-summary">Context: Acme / Commerce / Payments / Checkout</button>
+        <span>Dana Okafor, Acme</span>
+        <button class="sign-in">Settings</button>
+      </div>
+    </div>
+
+    <!-- Chat only. Shown when the workflow panel is hidden; same source. -->
+    <div class="workflow-compact">
+      <span>Choose environment</span>
+      <span class="progress">Checkout · environment needed · Step 2 of 5</span>
+      <span class="ticks"><i class="filled"></i><i class="filled"></i><i></i><i></i><i></i></span>
+    </div>
+
+    <!-- Work only. -->
+    <div class="queues" aria-label="Work queues">
+      <button data-queue="mine" aria-pressed="false">My requests</button>
+      <button data-queue="review" aria-pressed="true">Needs my review <span class="count">2</span></button>
+      <button data-queue="action" aria-pressed="false">Needs my action <span class="count">1</span></button>
+      <button data-queue="architecture" aria-pressed="false">Architecture reviews <span class="count">1</span></button>
+      <button data-queue="done" aria-pressed="false">Completed</button>
+    </div>
+
+    <div class="view-chat">
+      <div class="thread">
+
+        <div class="turn you">
+          <div class="who">You</div>
+          <p class="said">Prepare a static web deployment for Checkout production.</p>
+        </div>
+
+        <div class="turn">
+          <div class="who">PlatformOps</div>
+          <p>I can draft the plan. Choose which environment it applies to and I'll work out what would change.</p>
+        </div>
+
+        <div class="blocking">
+          <h3>Where should this run?</h3>
+          <div class="asks">Choose one to continue</div>
+          <p>These are the environments you have access to. Cloud accounts and credentials stay on the server and are never sent to this page.</p>
+          <div class="options">
+            <button aria-pressed="true">Checkout production</button>
+            <button aria-pressed="false">Checkout staging</button>
+          </div>
+        </div>
+
+        <div class="advisory">
+          <h3>Production needs an approval step</h3>
+          <div class="kind">Advice from the architecture review</div>
+          <p>This deployment path reaches production without anyone signing off. Adding a reviewer step would close that gap. Nothing is blocked right now, and nothing has been changed in your cloud account.</p>
+          <div class="source">PlatformOps reference architecture, reviewed 27 Sep 2026</div>
+          <div class="options">
+            <button>Request workflow change</button>
+            <button>Dismiss</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="view-work">
+      <ul class="items">
+
+        <li class="item" data-queue="mine">
+          <div class="item-main">
+            <h3>Payments staging database</h3>
+            <p class="meta">Provision plan, waiting on your input</p>
+          </div>
+          <div class="item-side">
+            <span class="age">Opened 2 hours ago</span>
+            <button class="act">Open</button>
+          </div>
+        </li>
+        <li class="item" data-queue="mine">
+          <div class="item-main">
+            <h3>Checkout production readiness</h3>
+            <p class="meta">Provision plan, waiting on a reviewer</p>
+          </div>
+          <div class="item-side">
+            <span class="age">Opened 4 min ago</span>
+            <button class="act">Open</button>
+          </div>
+        </li>
+
+        <li class="item" data-queue="review">
+          <div class="item-main">
+            <h3>Checkout production readiness</h3>
+            <p class="meta">Provision plan, requested by Renu Iyer</p>
+          </div>
+          <div class="item-side">
+            <span class="age">Waiting 4 min</span>
+            <button class="act">Review</button>
+          </div>
+        </li>
+        <li class="item" data-queue="review">
+          <div class="item-main">
+            <h3>Search service scaling</h3>
+            <p class="meta">Provision plan, requested by Renu Iyer</p>
+          </div>
+          <div class="item-side">
+            <span class="age">Waiting 3 hours</span>
+            <button class="act">Review</button>
+          </div>
+        </li>
+
+        <li class="item" data-queue="action">
+          <div class="item-main">
+            <h3>Rotate the Payments execution identity</h3>
+            <p class="meta">Operational task from the provision workflow</p>
+          </div>
+          <div class="item-side">
+            <span class="age">Due today</span>
+            <button class="act">Start</button>
+          </div>
+        </li>
+
+        <li class="item" data-queue="architecture">
+          <div class="item-main">
+            <h3>Static web stack, revision 4</h3>
+            <p class="meta">Architecture review, requested by Dana Okafor</p>
+          </div>
+          <div class="item-side">
+            <span class="age">Waiting 1 day</span>
+            <button class="act">Review</button>
+          </div>
+        </li>
+
+        <li class="item finished" data-queue="done">
+          <div class="item-main">
+            <h3>Acme organization onboarding</h3>
+            <p class="meta">Onboarding, activated by Priya Raman</p>
+          </div>
+          <div class="item-side">
+            <span class="age">25 Sep</span>
+            <button class="act">Open</button>
+          </div>
+        </li>
+        <li class="item finished" data-queue="done">
+          <div class="item-main">
+            <h3>Invoices development environment</h3>
+            <p class="meta">Provision plan, completed without execution</p>
+          </div>
+          <div class="item-side">
+            <span class="age">22 Sep</span>
+            <button class="act">Open</button>
+          </div>
+        </li>
+
+      </ul>
+
+      <!-- Shown when the selected queue is empty. An empty queue is good news,
+           so say that rather than apologising. -->
+      <div class="empty" hidden>
+        <strong>Nothing here</strong>
+        Work lands in this queue when a workflow needs someone.
+      </div>
+    </div>
+
+    <div class="composer">
+      <form onsubmit="return false">
+        <input type="text" placeholder="Ask about this deployment" aria-label="Message">
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </main>
+
+  <aside class="workflow" aria-label="Workflow progress">
+    <div class="workflow-head">
+      <h2>Provision</h2>
+      <p class="progress">Step 3 of 5</p>
+    </div>
+
+    <ol class="steps">
+      <li class="done">
+        <span class="mark" aria-hidden="true">✓</span>
+        <span><span class="name">Confirm who you are</span><span class="state">Done</span></span>
+      </li>
+          <li class="now" aria-current="step">
+            <span class="mark" aria-hidden="true">●</span>
+            <span><span class="name">Choose environment</span><span class="state">Needs your input</span></span>
+          </li>
+          <li class="waiting">
+            <span class="mark" aria-hidden="true">○</span>
+            <span><span class="name">Build the plan</span><span class="state">Waiting for environment</span></span>
+          </li>
+      <li class="waiting">
+        <span class="mark" aria-hidden="true">○</span>
+        <span><span class="name">Reviewer approval</span><span class="state">Needed for production</span></span>
+      </li>
+      <li class="off">
+        <span class="mark" aria-hidden="true">⊘</span>
+        <span><span class="name">Make the changes</span><span class="state">Turned off</span></span>
+      </li>
+    </ol>
+
+    <p class="guardrail">A plan only describes what would change. Nothing is created in your cloud account until a reviewer approves it and the final step is turned on.</p>
+  </aside>
+
+</div>
+
+<script>
+/* Wireframe only: enough behaviour to inspect both views and every queue.
+   The real app routes these; none of this is authorization. */
+(function () {
+  var app = document.querySelector('.app');
+  var title = document.querySelector('.topbar h1');
+  var navLinks = document.querySelectorAll('nav [data-goto]');
+  var tabs = document.querySelectorAll('.queues [data-queue]');
+  var items = document.querySelectorAll('.items .item');
+  var empty = document.querySelector('.empty');
+  var chatTitle = 'Checkout production readiness';
+
+  navLinks.forEach(function (link) {
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      var view = link.dataset.goto;
+      app.dataset.view = view;
+      navLinks.forEach(function (other) {
+        if (other === link) { other.setAttribute('aria-current', 'page'); }
+        else { other.removeAttribute('aria-current'); }
+      });
+      title.textContent = view === 'work' ? 'Work' : chatTitle;
+    });
+  });
+
+  function showQueue(queue) {
+    var shown = 0;
+    items.forEach(function (item) {
+      var match = item.dataset.queue === queue;
+      item.hidden = !match;
+      if (match) { shown++; }
+    });
+    empty.hidden = shown > 0;
+  }
+
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      tabs.forEach(function (other) {
+        other.setAttribute('aria-pressed', String(other === tab));
+      });
+      showQueue(tab.dataset.queue);
+    });
+  });
+
+  showQueue('review');
+})();
+</script>
+</body>
+</html>

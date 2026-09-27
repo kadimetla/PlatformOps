@@ -291,7 +291,7 @@ def test_delivery_failure_diagnostics_redact_verification_url():
     ).request_registration("alice@example.com")
 
     assert "secret-token" not in diagnostics.details[0]
-    assert diagnostics.details[0] == "[REDACTED]"
+    assert diagnostics.details[0] == "RuntimeError: [REDACTED]"
 
 
 def test_delivery_failure_diagnostics_redact_path_borne_verification_url():
@@ -313,7 +313,7 @@ def test_delivery_failure_diagnostics_redact_path_borne_verification_url():
         diagnostics=diagnostics,
     ).request_registration("alice@example.com")
 
-    assert diagnostics.details == ["[REDACTED]"]
+    assert diagnostics.details == ["RuntimeError: [REDACTED]"]
 
 
 def test_verification_intent_validates_without_consuming_scanner_link():
