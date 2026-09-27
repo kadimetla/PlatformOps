@@ -65,14 +65,18 @@ def test_run_parses_scope_as_structured_input():
     assert args.scope.workspace == "dev"
 
 
-def test_login_requires_issuer(capsys):
+def test_login_requires_issuer(monkeypatch, capsys):
+    monkeypatch.delenv("PLATFORMOPS_OIDC_ISSUER", raising=False)
+    monkeypatch.delenv("PLATFORMOPS_OIDC_CLIENT_ID", raising=False)
     exit_code = main(["login", "--client-id", "abc"])
 
     assert exit_code == 2
     assert "--issuer" in capsys.readouterr().err
 
 
-def test_login_requires_client_id(capsys):
+def test_login_requires_client_id(monkeypatch, capsys):
+    monkeypatch.delenv("PLATFORMOPS_OIDC_ISSUER", raising=False)
+    monkeypatch.delenv("PLATFORMOPS_OIDC_CLIENT_ID", raising=False)
     exit_code = main(["login", "--issuer", "https://authentik.example.com"])
 
     assert exit_code == 2

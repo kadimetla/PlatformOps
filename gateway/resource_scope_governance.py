@@ -52,6 +52,7 @@ class ResourceScopeGovernanceDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     allowed: bool
+    approval_required: bool = False
     matched_policy_targets: tuple[str, ...] = ()
 
 
@@ -72,5 +73,7 @@ class ResourceScopeGovernanceEvaluator:
             and any(policy.require_approval_for_provision for policy in policies)
             and not request.approval_present
         ):
-            return ResourceScopeGovernanceDecision(allowed=False, matched_policy_targets=matched)
+            return ResourceScopeGovernanceDecision(
+                allowed=False, approval_required=True, matched_policy_targets=matched,
+            )
         return ResourceScopeGovernanceDecision(allowed=True, matched_policy_targets=matched)

@@ -177,6 +177,21 @@ def test_preflight_returns_non_routable_for_missing_binding_and_denies_governanc
     assert governed.evaluate(_request()).status is ProvisionPreflightStatus.DENIED
 
 
+def test_preflight_creates_a_sealed_approval_required_context_for_approval_governance():
+    preflight, _ = _preflight(
+        scope=_scope(), grant=True,
+        policies=(ResourceScopeGovernancePolicy(
+            target_kind=ScopeBindingTargetKind.ENVIRONMENT, target_id="env_prod",
+            require_approval_for_provision=True,
+        ),),
+    )
+
+    result = preflight.evaluate(_request())
+
+    assert result.status is ProvisionPreflightStatus.APPROVAL_REQUIRED
+    assert result.resolved_context is not None
+
+
 def test_preflight_seals_context_and_registry_drift_requires_a_fresh_run():
     preflight, bindings = _preflight(scope=_scope(), grant=True)
 

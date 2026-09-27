@@ -16,11 +16,11 @@
 
 - [x] 2.1 Match environment-targeted scope bindings or reject unsupported
   environment binding targets; add positive and negative tests.
-- [ ] 2.2 Make approval-required governance produce a satisfiable approval
+- [x] 2.2 Make approval-required governance produce a satisfiable approval
   lifecycle and re-evaluate before execution; add plan/approval tests.
-- [ ] 2.3 Require distinct requester/reviewer identities for provider
+- [x] 2.3 Require distinct requester/reviewer identities for provider
   attachment and bootstrap approval; add denial tests.
-- [ ] 2.4 Require explicit organization affiliation for every supported
+- [x] 2.4 Require explicit organization affiliation for every supported
   principal kind; derive identity-group IDs only from an authoritative
   server-side source and reject caller-asserted group membership.
 - [x] 2.5 Strip chat input before slash-command recognition; verify whitespace
@@ -40,7 +40,7 @@
   runtime non-null model requirements; test fresh and upgrade paths.
 - [ ] 3.4 Persist/retrieve IdP identity-boundary configuration so the
   post-login IdP journey is reachable; add PostgreSQL integration tests.
-- [ ] 3.5 Set `extra="forbid"` on provider resolution contracts and add a
+- [x] 3.5 Set `extra="forbid"` on provider resolution contracts and add a
   strict-extra-field regression test.
 
 ## 4. Documentation and reproducible verification
@@ -48,7 +48,7 @@
 - [ ] 4.1 Reconcile `IMPLEMENTATION_STATUS.md` with actual completion state and
   correct remaining `org:group:team:project:env` terminology with a correction
   note.
-- [ ] 4.2 Make the full test command isolated from developer `.env` loading;
+- [x] 4.2 Make the full test command isolated from developer `.env` loading;
   verify no test triggers live model/cloud/network behavior.
 - [ ] 4.3 Run focused regressions, PostgreSQL tests, isolated `uv run pytest`,
   `openspec validate remediate-control-plane-review --strict`, and a final

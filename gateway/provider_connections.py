@@ -350,6 +350,8 @@ class ProviderContainerAttachmentService:
             raise ValueError("only a pending attachment request can be approved")
         if request.connection_id != connection.connection_id:
             raise ValueError("attachment request does not belong to this connection")
+        if actor_id == request.requested_by:
+            raise ProviderConnectionAccessDenied("requester cannot approve their own attachment")
         self._require_connection_candidate(connection, request.candidate)
         if not self._authorizer.may_review_container_attachment(
             actor_id=actor_id,
@@ -435,6 +437,8 @@ class ProviderContainerBootstrapService:
             raise ValueError("bootstrap request does not belong to this connection")
         if request.state != ProviderContainerBootstrapState.PENDING_APPROVAL:
             raise ValueError("only a pending bootstrap request can be approved")
+        if actor_id == request.requested_by:
+            raise ProviderConnectionAccessDenied("requester cannot approve their own bootstrap")
         if not self._authorizer.may_approve_container_bootstrap(
             actor_id=actor_id, organization_id=connection.organization_id
         ):

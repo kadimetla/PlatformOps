@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from gateway.resource_scope_bindings import (
+    BindingResolution,
     BindingResolutionStatus,
     CloudProvider,
     CloudResourceContainerBinding,
@@ -90,4 +91,18 @@ def test_client_routing_hints_are_rejected_and_cannot_override_selected_binding(
             "scope_id": "scope_checkout_prod", "profile_id": "aws-static-web",
             "provider": "gcp", "account_id": "attacker-account", "binding_id": "binding_attacker",
             "execution_identity_reference": "attacker-identity", "provider_workspace": "attacker-workspace",
+        })
+
+
+def test_provider_resolution_contracts_reject_unknown_fields():
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        ProvisioningBindingProfile.model_validate({
+            "profile_id": "aws-static-web",
+            "eligible_providers": ["aws"],
+            "provider_fallback": "gcp",
+        })
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        BindingResolution.model_validate({
+            "status": "non_routable",
+            "untrusted_provider_hint": "aws",
         })

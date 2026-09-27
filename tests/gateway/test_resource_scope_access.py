@@ -38,6 +38,22 @@ class ActiveMemberships:
         return object() if user_subject in self._subjects and organization_id == "org_acme" else None
 
 
+class PrincipalAffiliations:
+    def __init__(self, principals: set[tuple[PrincipalKind, str]]) -> None:
+        self._principals = principals
+
+    def has_active_affiliation(self, *, principal: PrincipalReference, organization_id: str) -> bool:
+        return organization_id == "org_acme" and (principal.kind, principal.principal_id) in self._principals
+
+
+class IdentityGroups:
+    def __init__(self, groups_by_principal: dict[str, frozenset[str]]) -> None:
+        self._groups_by_principal = groups_by_principal
+
+    def active_identity_group_ids(self, *, principal: PrincipalReference) -> frozenset[str]:
+        return self._groups_by_principal.get(principal.principal_id, frozenset())
+
+
 def _active_scope() -> ResourceScope:
     state = ResourceScopeState.ACTIVE
     return ResourceScope(
@@ -184,16 +200,50 @@ def test_revoked_identity_group_binding_denies_later_request():
     )
     store = InMemoryResourceScopeRoleBindingStore((group_binding,))
     authorizer = ResourceScopeAuthorizer(
-        registry=registry, bindings=store, memberships=ActiveMemberships({"usr_alice"})
+        registry=registry,
+        bindings=store,
+        memberships=ActiveMemberships({"usr_alice"}),
+        identity_groups=IdentityGroups({"usr_alice": frozenset({"group_payments"})}),
     )
     request = ResourceScopeAuthorizationRequest(
         principal=PrincipalReference(kind=PrincipalKind.USER, principal_id="usr_alice"),
         action=ResourceScopeAction.REQUEST_PROVISION, scope_id=scope.scope_id,
-        identity_group_ids=frozenset({"group_payments"}),
     )
     assert authorizer.authorize(request).allowed is True
     store.replace(group_binding.model_copy(update={"state": "revoked"}))
     assert authorizer.authorize(request).allowed is False
+
+
+def test_authorizer_rejects_caller_asserted_groups_and_requires_affiliation_for_non_user_principals():
+    scope = _active_scope()
+    registry = InMemoryReviewedResourceScopeRegistry()
+    registry.register_reviewed(scope)
+    service = PrincipalReference(kind=PrincipalKind.SERVICE, principal_id="svc_deploy")
+    binding = ResourceScopeRoleBinding(
+        principal=service,
+        actions=frozenset({ResourceScopeAction.REQUEST_PROVISION}),
+        target=ScopeBindingTarget(kind=ScopeBindingTargetKind.SCOPE, resource_id=scope.scope_id),
+    )
+    request = ResourceScopeAuthorizationRequest(
+        principal=service, action=ResourceScopeAction.REQUEST_PROVISION, scope_id=scope.scope_id,
+    )
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        ResourceScopeAuthorizationRequest.model_validate({
+            **request.model_dump(), "identity_group_ids": ["group_payments"],
+        })
+
+    without_affiliation = ResourceScopeAuthorizer(
+        registry=registry, bindings=InMemoryResourceScopeRoleBindingStore((binding,)),
+        memberships=ActiveMemberships(set()),
+    )
+    assert without_affiliation.authorize(request).allowed is False
+
+    with_affiliation = ResourceScopeAuthorizer(
+        registry=registry, bindings=InMemoryResourceScopeRoleBindingStore((binding,)),
+        memberships=ActiveMemberships(set()),
+        principal_affiliations=PrincipalAffiliations({(PrincipalKind.SERVICE, "svc_deploy")}),
+    )
+    assert with_affiliation.authorize(request).allowed is True
 
 
 def test_governance_intersects_provider_restrictions_and_denies_override_allow():
@@ -227,3 +277,22 @@ def test_governance_intersects_provider_restrictions_and_denies_override_allow()
     assert denied.evaluate(
         request.model_copy(update={"provider": "aws"})
     ).allowed is False
+
+
+def test_governance_distinguishes_approval_required_from_a_hard_denial():
+    scope = _active_scope()
+    evaluator = ResourceScopeGovernanceEvaluator(InMemoryResourceScopeGovernancePolicyStore((
+        ResourceScopeGovernancePolicy(
+            target_kind=ScopeBindingTargetKind.ENVIRONMENT,
+            target_id=scope.environment.environment_id,
+            require_approval_for_provision=True,
+        ),
+    )))
+    request = ResourceScopeGovernanceRequest(
+        scope=scope, provider="aws", action=ResourceScopeAction.REQUEST_PROVISION,
+    )
+
+    approval_needed = evaluator.evaluate(request)
+    assert approval_needed.allowed is False
+    assert approval_needed.approval_required is True
+    assert evaluator.evaluate(request.model_copy(update={"approval_present": True})).allowed is True

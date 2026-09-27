@@ -22,6 +22,7 @@ from gateway.resource_scope_registry import ReviewedResourceScopeRegistry
 
 class ProvisionPreflightStatus(str, Enum):
     READY = "ready"
+    APPROVAL_REQUIRED = "approval_required"
     DENIED = "denied"
     NON_ROUTABLE = "non_routable"
 
@@ -43,8 +44,11 @@ class ProvisionPreflightResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_context(self) -> "ProvisionPreflightResult":
-        if (self.status is ProvisionPreflightStatus.READY) != (self.resolved_context is not None):
-            raise ValueError("only a ready preflight result contains a resolved context")
+        context_expected = self.status in {
+            ProvisionPreflightStatus.READY, ProvisionPreflightStatus.APPROVAL_REQUIRED,
+        }
+        if context_expected != (self.resolved_context is not None):
+            raise ValueError("only a ready or approval-required preflight result contains a resolved context")
         return self
 
 
@@ -83,14 +87,20 @@ class ResourceScopeProvisionPreflight:
             action=request.authorization.action,
             approval_present=False,
         ))
-        if not governance.allowed:
+        if not governance.allowed and not governance.approval_required:
             return ProvisionPreflightResult(status=ProvisionPreflightStatus.DENIED)
+        resolved_context = ResolvedResourceScopeContext.seal(
+            scope=scope,
+            authorization=authorization,
+            governance=governance,
+            binding=binding.binding,
+        )
+        if governance.approval_required:
+            return ProvisionPreflightResult(
+                status=ProvisionPreflightStatus.APPROVAL_REQUIRED,
+                resolved_context=resolved_context,
+            )
         return ProvisionPreflightResult(
             status=ProvisionPreflightStatus.READY,
-            resolved_context=ResolvedResourceScopeContext.seal(
-                scope=scope,
-                authorization=authorization,
-                governance=governance,
-                binding=binding.binding,
-            ),
+            resolved_context=resolved_context,
         )

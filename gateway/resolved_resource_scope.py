@@ -52,11 +52,11 @@ class ResolvedResourceScopeContext(BaseModel):
         governance: ResourceScopeGovernanceDecision,
         binding: CloudResourceContainerBinding,
     ) -> "ResolvedResourceScopeContext":
-        """Capture only a successful current evaluation; failures cannot be sealed."""
+        """Capture a routable decision; approval-required contexts are not execution grants."""
         if not scope.is_complete_and_active:
             raise ValueError("only an active complete Resource Scope can be sealed")
-        if not authorization.allowed or not governance.allowed:
-            raise ValueError("only an allowed authorization and governance decision can be sealed")
+        if not authorization.allowed or (not governance.allowed and not governance.approval_required):
+            raise ValueError("only an allowed or approval-required governance decision can be sealed")
         if binding.scope_id != scope.scope_id or binding.state is not ProviderBindingState.ACTIVE:
             raise ValueError("only an active binding for the resolved Resource Scope can be sealed")
         contents = {

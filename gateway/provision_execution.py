@@ -7,7 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gateway.provision_plan import ProvisionApprovalDigest, SealedProvisionPlan
 from gateway.resolved_resource_scope import requires_fresh_resolution
+from gateway.resource_scope_access import ResourceScopeAction
 from gateway.resource_scope_bindings import CloudResourceContainerBinding
+from gateway.resource_scope_governance import (
+    ResourceScopeGovernanceEvaluator,
+    ResourceScopeGovernanceRequest,
+)
 from gateway.resource_scope_registry import ResourceScope
 
 
@@ -42,8 +47,11 @@ class ProvisionExecutionDenied(PermissionError):
 class ProvisionExecutionGate:
     """Revalidates approval and registry freshness before any executor call."""
 
-    def __init__(self, executor: ProvisionExecutor) -> None:
+    def __init__(
+        self, executor: ProvisionExecutor, *, governance: ResourceScopeGovernanceEvaluator,
+    ) -> None:
         self._executor = executor
+        self._governance = governance
 
     def execute(
         self, *, plan: SealedProvisionPlan, approval: ProvisionApprovalDigest,
@@ -54,6 +62,19 @@ class ProvisionExecutionGate:
             raise ProvisionExecutionDenied("approval does not match the sealed provision plan")
         if requires_fresh_resolution(plan.context, scope=scope, bindings=bindings):
             raise ProvisionExecutionDenied("resolved scope context changed; a fresh provision run is required")
+        assert scope is not None  # established by requires_fresh_resolution above
+        binding_by_id = {binding.binding_id: binding for binding in bindings}
+        selected_binding = binding_by_id[plan.context.binding_ids[0]]
+        governance = self._governance.evaluate(ResourceScopeGovernanceRequest(
+            scope=scope,
+            provider=selected_binding.provider.value,
+            action=ResourceScopeAction.REQUEST_PROVISION,
+            approval_present=True,
+        ))
+        if not governance.allowed:
+            raise ProvisionExecutionDenied(
+                "current governance does not permit execution; a fresh provision run is required"
+            )
         self._executor.execute(plan)
         return ProvisionExecutionEvidence(
             status=ProvisionExecutionStatus.SUCCEEDED, plan_digest=plan.plan_digest,

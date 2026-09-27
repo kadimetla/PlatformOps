@@ -280,6 +280,26 @@ def test_attachment_cannot_be_approved_twice():
         )
 
 
+def test_attachment_requester_cannot_approve_their_own_request_even_with_reviewer_permission():
+    candidate = ProviderContainerCandidate(
+        provider=CloudProvider.AWS,
+        boundary_ref="aws-org:o-acme",
+        container_ref="account:123456789012",
+        display_name="acme-production",
+    )
+    service = ProviderContainerAttachmentService(
+        authorizer=FakeAttachmentAuthorizer({"usr_alice"}, {"usr_alice"})
+    )
+    connection = _connection()
+    request = service.request_attachment(
+        actor_id="usr_alice", connection=connection, resource_scope_id="scope_checkout_prod",
+        candidate=candidate,
+    )
+
+    with pytest.raises(ProviderConnectionAccessDenied, match="cannot approve their own"):
+        service.approve_attachment(actor_id="usr_alice", connection=connection, request=request)
+
+
 def test_bootstrap_requires_policy_and_recorded_approval_before_creation():
     adapter = FakeProviderContainerBootstrapAdapter(CloudProvider.AWS)
     service = ProviderContainerBootstrapService(
@@ -320,6 +340,21 @@ def test_bootstrap_denies_creation_when_organization_policy_disallows_it():
         )
 
     assert adapter.create_calls == []
+
+
+def test_bootstrap_requester_cannot_approve_their_own_request_even_with_approver_permission():
+    service = ProviderContainerBootstrapService(
+        adapters=ProviderContainerBootstrapAdapterRegistry([FakeProviderContainerBootstrapAdapter(CloudProvider.AWS)]),
+        authorizer=FakeBootstrapAuthorizer({"usr_alice"}, {"usr_alice"}),
+        policy=FakeBootstrapPolicy(True),
+    )
+    connection = _connection()
+    request = service.request_bootstrap(
+        actor_id="usr_alice", connection=connection, display_name="checkout-prod",
+    )
+
+    with pytest.raises(ProviderConnectionAccessDenied, match="cannot approve their own"):
+        service.approve_bootstrap(actor_id="usr_alice", connection=connection, request=request)
 
 
 def test_created_container_remains_an_unattached_candidate_until_reviewed_attachment():

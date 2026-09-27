@@ -89,6 +89,20 @@ class ResourceScopeRoleBindingStore(Protocol):
     def active_bindings(self) -> tuple[ResourceScopeRoleBinding, ...]: ...
 
 
+class ActiveOrganizationPrincipalAffiliationLookup(Protocol):
+    """Authoritative affiliation lookup for non-user principals."""
+
+    def has_active_affiliation(
+        self, *, principal: PrincipalReference, organization_id: str,
+    ) -> bool: ...
+
+
+class IdentityGroupMembershipLookup(Protocol):
+    """Authoritative IdP/SCIM group lookup; browser input is never accepted."""
+
+    def active_identity_group_ids(self, *, principal: PrincipalReference) -> frozenset[str]: ...
+
+
 class InMemoryResourceScopeRoleBindingStore:
     """Test-only binding store with explicit lifecycle state."""
 
@@ -113,7 +127,6 @@ class ResourceScopeAuthorizationRequest(BaseModel):
     principal: PrincipalReference
     action: ResourceScopeAction
     scope_id: str = Field(min_length=8)
-    identity_group_ids: frozenset[str] = Field(default_factory=frozenset)
 
 
 class ResourceScopeAuthorizationDecision(BaseModel):
@@ -130,10 +143,14 @@ class ResourceScopeAuthorizer:
         self, *, registry: ReviewedResourceScopeRegistry,
         bindings: ResourceScopeRoleBindingStore,
         memberships: ActiveOrganizationMembershipLookup,
+        principal_affiliations: ActiveOrganizationPrincipalAffiliationLookup | None = None,
+        identity_groups: IdentityGroupMembershipLookup | None = None,
     ) -> None:
         self._registry = registry
         self._bindings = bindings
         self._memberships = memberships
+        self._principal_affiliations = principal_affiliations
+        self._identity_groups = identity_groups
 
     def authorize(self, request: ResourceScopeAuthorizationRequest) -> ResourceScopeAuthorizationDecision:
         scope = self._registry.resolve_active(request.scope_id)
@@ -147,30 +164,33 @@ class ResourceScopeAuthorizer:
 
     def _has_active_membership(self, principal: PrincipalReference, scope: ResourceScope) -> bool:
         if principal.kind is not PrincipalKind.USER:
-            return True
+            return self._principal_affiliations is not None and self._principal_affiliations.has_active_affiliation(
+                principal=principal, organization_id=scope.organization.organization_id,
+            )
         return self._memberships.get_active_membership(
             user_subject=principal.principal_id, organization_id=scope.organization.organization_id
         ) is not None
 
-    @staticmethod
     def _binding_allows(
-        binding: ResourceScopeRoleBinding, request: ResourceScopeAuthorizationRequest, scope: ResourceScope
+        self, binding: ResourceScopeRoleBinding, request: ResourceScopeAuthorizationRequest, scope: ResourceScope
     ) -> bool:
-        if request.action not in binding.actions or not _principal_matches(binding.principal, request):
+        if request.action not in binding.actions or not self._principal_matches(binding.principal, request):
             return False
         if binding.conditions.environment_ids and scope.environment.environment_id not in binding.conditions.environment_ids:
             return False
         return _target_matches(binding.target, scope)
 
-
-def _principal_matches(binding_principal: PrincipalReference, request: ResourceScopeAuthorizationRequest) -> bool:
-    if binding_principal == request.principal:
-        return True
-    return (
-        binding_principal.kind is PrincipalKind.IDENTITY_GROUP
-        and binding_principal.principal_id in request.identity_group_ids
-    )
-
+    def _principal_matches(
+        self, binding_principal: PrincipalReference, request: ResourceScopeAuthorizationRequest,
+    ) -> bool:
+        if binding_principal == request.principal:
+            return True
+        return (
+            binding_principal.kind is PrincipalKind.IDENTITY_GROUP
+            and self._identity_groups is not None
+            and binding_principal.principal_id
+            in self._identity_groups.active_identity_group_ids(principal=request.principal)
+        )
 
 def _target_matches(target: ScopeBindingTarget, scope: ResourceScope) -> bool:
     if target.kind is ScopeBindingTargetKind.SCOPE:
