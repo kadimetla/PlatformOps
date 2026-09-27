@@ -9,6 +9,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from gateway.auth.domain_discovery import ActiveOrganizationDomain
+from gateway.auth.domain_discovery import OrganizationIdpConfiguration
 from gateway.organization_onboarding import (
     ActiveOrganization,
     AuthenticatedApplicant,
@@ -25,6 +26,7 @@ from gateway.organization_onboarding import (
 
 
 _MIGRATION_PATH = Path(__file__).parent / "migrations" / "001_organization_onboarding.sql"
+_IDP_MIGRATION_PATH = Path(__file__).parent / "migrations" / "005_organization_idp_configuration.sql"
 
 
 def apply_organization_onboarding_migrations(connection: psycopg.Connection) -> None:
@@ -35,9 +37,14 @@ def apply_organization_onboarding_migrations(connection: psycopg.Connection) -> 
     """
     with connection.transaction():
         connection.execute(_MIGRATION_PATH.read_text())
+        connection.execute(_IDP_MIGRATION_PATH.read_text())
         connection.execute(
             "INSERT INTO platformops_schema_migrations (version) VALUES (%s) ON CONFLICT DO NOTHING",
             ("001_organization_onboarding",),
+        )
+        connection.execute(
+            "INSERT INTO platformops_schema_migrations (version) VALUES (%s) ON CONFLICT DO NOTHING",
+            ("005_organization_idp_configuration",),
         )
 
 
@@ -239,10 +246,13 @@ class PostgresOrganizationOnboardingRepository:
 
     def find_active_domain(self, canonical_domain: str) -> ActiveOrganizationDomain | None:
         row = self._connection.execute(
-            """SELECT organization.organization_id, boundary.boundary_reference
+            """SELECT organization.organization_id, boundary.boundary_reference,
+                      idp.issuer AS idp_issuer, idp.audience AS idp_audience
                FROM organizations AS organization
                JOIN organization_identity_boundaries AS boundary
                  ON boundary.organization_id = organization.organization_id
+               LEFT JOIN organization_idp_configurations AS idp
+                 ON idp.organization_id = organization.organization_id
                WHERE organization.state = 'active'
                  AND boundary.boundary_kind = 'domain'
                  AND lower(boundary.boundary_reference) = lower(%s)""",
@@ -251,5 +261,28 @@ class PostgresOrganizationOnboardingRepository:
         if row is None:
             return None
         return ActiveOrganizationDomain(
-            organization_id=row["organization_id"], canonical_domain=row["boundary_reference"]
+            organization_id=row["organization_id"], canonical_domain=row["boundary_reference"],
+            idp=(OrganizationIdpConfiguration(issuer=row["idp_issuer"], audience=row["idp_audience"])
+                 if row["idp_issuer"] is not None else None),
         )
+
+    def configure_active_organization_idp(
+        self, *, organization_id: str, configuration: OrganizationIdpConfiguration,
+    ) -> None:
+        with self._connection.transaction():
+            self._require_active_organization(organization_id)
+            self._connection.execute(
+                """INSERT INTO organization_idp_configurations (organization_id, issuer, audience)
+                   VALUES (%s, %s, %s)
+                   ON CONFLICT (organization_id) DO UPDATE
+                   SET issuer = EXCLUDED.issuer, audience = EXCLUDED.audience""",
+                (organization_id, configuration.issuer, configuration.audience),
+            )
+
+    def _require_active_organization(self, organization_id: str) -> None:
+        row = self._connection.execute(
+            "SELECT 1 FROM organizations WHERE organization_id = %s AND state = 'active'",
+            (organization_id,),
+        ).fetchone()
+        if row is None:
+            raise OrganizationOnboardingActivationError("organization is not active")

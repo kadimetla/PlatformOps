@@ -8,5 +8,6 @@ class OrganizationMemberOnboardingState(TypedDict):
 
     user_subject: str
     invitation_token_digest: str
+    legacy_invitation_token_digest: str | None
     organization_id: str | None
     membership: OrganizationMembership | None

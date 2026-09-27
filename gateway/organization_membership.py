@@ -5,7 +5,9 @@ from threading import Lock
 from typing import Protocol, runtime_checkable
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from gateway.auth.registration import canonicalize_email
 
 
 def _membership_id() -> str:
@@ -59,6 +61,12 @@ class OrganizationInvitation(BaseModel):
     token_digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
     expires_at: datetime
     consumed_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _canonicalize_recipient(self) -> "OrganizationInvitation":
+        local_part, domain = canonicalize_email(self.canonical_email)
+        self.canonical_email = f"{local_part}@{domain}"
+        return self
 
 
 @runtime_checkable

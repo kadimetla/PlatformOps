@@ -201,7 +201,9 @@ def test_join_org_route_derives_user_from_principal_and_keeps_raw_token_out_of_r
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
         ))
         router = ControlPlaneCommandRouter({
-            "organization_member_onboarding": build_organization_member_onboarding_handler(connection)
+            "organization_member_onboarding": build_organization_member_onboarding_handler(
+                connection, invitation_hmac_key=b"test-invitation-hmac-key"
+            )
         })
         with pytest.raises(ValidationError, match="Extra inputs"):
             asyncio.run(router.dispatch(
@@ -245,7 +247,9 @@ def test_revoked_membership_is_not_active_and_user_can_join_two_independent_orga
                 expires_at=expires_at,
             ))
         router = ControlPlaneCommandRouter({
-            "organization_member_onboarding": build_organization_member_onboarding_handler(connection)
+            "organization_member_onboarding": build_organization_member_onboarding_handler(
+                connection, invitation_hmac_key=b"test-invitation-hmac-key"
+            )
         })
         principal = ValidatedPrincipal(issuer="platformops", subject=user.subject)
         first = asyncio.run(router.dispatch("/join-org", {"invitation_token": first_token}, principal=principal))["membership"]

@@ -11,14 +11,18 @@ def build_organization_member_onboarding_graph(
     def validate_invitation(state: OrganizationMemberOnboardingState) -> dict:
         return {
             "organization_id": repository.inspect_invitation(
-                token_digest=state["invitation_token_digest"], user_subject=state["user_subject"]
+                token_digest=state["invitation_token_digest"],
+                legacy_token_digest=state["legacy_invitation_token_digest"],
+                user_subject=state["user_subject"],
             )
         }
 
     def activate_membership(state: OrganizationMemberOnboardingState) -> dict:
         return {
             "membership": repository.accept_invitation(
-                token_digest=state["invitation_token_digest"], user_subject=state["user_subject"]
+                token_digest=state["invitation_token_digest"],
+                legacy_token_digest=state["legacy_invitation_token_digest"],
+                user_subject=state["user_subject"],
             )
         }
 

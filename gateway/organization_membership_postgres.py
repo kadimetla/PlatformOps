@@ -18,6 +18,7 @@ from gateway.organization_membership import (
     OrganizationMembershipState,
     OrganizationRoleReference,
 )
+from gateway.auth.registration import canonicalize_email
 
 
 _MIGRATION_PATH = Path(__file__).parent / "migrations" / "002_organization_membership.sql"
@@ -61,6 +62,8 @@ class PostgresOrganizationMembershipRepository(ActiveOrganizationMembershipLooku
         self._connection.row_factory = dict_row
 
     def create_invitation(self, invitation: OrganizationInvitation) -> None:
+        local_part, domain = canonicalize_email(invitation.canonical_email)
+        canonical_email = f"{local_part}@{domain}"
         with self._connection.transaction():
             self._require_active_organization(invitation.organization_id)
             self._connection.execute(
@@ -70,7 +73,7 @@ class PostgresOrganizationMembershipRepository(ActiveOrganizationMembershipLooku
                 (
                     invitation.invitation_id,
                     invitation.organization_id,
-                    invitation.canonical_email,
+                    canonical_email,
                     invitation.token_digest,
                     invitation.expires_at,
                     invitation.consumed_at,
@@ -78,7 +81,8 @@ class PostgresOrganizationMembershipRepository(ActiveOrganizationMembershipLooku
             )
 
     def accept_invitation(
-        self, *, token_digest: str, user_subject: str, accepted_at: datetime | None = None
+        self, *, token_digest: str, user_subject: str, accepted_at: datetime | None = None,
+        legacy_token_digest: str | None = None,
     ) -> OrganizationMembership:
         """Consume one valid invite and create one active tenant membership.
 
@@ -91,8 +95,8 @@ class PostgresOrganizationMembershipRepository(ActiveOrganizationMembershipLooku
                 invitation = self._connection.execute(
                     """SELECT invitation_id, organization_id, canonical_email, token_digest,
                               expires_at, consumed_at
-                       FROM organization_invitations WHERE token_digest = %s FOR UPDATE""",
-                    (token_digest,),
+                       FROM organization_invitations WHERE token_digest = ANY(%s) FOR UPDATE""",
+                    ([token_digest, legacy_token_digest] if legacy_token_digest else [token_digest],),
                 ).fetchone()
                 if invitation is None or invitation["consumed_at"] is not None or invitation["expires_at"] <= now:
                     raise OrganizationInvitationNotUsable("invitation is expired, consumed, or unknown")
@@ -139,7 +143,9 @@ class PostgresOrganizationMembershipRepository(ActiveOrganizationMembershipLooku
         except psycopg.errors.UniqueViolation as error:
             raise DuplicateActiveOrganizationMembership("active membership already exists") from error
 
-    def inspect_invitation(self, *, token_digest: str, user_subject: str) -> str:
+    def inspect_invitation(
+        self, *, token_digest: str, user_subject: str, legacy_token_digest: str | None = None,
+    ) -> str:
         """Validate current invitation eligibility without consuming it.
 
         Consumption is deliberately repeated by ``accept_invitation`` under a
@@ -149,8 +155,8 @@ class PostgresOrganizationMembershipRepository(ActiveOrganizationMembershipLooku
         with self._connection.transaction():
             invitation = self._connection.execute(
                 """SELECT organization_id, canonical_email, expires_at, consumed_at
-                   FROM organization_invitations WHERE token_digest = %s""",
-                (token_digest,),
+                   FROM organization_invitations WHERE token_digest = ANY(%s)""",
+                ([token_digest, legacy_token_digest] if legacy_token_digest else [token_digest],),
             ).fetchone()
             if invitation is None or invitation["consumed_at"] is not None or invitation["expires_at"] <= now:
                 raise OrganizationInvitationNotUsable("invitation is expired, consumed, or unknown")
