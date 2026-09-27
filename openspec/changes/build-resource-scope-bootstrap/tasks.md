@@ -26,7 +26,7 @@
 
 - [x] 4.1 Define an immutable resolved Resource Scope context containing the authorized `scope_id`, canonical path, matched binding IDs, matched grant/guardrail identifiers, and scope/binding registry versions or digests; verify mutation attempts or changed registry versions require a fresh resolution.
 - [x] 4.2 Integrate the resolved context at the provision preflight boundary while preserving its non-mutating behavior; verify an end-to-end fake-registry test reaches preflight only for an active, authorized scope with exactly one resolved binding.
-- [x] 4.3 Add edge migration from the legacy `org:bu:project:workspace` hint to the canonical `env`/`scope_id` lookup without persisting `workspace`; verify compatibility tests normalize only at the boundary and reject ambiguous or incomplete legacy input.
+- [x] 4.3 Require `scope_id` routing only; remove the temporary workspace-hint compatibility edge and verify no runtime fallback remains.
 
 ## 5. Verification and documented boundaries
 

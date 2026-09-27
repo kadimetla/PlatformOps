@@ -76,21 +76,11 @@ SHALL NOT substitute a sibling environment, parent scope, or provider default.
   development is registered
 - **THEN** a request for production receives a non-routable scope result
 
-### Requirement: Legacy workspace hints normalize only at the edge
-The system MAY temporarily translate the legacy
-`org:bu/project/workspace` request hint to canonical organization, business
-unit, project, and `env` segments at the request boundary. It SHALL resolve a
-modern `scope_id` only when exactly one active Resource Scope matches, and it
-SHALL NOT persist `workspace` as a Resource Scope field or forward it as
-authorization or cloud-routing authority.
+### Requirement: Requests select an immutable Resource Scope identifier
+The system SHALL accept only a reviewed `scope_id` for Resource Scope routing.
+It SHALL resolve the complete active `org:bu:team:project:env` hierarchy from
+that identifier and SHALL NOT translate workspace-style hints at runtime.
 
-#### Scenario: Legacy workspace hint resolves one active scope
-- **WHEN** the boundary receives `acme:commerce/checkout/prod` and exactly one
-  active Checkout production Resource Scope matches
-- **THEN** it forwards only that Resource Scope's `scope_id` for authorization
-  and routing
-
-#### Scenario: Legacy hint is ambiguous across teams
-- **WHEN** two active Resource Scopes under different Teams match the same
-  legacy organization, business unit, project, and workspace segments
-- **THEN** the boundary returns a non-routable result rather than choosing one
+#### Scenario: Request identifies one active scope
+- **WHEN** the boundary receives an active Checkout production `scope_id`
+- **THEN** it resolves only that scope for authorization and routing

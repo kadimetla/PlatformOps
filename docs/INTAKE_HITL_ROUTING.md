@@ -15,7 +15,8 @@ human-in-the-loop clarification before workflow routing.
 **Corrected 2026-09-17 by
 [`build-org-onboarding`](../openspec/changes/build-org-onboarding/README.md):**
 the target shape planned for future registry-backed routing is
-`org:group:team:project:env`.  This supersedes the older
+`org:bu:team:project:env`. `bu` is business ownership; an identity `group`
+is a principal and never a path segment. This supersedes the older
 `<org>:<bu> → project → workspace` vocabulary in the historical design
 sections below.  It does **not** make target selection session state or
 token data: the authenticated session identifies the requester; a

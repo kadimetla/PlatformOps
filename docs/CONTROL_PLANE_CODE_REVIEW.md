@@ -1,5 +1,15 @@
 # Control Plane Code Review
 
+## Evidence and remediation status
+
+The detailed, file-and-line finding record is preserved in Git at commit
+`4d21de6` (the original review artifact). This document must not be read as a
+replacement for that evidence. The accepted remediation work is tracked in
+[`remediate-control-plane-review`](../openspec/changes/remediate-control-plane-review/):
+its task ledger records completed fixes and verification. Executor wiring
+remains gated on a durable approver receipt rather than the current
+test-only approval digest.
+
 ## Overview
 This branch introduces a massive set of capabilities centered around building the **deterministic control plane**, establishing secure **passwordless registration**, creating strict **organization onboarding workflows**, and introducing the **Resource Scope governance model**.
 
