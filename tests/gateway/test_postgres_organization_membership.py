@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import hmac
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -27,6 +28,7 @@ from gateway.organization_onboarding_postgres import apply_organization_onboardi
 
 
 DATABASE_URL = os.environ.get("PLATFORMOPS_DATABASE_URL")
+INVITATION_HMAC_KEY = b"test-invitation-hmac-key"
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(not DATABASE_URL, reason="PLATFORMOPS_DATABASE_URL is not configured"),
@@ -197,7 +199,7 @@ def test_join_org_route_derives_user_from_principal_and_keeps_raw_token_out_of_r
         repository.create_invitation(_invite(
             organization_id=organization_id,
             email="join@acme.example",
-            digest=hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
+            digest=hmac.new(INVITATION_HMAC_KEY, raw_token.encode("utf-8"), "sha256").hexdigest(),
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
         ))
         router = ControlPlaneCommandRouter({
@@ -243,7 +245,7 @@ def test_revoked_membership_is_not_active_and_user_can_join_two_independent_orga
             repository.create_invitation(_invite(
                 organization_id=organization_id,
                 email="two-orgs@acme.example",
-                digest=hashlib.sha256(raw_token.encode("utf-8")).hexdigest(),
+                digest=hmac.new(INVITATION_HMAC_KEY, raw_token.encode("utf-8"), "sha256").hexdigest(),
                 expires_at=expires_at,
             ))
         router = ControlPlaneCommandRouter({

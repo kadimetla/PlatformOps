@@ -26,8 +26,9 @@
 - [x] 2.5 Strip chat input before slash-command recognition; verify whitespace
   prefixed protected guest commands receive login guidance and never invoke
   model-backed intake.
-- [x] 2.6 Carry distinct approver identity into sealed approval/evidence and
-  remove execution states that cannot occur.
+- [ ] 2.6 Before wiring any real executor, persist a durable approver receipt
+  bound to the sealed plan and verify it at execution; the current fake-only
+  execution evidence is not an executor authorization proof.
 
 ## 3. Durable lifecycle and migration correctness — merge blockers unless deferred enablement
 
