@@ -3,7 +3,13 @@
 ## 1. Browser-authenticated transport
 
 - [x] 1.1 Add a FastAPI browser-session and CSRF dependency that derives a validated principal; verify missing, expired, cross-origin, and invalid-CSRF runs never start a workflow.
-- [ ] 1.2 Replace browser `/runs` local actor-session loading with the validated-principal handoff; verify browser chat no longer depends on a server session file.
+- [ ] 1.2 Define and implement the injected `BrowserRuntimeActorResolver` from
+  validated principal to current server-owned runtime actor projection; verify
+  it never reads the CLI session file or accepts browser-supplied grants.
+- [ ] 1.3 Replace browser `/runs` local actor-session loading with the
+  validated-principal plus runtime-actor-resolver handoff; verify browser chat
+  no longer depends on a server session file and missing execution grants fail
+  closed for provisioning.
 
 ## 2. Unified command and A2UI interaction
 

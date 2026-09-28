@@ -29,6 +29,24 @@ the existing browser-session authenticator, and produces a validated principal.
 The transport then invokes trusted router/workflow handlers; it never reads a
 local actor-session file for this path.
 
+### Resolve browser runtime actor data server-side
+
+The existing harness still consumes runtime actor data for safe display and
+provider-discovered execution grants. Before browser `/runs` can replace the
+CLI session path, the transport SHALL use an injected
+`BrowserRuntimeActorResolver` that accepts only the validated principal and
+loads its current server-owned runtime projection. That projection may include
+the verified display/contact data needed by an interaction event and current
+provider-discovered grants; it is never constructed from a cookie claim,
+browser payload, local session file, or PlatformOps group-to-execution-grant
+mapping.
+
+Until provider discovery exists, an empty execution-grant set is valid and
+must fail closed for provisioning. The resolver does not mint a grant merely
+so browser chat can reach a provision route. The resolver is an explicit app
+composition dependency with an in-memory fake for tests; it is not a hidden
+fallback to the CLI actor-session format.
+
 ### Chat and command outcomes share A2UI rendering
 
 Chat remains an AG-UI run. Typed actions such as onboarding review become
