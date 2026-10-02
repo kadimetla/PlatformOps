@@ -57,7 +57,7 @@ from gateway.scope import parse_scope_hint
 from harness.core import PlatformOpsHarness
 from transports.browser_auth import browser_mutation_principal_dependency
 from interaction.a2ui import (
-    command_outcome_to_a2ui_messages,
+    command_result_to_a2ui_messages,
     hitl_event_to_a2ui_messages,
     platformops_event_to_a2ui_messages,
 )
@@ -300,7 +300,7 @@ def create_app(
             except ValidationError as exc:
                 raise HTTPException(status_code=400, detail="invalid command payload") from exc
 
-            messages = command_outcome_to_a2ui_messages(f"{run_id}-command", command, outcome)
+            messages = command_result_to_a2ui_messages(f"{run_id}-command", command, outcome)
 
             async def command_stream() -> AsyncIterator[str]:
                 encoder = EventEncoder()

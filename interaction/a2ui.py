@@ -23,6 +23,13 @@ Text, Button) -- no custom catalog registration needed on the frontend.
 """
 from typing import Any
 
+from gateway.command_router import ControlPlaneCommand
+from gateway.onboarding_administrator import (
+    OnboardingReviewOutcomeProjection,
+    OnboardingReviewStatus,
+    PendingOnboardingReviewProjection,
+)
+from gateway.organization_onboarding import ActiveOrganization
 from gateway.schemas import IntakeDecision
 from interaction.agui import hitl_event_to_interrupt
 from interaction.dynamic_ui import DynamicCardSpec, DynamicChoice, compile_dynamic_card
@@ -209,3 +216,90 @@ def command_outcome_to_a2ui_messages(
         _create_surface(surface_id),
         _update_components(surface_id, [root, *field_components]),
     ]
+
+
+def _text_column(
+    surface_id: str, lines: list[tuple[str, str]], extra: list[dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
+    text_components = [
+        {"id": f"field-{key}", "component": "Text", "text": text} for key, text in lines
+    ]
+    extra = extra or []
+    root = {
+        "id": "root",
+        "component": "Column",
+        "children": [c["id"] for c in text_components]
+        + [c["id"] for c in extra if c["component"] == "Button"],
+    }
+    return [
+        _create_surface(surface_id),
+        _update_components(surface_id, [root, *text_components, *extra]),
+    ]
+
+
+def onboarding_review_to_a2ui_messages(
+    surface_id: str,
+    projection: PendingOnboardingReviewProjection | OnboardingReviewOutcomeProjection,
+) -> list[dict[str, Any]]:
+    """Onboarding-review detail/action surface from an allow-listed projection.
+
+    Reads only the projection's declared fields -- never the request,
+    applicant, approval digest, identity-proof evidence, or any reviewer
+    identity. A pending review gets one Approve button whose click reports
+    {request_id} only; the frontend turns it into a /commands call, where
+    the reviewer is the cookie principal and authorization is re-checked
+    server-side. An activated outcome is read-only.
+    """
+    if isinstance(projection, OnboardingReviewOutcomeProjection):
+        return _text_column(
+            surface_id,
+            [
+                ("title", "Organization activated"),
+                ("organization_name", f"organization_name: {projection.organization_name}"),
+                ("organization_id", f"organization_id: {projection.organization_id}"),
+                ("status", f"status: {projection.status.value}"),
+            ],
+        )
+    lines = [
+        ("title", "Organization onboarding review"),
+        ("request_id", f"request_id: {projection.request_id}"),
+        ("organization_name", f"organization_name: {projection.organization_name}"),
+        ("identity_boundary", f"identity_boundary: {projection.identity_boundary_kind} "
+                              f"{projection.identity_boundary_reference}"),
+        ("identity_proof_recorded", f"identity_proof_recorded: {projection.identity_proof_recorded}"),
+        ("status", f"status: {projection.status.value}"),
+    ]
+    extra: list[dict[str, Any]] = []
+    # Approving without recorded identity proof is not offered.
+    if projection.status == OnboardingReviewStatus.PENDING and projection.identity_proof_recorded:
+        extra = [
+            {"id": "approve-label", "component": "Text", "text": "Approve"},
+            {
+                "id": "approve",
+                "component": "Button",
+                "child": "approve-label",
+                "action": {
+                    "event": {
+                        "name": ControlPlaneCommand.REVIEW_ONBOARDING.value,
+                        "context": {"request_id": projection.request_id},
+                    }
+                },
+            },
+        ]
+    return _text_column(surface_id, lines, extra)
+
+
+def command_result_to_a2ui_messages(
+    surface_id: str, command: str, outcome: Any
+) -> list[dict[str, Any]]:
+    """Pick the surface for a trusted command result; fall back to the
+    generic field-allowlisted outcome for anything unrecognized."""
+    if isinstance(outcome, PendingOnboardingReviewProjection):
+        return onboarding_review_to_a2ui_messages(surface_id, outcome)
+    if command == ControlPlaneCommand.REVIEW_ONBOARDING.value and isinstance(outcome, dict):
+        organization = outcome.get("organization")
+        if isinstance(organization, ActiveOrganization):
+            return onboarding_review_to_a2ui_messages(
+                surface_id, OnboardingReviewOutcomeProjection.from_active(organization)
+            )
+    return command_outcome_to_a2ui_messages(surface_id, command, outcome)

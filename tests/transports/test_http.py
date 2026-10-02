@@ -442,3 +442,43 @@ def test_command_payload_validation_failure_is_400_and_commands_absent_without_r
 
     no_router = _client(_fake())
     assert no_router.post("/commands", json=_command_body()).status_code in (404, 405)
+
+
+def test_onboarding_review_view_command_renders_safe_surface_with_approve_action():
+    from gateway.onboarding_administrator import PendingOnboardingReviewProjection
+
+    async def read(_invocation):
+        return PendingOnboardingReviewProjection(
+            request_id="orgreq_checkout", organization_name="Acme",
+            identity_boundary_kind="domain", identity_boundary_reference="acme.example",
+            identity_proof_recorded=True,
+        )
+
+    client = _client(_fake(), command_router=ControlPlaneCommandRouter(
+        {"onboarding_administrator_read": read}
+    ))
+
+    response = client.post(
+        "/commands",
+        json=_command_body("/onboarding-review", {"request_id": "orgreq_checkout"}),
+    )
+
+    assert response.status_code == 200
+    assert "Organization onboarding review" in response.text
+    assert "/review-onboard-org" in response.text
+    assert "alice" not in response.text
+
+
+def test_review_command_rejects_reviewer_identity_in_payload():
+    router, seen = _recording_router()
+    client = _client(_fake(), command_router=router)
+
+    response = client.post(
+        "/commands",
+        json=_command_body(
+            "/review-onboard-org", {"request_id": "orgreq_checkout", "reviewer_subject": "usr_x"}
+        ),
+    )
+
+    assert response.status_code == 400
+    assert seen == []
