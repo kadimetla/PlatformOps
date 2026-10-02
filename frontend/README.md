@@ -28,14 +28,20 @@ Vite/engine-version error.
 
 ```bash
 npm install
-npm run dev      # Vite dev server, port 5173, proxies /runs and /info
+npm run dev      # Vite dev server, port 5173, proxies /runs, /info and /commands
                   # to transports/http.py on port 8000 (see vite.config.ts)
 npm run build     # tsc -b && vite build -- verified clean 2026-08-07
                   # against the real installed @ag-ui/client/@a2ui/react/
                   # @a2ui/web_core packages
 ```
 
-Requires `transports/http.py` running separately (`uvicorn
-transports.http:app`) and a session from `platformops login` — this
-milestone has no browser-based login, see `docs/WEB_CHAT_APP.md`'s
-Session Handling section.
+Requires a backend built with `transports.http.create_app(...)` listening
+on port 8000. *Corrected 2026-10-01:* there is no module-level `app`
+(`uvicorn transports.http:app` no longer works) and no `platformops login`
+file session; requests carry the HttpOnly session cookie plus an in-memory
+`x-csrf-proof` (`src/lib/browserSession.ts`). The frontend has no
+login-confirmation page yet, so nothing calls `setCsrfProof` and browser
+calls 401 until one does. See `docs/WEB_CHAT_APP.md`'s Session Handling.
+
+Dev proxy covers `/runs`, `/info`, and `/commands`. Tests:
+`node --test tests/browserSession.test.mjs` (Node >= 22.18).
