@@ -47,12 +47,20 @@ from gateway.browser_runtime_actor import (
     BrowserRuntimeActorResolver,
 )
 from gateway.browser_sessions import BrowserSessionAuthenticator
-from gateway.command_router import ValidatedPrincipal
+from gateway.command_router import (
+    CommandRouteUnavailable,
+    ControlPlaneCommandRouter,
+    ValidatedPrincipal,
+)
 from gateway.schemas import ScopeHint
 from gateway.scope import parse_scope_hint
 from harness.core import PlatformOpsHarness
 from transports.browser_auth import browser_mutation_principal_dependency
-from interaction.a2ui import hitl_event_to_a2ui_messages, platformops_event_to_a2ui_messages
+from interaction.a2ui import (
+    command_outcome_to_a2ui_messages,
+    hitl_event_to_a2ui_messages,
+    platformops_event_to_a2ui_messages,
+)
 from interaction.agui import hitl_event_to_run_finished, platformops_event_to_run_finished
 from interaction.events import HITLEvent, PlatformOpsEvent
 from workflows.intake.tools import select_intent
@@ -140,11 +148,37 @@ def _extract_scope_hint(forwarded_props: Any) -> ScopeHint | None:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+# A typed browser action carries structured input only. Any key that names
+# authority (who, which provider/credential, which grant) is rejected before
+# routing, at any nesting depth; the principal comes from the session cookie.
+_AUTHORITY_KEY_FRAGMENTS = (
+    "provider", "binding", "credential", "secret", "token", "grant",
+    "reviewer", "principal", "actor", "issuer", "subject", "role", "session",
+)
+
+
+def _find_authority_key(value: Any) -> str | None:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if any(fragment in str(key).lower() for fragment in _AUTHORITY_KEY_FRAGMENTS):
+                return str(key)
+            found = _find_authority_key(nested)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = _find_authority_key(item)
+            if found:
+                return found
+    return None
+
+
 def create_app(
     *,
     model: Any,
     authenticator: BrowserSessionAuthenticator,
     actor_resolver: BrowserRuntimeActorResolver,
+    command_router: ControlPlaneCommandRouter | None = None,
 ) -> FastAPI:
     """Everything is injected so tests supply a fake model, an in-memory
     session repository, and an in-memory actor store. Browser auth yields a
@@ -230,6 +264,57 @@ def create_app(
             yield encoder.encode(ag_ui.RunFinishedEvent(**run_finished))
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    if command_router is not None:
+
+        @app.post("/commands")
+        async def commands(
+            request: Request,
+            principal: ValidatedPrincipal = Depends(authenticate),
+        ) -> StreamingResponse:
+            """Typed browser action -> trusted router -> A2UI outcome.
+
+            Body: {threadId, runId, command, payload}. Rejections happen
+            before the stream opens, so they are clean 4xx responses.
+            """
+            body = await request.json()
+            if not isinstance(body, dict):
+                raise HTTPException(status_code=400, detail="invalid command body")
+            thread_id, run_id = body.get("threadId"), body.get("runId")
+            command, payload = body.get("command"), body.get("payload", {})
+            if not all(isinstance(v, str) and v for v in (thread_id, run_id, command)):
+                raise HTTPException(status_code=400, detail="threadId, runId and command are required")
+            if not isinstance(payload, dict):
+                raise HTTPException(status_code=400, detail="payload must be an object")
+            rejected = _find_authority_key(payload)
+            if rejected:
+                raise HTTPException(
+                    status_code=400, detail=f"payload field {rejected!r} is not accepted"
+                )
+            try:
+                outcome = await command_router.dispatch(command, payload, principal=principal)
+            except CommandRouteUnavailable as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except PermissionError as exc:
+                raise HTTPException(status_code=403, detail="command not permitted") from exc
+            except ValidationError as exc:
+                raise HTTPException(status_code=400, detail="invalid command payload") from exc
+
+            messages = command_outcome_to_a2ui_messages(f"{run_id}-command", command, outcome)
+
+            async def command_stream() -> AsyncIterator[str]:
+                encoder = EventEncoder()
+                yield encoder.encode(ag_ui.RunStartedEvent(thread_id=thread_id, run_id=run_id))
+                for message in messages:
+                    kind = "createSurface" if "createSurface" in message else "updateComponents"
+                    yield encoder.encode(ag_ui.CustomEvent(name=f"a2ui.{kind}", value=message))
+                yield encoder.encode(
+                    ag_ui.RunFinishedEvent(
+                        thread_id=thread_id, run_id=run_id, outcome={"type": "success"}
+                    )
+                )
+
+            return StreamingResponse(command_stream(), media_type="text/event-stream")
 
     return app
 

@@ -13,7 +13,7 @@
 
 ## 2. Unified command and A2UI interaction
 
-- [ ] 2.1 Route typed browser control-plane actions through the trusted command router and render safe outcomes as AG-UI/A2UI events; verify authority-bearing payload fields are rejected.
+- [x] 2.1 Route typed browser control-plane actions through the trusted command router and render safe outcomes as AG-UI/A2UI events; verify authority-bearing payload fields are rejected.
 - [ ] 2.2 Add onboarding-review A2UI detail and action surfaces driven only by safe projections; verify no provider, credential, token, or reviewer-identity data is rendered.
 
 ## 3. Browser client migration

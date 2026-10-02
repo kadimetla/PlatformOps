@@ -11,6 +11,7 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage
 
 from gateway.auth.schemas import Capability, ExecutionGrant
+from gateway.command_router import ControlPlaneCommandRouter
 from gateway.browser_runtime_actor import (
     InMemoryBrowserRuntimeActorStore,
     StoredBrowserRuntimeActorResolver,
@@ -95,12 +96,19 @@ class _DirectFake:
         return self
 
 
-def _client(model, *, execution_grants=None, known_actor=True, authenticated=True):
+def _client(
+    model, *, execution_grants=None, known_actor=True, authenticated=True, command_router=None
+):
     authenticator, resolver, issued = _app_and_session(
         execution_grants=execution_grants, known_actor=known_actor
     )
     client = TestClient(
-        create_app(model=model, authenticator=authenticator, actor_resolver=resolver)
+        create_app(
+            model=model,
+            authenticator=authenticator,
+            actor_resolver=resolver,
+            command_router=command_router,
+        )
     )
     if authenticated:
         client.cookies.set("platformops_session", issued.set_cookie._token)
@@ -351,3 +359,86 @@ def _extract_interrupt_id(sse_text: str) -> str:
             frame = json.loads(line[len("data: ") :])
             return frame["outcome"]["interrupts"][0]["id"]
     raise AssertionError("no interrupt frame found")
+
+
+def _command_body(command="/provision", payload=None):
+    return {
+        "threadId": "t-cmd",
+        "runId": "r-cmd",
+        "command": command,
+        "payload": {"scope_id": "scope-12345"} if payload is None else payload,
+    }
+
+
+def _recording_router():
+    seen = []
+
+    async def handler(invocation):
+        seen.append(invocation)
+        return {
+            "status": "accepted",
+            "scope_id": invocation.payload["scope_id"],
+            "provider_binding": "aws-secret-binding",  # must never render
+            "reviewer": "usr_reviewer",  # must never render
+        }
+
+    return ControlPlaneCommandRouter({"provision": handler}), seen
+
+
+def test_command_routes_through_router_with_cookie_principal_and_renders_a2ui():
+    router, seen = _recording_router()
+    client = _client(_fake(), command_router=router)
+
+    response = client.post("/commands", json=_command_body())
+
+    assert response.status_code == 200
+    assert seen[0].principal.subject == "alice"
+    assert seen[0].route.workflow_id == "provision"
+    assert '"a2ui.createSurface"' in response.text
+    assert "status: accepted" in response.text
+    assert "scope_id: scope-12345" in response.text
+    assert "aws-secret-binding" not in response.text
+    assert "usr_reviewer" not in response.text
+    assert '"RUN_FINISHED"' in response.text
+
+
+def test_command_rejects_authority_bearing_payload_before_any_handler_runs():
+    router, seen = _recording_router()
+    client = _client(_fake(), command_router=router)
+
+    for payload in (
+        {"scope_id": "scope-12345", "provider": "aws"},
+        {"scope_id": "scope-12345", "nested": [{"reviewer_id": "usr_x"}]},
+        {"scope_id": "scope-12345", "execution_grants": []},
+    ):
+        response = client.post("/commands", json=_command_body(payload=payload))
+        assert response.status_code == 400
+
+    assert seen == []
+
+
+def test_command_requires_browser_session_and_known_command():
+    router, seen = _recording_router()
+
+    unauthenticated = _client(_fake(), command_router=router, authenticated=False)
+    assert unauthenticated.post("/commands", json=_command_body()).status_code == 401
+
+    client = _client(_fake(), command_router=router)
+    assert client.post("/commands", json=_command_body(command="/nope")).status_code == 404
+    assert client.post("/commands", json=_command_body(command="/join-org")).status_code == 404
+    assert seen == []
+
+
+def test_command_payload_validation_failure_is_400_and_commands_absent_without_router():
+    from gateway.provision_handler import build_provision_handler
+
+    class _Graph:
+        async def ainvoke(self, _input):  # pragma: no cover - never reached
+            raise AssertionError
+
+    router = ControlPlaneCommandRouter({"provision": build_provision_handler(_Graph())})
+    client = _client(_fake(), command_router=router)
+    assert client.post("/commands", json=_command_body(payload={"scope_id": "x"})).status_code == 400
+
+    no_router = _client(_fake())
+    assert no_router.post("/commands", json=_command_body()).status_code in (404, 405)

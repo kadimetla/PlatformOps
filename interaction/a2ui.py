@@ -175,3 +175,37 @@ def platformops_event_to_a2ui_messages(event: PlatformOpsEvent) -> list[dict[str
         _create_surface(surface_id),
         _update_components(surface_id, [root, *field_components]),
     ]
+
+
+# Fixed projection for typed-command outcomes: a handler result is never
+# rendered wholesale, so a new graph-state key (credential, reviewer
+# identity, provider binding) cannot reach the browser by accident.
+_COMMAND_OUTCOME_FIELDS = ("status", "request_id", "scope_id", "message")
+
+
+def command_outcome_to_a2ui_messages(
+    surface_id: str, command: str, outcome: Any
+) -> list[dict[str, Any]]:
+    """createSurface + updateComponents for a trusted command outcome.
+
+    Only _COMMAND_OUTCOME_FIELDS render, and only when the outcome is a
+    mapping; anything else renders just the command and a completed status.
+    """
+    safe = outcome if isinstance(outcome, dict) else {}
+    fields = {"command": command, "status": "completed"}
+    fields.update(
+        {key: safe[key] for key in _COMMAND_OUTCOME_FIELDS if safe.get(key) is not None}
+    )
+    field_components = [
+        {"id": f"field-{key}", "component": "Text", "text": f"{key}: {value}"}
+        for key, value in fields.items()
+    ]
+    root = {
+        "id": "root",
+        "component": "Column",
+        "children": [component["id"] for component in field_components],
+    }
+    return [
+        _create_surface(surface_id),
+        _update_components(surface_id, [root, *field_components]),
+    ]
