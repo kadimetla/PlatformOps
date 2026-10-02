@@ -18,7 +18,7 @@
 
 ## 3. Browser client migration
 
-- [ ] 3.1 Update the React AG-UI client to send same-origin credentials and in-memory CSRF proof; verify no JWT or CSRF proof is persisted in browser storage.
+- [x] 3.1 Update the React AG-UI client to send same-origin credentials and in-memory CSRF proof; verify no JWT or CSRF proof is persisted in browser storage.
 - [ ] 3.2 Remove the browser-facing local-file-session assumption and document HTTP/SSE as the initial unified transport.
 
 ## 4. Verification
