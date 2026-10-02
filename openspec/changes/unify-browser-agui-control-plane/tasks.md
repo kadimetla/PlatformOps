@@ -23,5 +23,5 @@
 
 ## 4. Verification
 
-- [ ] 4.1 Run focused gateway, transport, workflow, and frontend tests with fake sessions and no live model, cloud, or provider credentials.
-- [ ] 4.2 Run `openspec validate unify-browser-agui-control-plane --strict`.
+- [x] 4.1 Run focused gateway, transport, workflow, and frontend tests with fake sessions and no live model, cloud, or provider credentials.
+- [x] 4.2 Run `openspec validate unify-browser-agui-control-plane --strict`.
