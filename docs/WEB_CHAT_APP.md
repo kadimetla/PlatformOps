@@ -30,14 +30,27 @@ already a documented Non-Goal, reinforced with a stronger docstring note
 in `transports/http.py`. See `openspec/changes/build-agui-a2ui-transport/design.md`'s
 matching correction section for the full reasoning per fix.
 
+**Corrected 2026-10-01 by `openspec/changes/archive/2026-10-01-unify-browser-agui-control-plane/`**: the file-session model
+described below (status paragraph, Session Handling, the smoke test) is
+superseded. `transports/http.py` no longer reads `PLATFORMOPS_SESSION_PATH`
+or any CLI session file; browser requests authenticate with an HttpOnly
+session cookie + same-origin + CSRF proof, and the runtime actor comes from
+an injected resolver. The history below is kept as the reason the first
+slice looked the way it did.
+
 ## Real vs. Designed
 | Area | Status |
 |---|---|
 | `interaction/a2ui.py` (A2UI message building) | Real, tested against the real `@a2ui/web_core` wire schema |
 | `interaction/agui.py`'s `platformops_event_to_run_finished` | Real, tested |
-| `transports/http.py` (`GET /info`, `POST /runs`) | Real, tested; single-user/local-dev session handling only |
+| `transports/http.py` (`GET /info`, `POST /runs`) | Real, tested. *Corrected 2026-10-01:* browser-session cookie + CSRF auth and injected `BrowserRuntimeActorResolver`; no file session. No module-level `app` -- the caller composes `create_app(model, authenticator, actor_resolver, command_router=None)` |
+| `transports/http.py` `POST /commands` | Real, tested. Typed action -> `ControlPlaneCommandRouter` as the cookie principal -> A2UI outcome; authority-bearing payload keys rejected with 400 |
+| Onboarding-review A2UI surfaces (`interaction/a2ui.py`) | Real, tested; rendered only from allow-listed projections |
+| `frontend/src/lib/browserSession.ts` | Real; same-origin credentials + in-memory CSRF proof, never persisted |
+| Production composition of authenticator / resolver / router | **Not implemented** -- tests build them in memory; `uvicorn transports.http:app` no longer exists |
+| Frontend acquisition of the CSRF proof (login-confirmation page) | **Not implemented** -- nothing calls `setCsrfProof` yet; browser calls 401 until it does |
 | `frontend/` (Vite + React + `@ag-ui/client` + `@a2ui/react`) | Real, compiles and builds clean; not yet verified in an actual browser |
-| Browser-based OIDC login | Not implemented -- reuses `platformops login`'s on-disk session file |
+| Browser-based OIDC login | Not implemented as a UI. *Corrected 2026-10-01:* the server side (session issuance, cookie, CSRF) exists; it no longer reuses `platformops login`'s on-disk session file |
 | Approval-gate / execution UI | Not implemented -- no real workflow exists to route `provision`/`inquiry` into yet |
 | CopilotKit Node Runtime / chat chrome | Not implemented, deliberately deferred (see Scope Decision below) |
 | Multi-user session routing | Not implemented, deliberately deferred |
@@ -136,6 +149,25 @@ POST /runs    one endpoint for both a new turn (messages) and a
 `runId` only tags SSE frames and never reaches the harness.
 
 ## Session Handling
+**Corrected 2026-10-01 by `openspec/changes/archive/2026-10-01-unify-browser-agui-control-plane/`** -- **current behavior:**
+`POST /runs` and `POST /commands` run `browser_mutation_principal_dependency`
+(`transports/browser_auth.py`): session cookie, same `Origin`, and
+`x-csrf-proof` must all validate or the request is a 401 before any workflow
+or model starts. The resulting `ValidatedPrincipal` (issuer, subject only) is
+passed to an injected `BrowserRuntimeActorResolver`
+(`gateway/browser_runtime_actor.py`), which returns the server-owned runtime
+actor; no resolved actor is a 403. Empty execution grants are valid and fail
+closed for provisioning -- nothing mints one. The harness still takes an
+`ActorSession`, so `transports/http.py` wraps the resolved actor in a
+5-minute per-request one that is never persisted. The CSRF proof lives in
+browser memory only (`frontend/src/lib/browserSession.ts`).
+
+**Transport:** HTTP request + SSE response is the unified browser transport
+for chat (`/runs`), A2UI/HITL resume (`/runs` with `resume`), and typed
+control-plane actions (`/commands`). WebSocket is a future optimization, not
+required by any of these.
+
+*Original first-slice text (superseded):*
 Single-user/local-dev only for this milestone: no browser-based OIDC
 login exists. `platformops login` (unchanged, `transports/cli.py`)
 still runs in a terminal and writes `.platformops/session.json`;
@@ -170,7 +202,8 @@ The selected model must support the tool-calling behavior required by intake.
 - `npm install && npx tsc -b && npm run build` in `frontend/` -- clean,
   against the real installed `@ag-ui/client`/`@a2ui/react`/
   `@a2ui/web_core` packages.
-- A real running smoke test: `uvicorn transports.http:app` (port 8000)
+- *(Superseded 2026-10-01 -- `transports.http:app` no longer exists; the
+  file-session smoke test cannot be rerun as written.)* A real running smoke test: `uvicorn transports.http:app` (port 8000)
   + `npm run dev` (Vite, port 5173, proxying `/runs`/`/info` to 8000) +
   `curl` a Tier-2-prefixed message (`"compliance_check: ..."`, zero model
   calls) through the Vite proxy -- confirmed real `RUN_STARTED` ->
@@ -206,4 +239,6 @@ path" from designed-only to real for the AG-UI adapter half
 `docs/INTAKE_HITL_ROUTING.md`'s `IntakeDecision`/`resolve_route` (real as
 of `openspec/changes/build-intake-dispatcher/`) as the only genuinely
 routable content this milestone renders. Indexed from
-[HARNESS_DESIGN.md](HARNESS_DESIGN.md).
+[HARNESS_DESIGN.md](HARNESS_DESIGN.md). Auth and `/commands` corrected 2026-10-01 per
+`openspec/changes/archive/2026-10-01-unify-browser-agui-control-plane/`, building on
+[AUTH_BOUNDARY.md](AUTH_BOUNDARY.md)'s browser-session boundary.

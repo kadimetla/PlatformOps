@@ -5,6 +5,10 @@ is a tested protocol-state slice for a future remote TUI, not a real
 WebSocket client. **2026-08-07**: `transports/http.py` is now a real
 FastAPI/SSE server — see `docs/WEB_CHAT_APP.md`. WebSocket endpoint,
 Teams adapter, and Google Chat adapter still don't exist.
+**Corrected 2026-10-01** by `openspec/changes/archive/2026-10-01-unify-browser-agui-control-plane/`:
+`transports/http.py` authenticates with a browser-session cookie + CSRF
+proof (no CLI session file) and adds `POST /commands`; HTTP request + SSE is
+the initial unified browser transport for chat, A2UI and typed commands.
 
 ## Real vs. Designed
 | Item | Status |
@@ -119,7 +123,14 @@ POST /runs/{thread_id}/resume
 GET  /info
 POST /runs   # messages -> new turn, resume -> clarification resume;
              # response body is the SSE stream
+
+# Added 2026-10-01 (unify-browser-agui-control-plane):
+POST /commands  # {threadId, runId, command, payload} -> trusted
+                # ControlPlaneCommandRouter as the cookie principal; SSE
+                # response carries the A2UI outcome
 ```
+Both POSTs require the browser session cookie, same `Origin`, and
+`x-csrf-proof`; see [WEB_CHAT_APP.md](WEB_CHAT_APP.md)'s Session Handling.
 
 WebSocket becomes useful when the terminal needs one persistent
 bidirectional session, reconnect handling, or low-latency multi-user

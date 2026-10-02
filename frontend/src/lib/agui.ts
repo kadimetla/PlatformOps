@@ -44,6 +44,7 @@ import type { ComponentProps } from "react";
 import { MessageProcessor } from "@a2ui/web_core/v0_9";
 import type { A2uiClientAction, A2uiMessage } from "@a2ui/web_core/v0_9";
 import { basicCatalog, A2uiSurface } from "@a2ui/react/v0_9";
+import { browserFetch } from "./browserSession";
 
 export { A2uiSurface };
 
@@ -130,7 +131,9 @@ function buildForwardedProps(scope: string): Record<string, unknown> {
  * multi-thread registry this composes into.
  */
 export function createThreadClient(runsUrl: string, threadId: string): ThreadClient {
-  const agent = new HttpAgent({ url: runsUrl, threadId });
+  // browserFetch adds same-origin credentials and the in-memory CSRF proof.
+  const agent = new HttpAgent({ url: runsUrl, threadId, fetch: browserFetch });
+  const commandsUrl = new URL("commands", new URL(runsUrl, window.location.href)).toString();
   const processor = new MessageProcessor([basicCatalog], handleAction);
 
   let state: PlatformOpsClientState = {
@@ -166,6 +169,26 @@ export function createThreadClient(runsUrl: string, threadId: string): ThreadCli
       // in flight -- explicit no-op, not a silently queued retry.
       return;
     }
+    if (action.name === "guest.login.submit") {
+      const email = action.context?.email;
+      if (typeof email !== "string" || !email.trim()) {
+        appendTurn({ kind: "error", text: "Enter an email address before requesting a sign-in link." });
+        return;
+      }
+      // This is the one public typed action. The server accepts only the
+      // email through the existing registration handler; no browser session,
+      // target, organization, or authority field is supplied.
+      void runAndLog((s) => runCommand("/login", { email }, s));
+      return;
+    }
+    if (action.name.startsWith("/")) {
+      // A typed control-plane action (e.g. onboarding-review Approve).
+      // Only the command name and the surface-reported context are sent;
+      // the server derives the principal from the session cookie and
+      // rejects authority-bearing fields.
+      void runAndLog((s) => runCommand(action.name, action.context ?? {}, s));
+      return;
+    }
     const interruptId = action.name;
     const interrupt = agent.pendingInterrupts.find((i) => i.id === interruptId);
     if (!interrupt) {
@@ -178,6 +201,51 @@ export function createThreadClient(runsUrl: string, threadId: string): ThreadCli
       [interruptId]: { status: "resolved", payload: action.context },
     });
     void runAndLog((s) => agent.runAgent({ resume }, s));
+  }
+
+  // POST /commands answers with the same AG-UI SSE framing as /runs, but
+  // it is not an agent run (no thread state or interrupts), so it is read
+  // directly: a2ui.* CUSTOM events feed the processor, RUN_FINISHED ends it.
+  async function runCommand(
+    command: string,
+    payload: Record<string, unknown>,
+    subscriber?: AgentSubscriber,
+  ): Promise<void> {
+    const response = await browserFetch(commandsUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({
+        threadId,
+        runId: crypto.randomUUID(),
+        command,
+        payload,
+      }),
+    });
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`;
+      try {
+        const body = (await response.json()) as { detail?: unknown };
+        if (typeof body.detail === "string" && body.detail) detail = body.detail;
+      } catch {
+        // non-JSON error body -- keep the status line
+      }
+      throw new Error(detail);
+    }
+    const text = await response.text();
+    for (const line of text.split("\n")) {
+      if (!line.startsWith("data: ")) continue;
+      const event = JSON.parse(line.slice(6)) as {
+        type: string;
+        name?: string;
+        value?: unknown;
+        result?: unknown;
+      };
+      if (event.type === "CUSTOM" && event.name?.startsWith("a2ui.")) {
+        subscriber?.onCustomEvent?.({ event } as never);
+      } else if (event.type === "RUN_FINISHED") {
+        subscriber?.onRunFinishedEvent?.({ outcome: "success", result: event.result } as never);
+      }
+    }
   }
 
   async function runAndLog(run: (s: AgentSubscriber) => Promise<unknown>): Promise<void> {

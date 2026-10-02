@@ -124,7 +124,15 @@ provider discovery and provisioning workflows are not implemented yet.
    floating around from before 2026.2 will say the opposite -- verify against
    the release notes for whatever version you're actually running, not this
    note, if the pin above ever changes.
-8. **Test the web chat session boundary.** In one terminal, from the
+8. **Test the web chat session boundary.**
+   > **Superseded 2026-10-01** (`unify-browser-agui-control-plane`): the steps
+   > below no longer work. `transports.http:app` was removed and the server no
+   > longer reads `PLATFORMOPS_SESSION_PATH`; browser auth is a session cookie
+   > + CSRF proof. There is no production composition or browser login page
+   > yet, so this end-to-end path cannot currently be run by hand -- see
+   > `docs/WEB_CHAT_APP.md`. Kept for the history of what the first slice did.
+   >
+   In one terminal, from the
    repository root:
    ```bash
    export PLATFORMOPS_SESSION_PATH="$PWD/.platformops/session.json"

@@ -43,7 +43,10 @@
   registration handler; verify no authenticated principal is required for this
   public path and protected paths still require cookie and CSRF validation.
 - [ ] 3.8 Connect successful magic-link confirmation to safe browser identity
-  and context refresh; verify the JWT remains HttpOnly-only and the CSRF proof
+  and context refresh. The login page SHALL read the delivery link token only
+  from its URL fragment, remove it with `history.replaceState` before any
+  network request, and send it only in the bodies of the same-origin intent and
+  confirm POSTs; verify the JWT remains HttpOnly-only and the CSRF proof
   remains browser-memory-only.
 - [ ] 3.9 Connect authenticated provision intake without bypassing session,
   membership, grant, governance, or provider-binding checks.

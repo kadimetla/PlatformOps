@@ -1,21 +1,29 @@
 """No real model credentials or network calls anywhere -- every model
 here is a scripted FakeMessagesListChatModel, same convention as
-tests/harness/test_core.py. Sessions live in tmp_path, written via
-gateway.auth.cli.write_session (symmetric to gateway.auth.sessions.read_session,
-which transports/http.py's create_app reads on every request).
+tests/harness/test_core.py. Browser sessions and runtime actors are
+in-memory fakes; no CLI session file is read or written.
 """
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
 
-from gateway.auth.cli import write_session
-from gateway.auth.claims import OIDCClaims
 from gateway.auth.schemas import Capability, ExecutionGrant
-from gateway.auth.sessions import build_actor_session
+from gateway.command_router import ControlPlaneCommandRouter
+from gateway.browser_runtime_actor import (
+    InMemoryBrowserRuntimeActorStore,
+    StoredBrowserRuntimeActorResolver,
+    browser_runtime_actor,
+)
+from gateway.browser_sessions import (
+    BrowserSessionAuthenticator,
+    BrowserSessionIssuer,
+    BrowserSessionSigningKey,
+    InMemoryBrowserSessionRepository,
+    StaticBrowserSessionSigningKeyProvider,
+)
 from gateway.schemas import Scope
 from transports.http import _build_model, create_app
 
@@ -32,18 +40,35 @@ def _invoices_dev_grant():
     )
 
 
-def _session_path(tmp_path, *, expired=False, execution_grants=None):
-    now = datetime.now(timezone.utc)
-    session = build_actor_session(
-        OIDCClaims(sub="alice", email="alice@example.com", groups=[]),
-        execution_grants or [],
-        [],
-        now=now,
-        ttl_seconds=-1 if expired else 3600,
+_ORIGIN = "https://platformops.example"
+
+
+def _app_and_session(*, execution_grants=None, known_actor=True):
+    repository = InMemoryBrowserSessionRepository(csrf_hmac_key=b"test-csrf-key")
+    keys = StaticBrowserSessionSigningKeyProvider(
+        BrowserSessionSigningKey(
+            key_id="test-key", secret=b"test-signing-key-that-is-at-least-32-bytes"
+        )
     )
-    path = tmp_path / "session.json"
-    write_session(session, path)
-    return path
+    issued = BrowserSessionIssuer(
+        repository=repository, signing_keys=keys, csrf_hmac_key=b"test-csrf-key"
+    ).issue(subject="alice")
+    authenticator = BrowserSessionAuthenticator(
+        repository=repository, signing_keys=keys, expected_origin=_ORIGIN
+    )
+    actors = (
+        (
+            browser_runtime_actor(
+                subject="alice",
+                email="alice@example.com",
+                execution_grants=execution_grants,
+            ),
+        )
+        if known_actor
+        else ()
+    )
+    resolver = StoredBrowserRuntimeActorResolver(InMemoryBrowserRuntimeActorStore(actors))
+    return authenticator, resolver, issued
 
 
 def _fake(*responses):
@@ -71,14 +96,24 @@ class _DirectFake:
         return self
 
 
-def _client(tmp_path, model, *, expired=False, execution_grants=None):
-    app = create_app(
-        model=model,
-        session_path=_session_path(
-            tmp_path, expired=expired, execution_grants=execution_grants
-        ),
+def _client(
+    model, *, execution_grants=None, known_actor=True, authenticated=True, command_router=None
+):
+    authenticator, resolver, issued = _app_and_session(
+        execution_grants=execution_grants, known_actor=known_actor
     )
-    return TestClient(app)
+    client = TestClient(
+        create_app(
+            model=model,
+            authenticator=authenticator,
+            actor_resolver=resolver,
+            command_router=command_router,
+        )
+    )
+    if authenticated:
+        client.cookies.set("platformops_session", issued.set_cookie._token)
+        client.headers.update({"origin": _ORIGIN, "x-csrf-proof": issued.csrf_proof})
+    return client
 
 
 def _run_input(thread_id, run_id, *, text=None, resume=None, forwarded_props=None):
@@ -118,8 +153,8 @@ def test_model_factory_keeps_anthropic_compatibility_fallback(monkeypatch):
     assert bound.bound.model == "anthropic/claude-haiku-4-5"
 
 
-def test_info_endpoint(tmp_path):
-    client = TestClient(create_app(model=_fake(), session_path=tmp_path / "session.json"))
+def test_info_endpoint():
+    client = _client(_fake(), authenticated=False)
 
     response = client.get("/info")
 
@@ -127,8 +162,8 @@ def test_info_endpoint(tmp_path):
     assert response.json()["protocol"] == "ag-ui"
 
 
-def test_tier2_prefixed_message_resolves_with_zero_model_calls(tmp_path):
-    client = _client(tmp_path, _fake())
+def test_tier2_prefixed_message_resolves_with_zero_model_calls():
+    client = _client(_fake())
 
     response = client.post(
         "/runs", json=_run_input("t-1", "r-1", text="compliance_check: does this comply?")
@@ -141,9 +176,8 @@ def test_tier2_prefixed_message_resolves_with_zero_model_calls(tmp_path):
     assert any('"RUN_FINISHED"' in f and '"success"' in f for f in frames)
 
 
-def test_provision_from_browser_scope_hint_reaches_preflight(tmp_path):
+def test_provision_from_browser_scope_hint_reaches_preflight():
     client = _client(
-        tmp_path,
         _DirectFake(
             _provision_tool_call(
                 "select_deployment_profile", profile_id="aws-static-web"
@@ -177,8 +211,8 @@ def test_provision_from_browser_scope_hint_reaches_preflight(tmp_path):
     assert '"frontend_hostname":"invoices.dev.example.com"' in response.text
 
 
-def test_invalid_browser_scope_hint_returns_400(tmp_path):
-    client = _client(tmp_path, _fake())
+def test_invalid_browser_scope_hint_returns_400():
+    client = _client(_fake())
 
     response = client.post(
         "/runs",
@@ -194,8 +228,8 @@ def test_invalid_browser_scope_hint_returns_400(tmp_path):
     assert response.json()["detail"] == "scope must use org:bu/project/workspace"
 
 
-def test_ambiguous_message_returns_clarification_interrupt(tmp_path):
-    client = _client(tmp_path, _fake(_tool_call(clarifying_question="which app?")))
+def test_ambiguous_message_returns_clarification_interrupt():
+    client = _client(_fake(_tool_call(clarifying_question="which app?")))
 
     response = client.post("/runs", json=_run_input("t-2", "r-1", text="set this up"))
 
@@ -205,9 +239,8 @@ def test_ambiguous_message_returns_clarification_interrupt(tmp_path):
     assert '"interrupt"' in frames
 
 
-def test_resume_completes_clarification_round_trip(tmp_path):
+def test_resume_completes_clarification_round_trip():
     client = _client(
-        tmp_path,
         _fake(
             _tool_call(clarifying_question="which app?"),
             _tool_call(intent="provision"),
@@ -237,27 +270,50 @@ def test_resume_completes_clarification_round_trip(tmp_path):
     assert '"success"' in second.text
 
 
-def test_missing_session_returns_401(tmp_path):
-    app = create_app(model=_fake(), session_path=tmp_path / "no-session.json")
-    client = TestClient(app)
+def test_missing_browser_session_returns_401():
+    client = _client(_fake(), authenticated=False)
 
     response = client.post("/runs", json=_run_input("t-4", "r-1", text="compliance_check: x"))
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "no session -- run 'platformops login' first"
 
 
-def test_expired_session_returns_401(tmp_path):
-    client = _client(tmp_path, _fake(), expired=True)
+def test_valid_principal_without_runtime_actor_returns_403():
+    client = _client(_fake(), known_actor=False)
 
     response = client.post("/runs", json=_run_input("t-5", "r-1", text="compliance_check: x"))
 
-    assert response.status_code == 401
-    assert response.json()["detail"] == "session expired -- run 'platformops login' again"
+    assert response.status_code == 403
 
 
-def test_resume_with_no_pending_clarification_returns_400(tmp_path):
-    client = _client(tmp_path, _fake())
+def test_browser_run_without_execution_grants_does_not_reach_preflight():
+    scripted = lambda: _DirectFake(  # noqa: E731
+        _provision_tool_call("select_deployment_profile", profile_id="aws-static-web"),
+        _provision_tool_call(
+            "extract_aws_static_web_request",
+            frontend_artifact_uri="s3://releases/invoices-ui.tar.gz",
+            frontend_hostname="invoices.dev.example.com",
+        ),
+    )
+    body = _run_input(
+        "t-5b",
+        "r-1",
+        text="provision: deploy s3://releases/invoices-ui.tar.gz at invoices.dev.example.com",
+        forwarded_props={"scope": "aiq:it/invoices/dev"},
+    )
+
+    granted = _client(scripted(), execution_grants=[_invoices_dev_grant()]).post("/runs", json=body)
+    ungranted = _client(scripted()).post("/runs", json=body)  # empty grants, none minted
+
+    assert granted.status_code == 200
+    assert ungranted.status_code == 200
+    assert '"ready_to_route":true' in granted.text
+    assert '"ready_to_route":false' in ungranted.text
+    assert "target not found or not accessible" in ungranted.text
+
+
+def test_resume_with_no_pending_clarification_returns_400():
+    client = _client(_fake())
 
     response = client.post(
         "/runs",
@@ -271,8 +327,8 @@ def test_resume_with_no_pending_clarification_returns_400(tmp_path):
     assert response.status_code == 400
 
 
-def test_resume_with_wrong_interrupt_id_for_a_real_pending_thread_returns_400(tmp_path):
-    client = _client(tmp_path, _fake(_tool_call(clarifying_question="which app?")))
+def test_resume_with_wrong_interrupt_id_for_a_real_pending_thread_returns_400():
+    client = _client(_fake(_tool_call(clarifying_question="which app?")))
 
     first = client.post("/runs", json=_run_input("t-7", "r-1", text="set this up"))
     assert first.status_code == 200
@@ -303,3 +359,165 @@ def _extract_interrupt_id(sse_text: str) -> str:
             frame = json.loads(line[len("data: ") :])
             return frame["outcome"]["interrupts"][0]["id"]
     raise AssertionError("no interrupt frame found")
+
+
+def _command_body(command="/provision", payload=None):
+    return {
+        "threadId": "t-cmd",
+        "runId": "r-cmd",
+        "command": command,
+        "payload": {"scope_id": "scope-12345"} if payload is None else payload,
+    }
+
+
+def _recording_router():
+    seen = []
+
+    async def handler(invocation):
+        seen.append(invocation)
+        return {
+            "status": "accepted",
+            "scope_id": invocation.payload["scope_id"],
+            "provider_binding": "aws-secret-binding",  # must never render
+            "reviewer": "usr_reviewer",  # must never render
+        }
+
+    return ControlPlaneCommandRouter({"provision": handler}), seen
+
+
+def test_command_routes_through_router_with_cookie_principal_and_renders_a2ui():
+    router, seen = _recording_router()
+    client = _client(_fake(), command_router=router)
+
+    response = client.post("/commands", json=_command_body())
+
+    assert response.status_code == 200
+    assert seen[0].principal.subject == "alice"
+    assert seen[0].route.workflow_id == "provision"
+    assert '"a2ui.createSurface"' in response.text
+    assert "status: accepted" in response.text
+    assert "scope_id: scope-12345" in response.text
+    assert "aws-secret-binding" not in response.text
+    assert "usr_reviewer" not in response.text
+    assert '"RUN_FINISHED"' in response.text
+
+
+def test_command_rejects_authority_bearing_payload_before_any_handler_runs():
+    router, seen = _recording_router()
+    client = _client(_fake(), command_router=router)
+
+    for payload in (
+        {"scope_id": "scope-12345", "provider": "aws"},
+        {"scope_id": "scope-12345", "nested": [{"reviewer_id": "usr_x"}]},
+        {"scope_id": "scope-12345", "execution_grants": []},
+    ):
+        response = client.post("/commands", json=_command_body(payload=payload))
+        assert response.status_code == 400
+
+    assert seen == []
+
+
+def test_command_requires_browser_session_and_known_command():
+    router, seen = _recording_router()
+
+    unauthenticated = _client(_fake(), command_router=router, authenticated=False)
+    assert unauthenticated.post("/commands", json=_command_body()).status_code == 401
+
+    client = _client(_fake(), command_router=router)
+    assert client.post("/commands", json=_command_body(command="/nope")).status_code == 404
+    assert client.post("/commands", json=_command_body(command="/join-org")).status_code == 404
+    assert seen == []
+
+
+def test_public_login_command_routes_without_a_browser_session_and_no_other_command_does():
+    seen = []
+
+    async def login(invocation):
+        seen.append(invocation)
+        return {"message": "verification pending"}
+
+    router = ControlPlaneCommandRouter({"login_registration": login})
+    client = _client(_fake(), command_router=router, authenticated=False)
+
+    response = client.post("/commands", json=_command_body("/login", {"email": "alice@example.com"}))
+
+    assert response.status_code == 200
+    assert seen[0].principal is None
+    assert seen[0].payload == {"email": "alice@example.com"}
+    assert client.post(
+        "/commands", json=_command_body("/login", {"email": "alice@example.com", "target": "prod"})
+    ).status_code == 400
+    assert client.post("/commands", json=_command_body("/provision")).status_code == 401
+
+
+def test_invalid_json_or_agui_body_is_a_clean_400_before_workflow_execution():
+    client = _client(_fake())
+
+    invalid_json = client.post("/runs", content="{", headers={"content-type": "application/json"})
+    invalid_schema = client.post("/runs", json={})
+
+    assert invalid_json.status_code == 400
+    assert invalid_schema.status_code == 400
+
+
+def test_invalid_command_json_is_a_clean_400_before_authentication_or_routing():
+    client = _client(_fake(), command_router=ControlPlaneCommandRouter({}), authenticated=False)
+
+    response = client.post("/commands", content="{", headers={"content-type": "application/json"})
+
+    assert response.status_code == 400
+
+
+def test_command_payload_validation_failure_is_400_and_commands_absent_without_router():
+    from gateway.provision_handler import build_provision_handler
+
+    class _Graph:
+        async def ainvoke(self, _input):  # pragma: no cover - never reached
+            raise AssertionError
+
+    router = ControlPlaneCommandRouter({"provision": build_provision_handler(_Graph())})
+    client = _client(_fake(), command_router=router)
+    assert client.post("/commands", json=_command_body(payload={"scope_id": "x"})).status_code == 400
+
+    no_router = _client(_fake())
+    assert no_router.post("/commands", json=_command_body()).status_code in (404, 405)
+
+
+def test_onboarding_review_view_command_renders_safe_surface_with_approve_action():
+    from gateway.onboarding_administrator import PendingOnboardingReviewProjection
+
+    async def read(_invocation):
+        return PendingOnboardingReviewProjection(
+            request_id="orgreq_checkout", organization_name="Acme",
+            identity_boundary_kind="domain", identity_boundary_reference="acme.example",
+            identity_proof_recorded=True,
+        )
+
+    client = _client(_fake(), command_router=ControlPlaneCommandRouter(
+        {"onboarding_administrator_read": read}
+    ))
+
+    response = client.post(
+        "/commands",
+        json=_command_body("/onboarding-review", {"request_id": "orgreq_checkout"}),
+    )
+
+    assert response.status_code == 200
+    assert "Organization onboarding review" in response.text
+    assert "/review-onboard-org" in response.text
+    assert "alice" not in response.text
+
+
+def test_review_command_rejects_reviewer_identity_in_payload():
+    router, seen = _recording_router()
+    client = _client(_fake(), command_router=router)
+
+    response = client.post(
+        "/commands",
+        json=_command_body(
+            "/review-onboard-org", {"request_id": "orgreq_checkout", "reviewer_subject": "usr_x"}
+        ),
+    )
+
+    assert response.status_code == 400
+    assert seen == []

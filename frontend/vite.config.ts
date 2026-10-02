@@ -11,6 +11,7 @@ export default defineConfig({
     proxy: {
       "/runs": "http://localhost:8000",
       "/info": "http://localhost:8000",
+      "/commands": "http://localhost:8000",
     },
   },
 });
