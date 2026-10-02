@@ -5,7 +5,7 @@ is a tested protocol-state slice for a future remote TUI, not a real
 WebSocket client. **2026-08-07**: `transports/http.py` is now a real
 FastAPI/SSE server — see `docs/WEB_CHAT_APP.md`. WebSocket endpoint,
 Teams adapter, and Google Chat adapter still don't exist.
-**Corrected 2026-10-01** by `openspec/changes/unify-browser-agui-control-plane/`:
+**Corrected 2026-10-01** by `openspec/changes/archive/2026-10-01-unify-browser-agui-control-plane/`:
 `transports/http.py` authenticates with a browser-session cookie + CSRF
 proof (no CLI session file) and adds `POST /commands`; HTTP request + SSE is
 the initial unified browser transport for chat, A2UI and typed commands.

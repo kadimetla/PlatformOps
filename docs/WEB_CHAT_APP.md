@@ -30,7 +30,7 @@ already a documented Non-Goal, reinforced with a stronger docstring note
 in `transports/http.py`. See `openspec/changes/build-agui-a2ui-transport/design.md`'s
 matching correction section for the full reasoning per fix.
 
-**Corrected 2026-10-01 by `openspec/changes/unify-browser-agui-control-plane/`**: the file-session model
+**Corrected 2026-10-01 by `openspec/changes/archive/2026-10-01-unify-browser-agui-control-plane/`**: the file-session model
 described below (status paragraph, Session Handling, the smoke test) is
 superseded. `transports/http.py` no longer reads `PLATFORMOPS_SESSION_PATH`
 or any CLI session file; browser requests authenticate with an HttpOnly
@@ -149,7 +149,7 @@ POST /runs    one endpoint for both a new turn (messages) and a
 `runId` only tags SSE frames and never reaches the harness.
 
 ## Session Handling
-**Corrected 2026-10-01 by `openspec/changes/unify-browser-agui-control-plane/`** -- **current behavior:**
+**Corrected 2026-10-01 by `openspec/changes/archive/2026-10-01-unify-browser-agui-control-plane/`** -- **current behavior:**
 `POST /runs` and `POST /commands` run `browser_mutation_principal_dependency`
 (`transports/browser_auth.py`): session cookie, same `Origin`, and
 `x-csrf-proof` must all validate or the request is a 401 before any workflow
@@ -240,5 +240,5 @@ path" from designed-only to real for the AG-UI adapter half
 of `openspec/changes/build-intake-dispatcher/`) as the only genuinely
 routable content this milestone renders. Indexed from
 [HARNESS_DESIGN.md](HARNESS_DESIGN.md). Auth and `/commands` corrected 2026-10-01 per
-`openspec/changes/unify-browser-agui-control-plane/`, building on
+`openspec/changes/archive/2026-10-01-unify-browser-agui-control-plane/`, building on
 [AUTH_BOUNDARY.md](AUTH_BOUNDARY.md)'s browser-session boundary.
