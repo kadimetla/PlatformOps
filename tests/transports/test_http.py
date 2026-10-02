@@ -429,6 +429,45 @@ def test_command_requires_browser_session_and_known_command():
     assert seen == []
 
 
+def test_public_login_command_routes_without_a_browser_session_and_no_other_command_does():
+    seen = []
+
+    async def login(invocation):
+        seen.append(invocation)
+        return {"message": "verification pending"}
+
+    router = ControlPlaneCommandRouter({"login_registration": login})
+    client = _client(_fake(), command_router=router, authenticated=False)
+
+    response = client.post("/commands", json=_command_body("/login", {"email": "alice@example.com"}))
+
+    assert response.status_code == 200
+    assert seen[0].principal is None
+    assert seen[0].payload == {"email": "alice@example.com"}
+    assert client.post(
+        "/commands", json=_command_body("/login", {"email": "alice@example.com", "target": "prod"})
+    ).status_code == 400
+    assert client.post("/commands", json=_command_body("/provision")).status_code == 401
+
+
+def test_invalid_json_or_agui_body_is_a_clean_400_before_workflow_execution():
+    client = _client(_fake())
+
+    invalid_json = client.post("/runs", content="{", headers={"content-type": "application/json"})
+    invalid_schema = client.post("/runs", json={})
+
+    assert invalid_json.status_code == 400
+    assert invalid_schema.status_code == 400
+
+
+def test_invalid_command_json_is_a_clean_400_before_authentication_or_routing():
+    client = _client(_fake(), command_router=ControlPlaneCommandRouter({}), authenticated=False)
+
+    response = client.post("/commands", content="{", headers={"content-type": "application/json"})
+
+    assert response.status_code == 400
+
+
 def test_command_payload_validation_failure_is_400_and_commands_absent_without_router():
     from gateway.provision_handler import build_provision_handler
 

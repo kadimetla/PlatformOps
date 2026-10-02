@@ -55,11 +55,13 @@ confirm once, create or recover the user, issue a session, and return a next
 journey. No LLM node may decide account existence, token validity, session
 issuance, membership, or authorization.
 
-The browser/chat surface is only a workflow launcher. Verification-link GET
-and same-origin confirmation POST remain gateway security handlers and call
-the same service and PostgreSQL repository as graph nodes. Raw tokens never
-enter graph state, checkpoints, events, or logs; safe state holds only IDs and
-lifecycle statuses.
+The browser/chat surface is only a workflow launcher. The emailed link opens a
+browser login page with the verification token in its URL fragment, which is
+never sent in the GET request. The page removes the fragment locally and uses
+same-origin POST gateway security handlers for intent inspection and
+confirmation; they call the same service and PostgreSQL repository as graph
+nodes. Raw tokens never enter graph state, checkpoints, events, or logs; safe
+state holds only IDs and lifecycle statuses.
 
 ### PostgreSQL is the durable store in every deployed environment
 
@@ -108,12 +110,15 @@ second session or account.
 
 ### Verification uses confirmation before consumption
 
-The emailed link opens a verification-intent endpoint that validates the opaque
-token without consuming it and presents a confirmation step. A same-origin
-POST performs the atomic consumption and session issuance. This reduces the
-risk that a mail-security scanner following GET links activates an account.
-Both endpoints redact token-bearing URLs from logging, referrers, analytics,
-and error output.
+The emailed link directs to a browser login page with the opaque token in its
+URL fragment. The browser removes the fragment before it makes a same-origin
+POST verification-intent request that validates the token without consuming it
+and presents a confirmation step. A subsequent same-origin POST performs the
+atomic consumption and session issuance. This reduces the risk that a
+mail-security scanner can spend a token: it can fetch the token-free page but
+cannot receive the URL fragment. Link construction, POST endpoints, and the
+browser fragment bridge must all redact tokens from logging, referrers,
+analytics, and error output.
 
 The rejected alternative is consuming the token on the first GET request. It
 is simpler but makes mailbox protection tools capable of spending a user’s

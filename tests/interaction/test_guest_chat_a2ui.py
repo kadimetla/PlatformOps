@@ -24,6 +24,10 @@ def test_login_route_renders_an_email_entry_surface_with_no_sensitive_control_pl
         component.get("action", {}).get("event", {}).get("name") == "guest.login.submit"
         for component in components
     )
+    email_field = next(component for component in components if component["id"] == "email")
+    submit = next(component for component in components if component["id"] == "submit")
+    assert email_field["value"] == {"path": "/email"}
+    assert submit["action"]["event"]["context"] == {"email": {"path": "/email"}}
     rendered_keys = set(_flatten(messages))
     assert not {
         "jwt", "cookie", "csrf_proof", "token", "magic_link", "organization",

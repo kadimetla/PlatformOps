@@ -32,6 +32,7 @@ actually posts.
 from __future__ import annotations
 
 import os
+from json import JSONDecodeError
 from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncIterator
 
@@ -52,6 +53,7 @@ from gateway.command_router import (
     ControlPlaneCommandRouter,
     ValidatedPrincipal,
 )
+from gateway.login_registration_handler import LoginCommand
 from gateway.schemas import ScopeHint
 from gateway.scope import parse_scope_hint
 from harness.core import PlatformOpsHarness
@@ -218,8 +220,11 @@ def create_app(
         # yield can't change the response's already-sent 200 status, so
         # a "clean 4xx" (per docs/WEB_CHAT_APP.md) requires computing
         # `result` before StreamingResponse is ever constructed.
-        body = await request.json()
-        run_input = ag_ui.RunAgentInput.model_validate(body)
+        try:
+            body = await request.json()
+            run_input = ag_ui.RunAgentInput.model_validate(body)
+        except (JSONDecodeError, ValidationError) as exc:
+            raise HTTPException(status_code=400, detail="invalid run body") from exc
 
         try:
             if run_input.resume:
@@ -270,14 +275,16 @@ def create_app(
         @app.post("/commands")
         async def commands(
             request: Request,
-            principal: ValidatedPrincipal = Depends(authenticate),
         ) -> StreamingResponse:
             """Typed browser action -> trusted router -> A2UI outcome.
 
             Body: {threadId, runId, command, payload}. Rejections happen
             before the stream opens, so they are clean 4xx responses.
             """
-            body = await request.json()
+            try:
+                body = await request.json()
+            except JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail="invalid command body") from exc
             if not isinstance(body, dict):
                 raise HTTPException(status_code=400, detail="invalid command body")
             thread_id, run_id = body.get("threadId"), body.get("runId")
@@ -291,6 +298,16 @@ def create_app(
                 raise HTTPException(
                     status_code=400, detail=f"payload field {rejected!r} is not accepted"
                 )
+            # Login is the sole public command. Every other command must
+            # derive its principal from the validated cookie before routing.
+            principal: ValidatedPrincipal | None = None
+            if command == "/login":
+                try:
+                    payload = LoginCommand.model_validate(payload).model_dump()
+                except ValidationError as exc:
+                    raise HTTPException(status_code=400, detail="invalid login payload") from exc
+            else:
+                principal = await authenticate(request)
             try:
                 outcome = await command_router.dispatch(command, payload, principal=principal)
             except CommandRouteUnavailable as exc:
@@ -317,4 +334,3 @@ def create_app(
             return StreamingResponse(command_stream(), media_type="text/event-stream")
 
     return app
-

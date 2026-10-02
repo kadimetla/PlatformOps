@@ -37,6 +37,7 @@ def _components_for(route: GuestChatRoute) -> list[dict[str, Any]]:
                 "id": "email",
                 "component": "TextField",
                 "label": "Email address",
+                "value": {"path": "/email"},
                 "variant": "shortText",
                 "validationRegexp": r"^[^\s@]+@[^\s@]+\.[^\s@]+$",
             },
@@ -44,7 +45,12 @@ def _components_for(route: GuestChatRoute) -> list[dict[str, Any]]:
                 "id": "submit",
                 "component": "Button",
                 "child": "submit-label",
-                "action": {"event": {"name": "guest.login.submit", "context": {}}},
+                "action": {
+                    "event": {
+                        "name": "guest.login.submit",
+                        "context": {"email": {"path": "/email"}},
+                    }
+                },
             },
             {"id": "submit-label", "component": "Text", "text": "Send sign-in link"},
         ])

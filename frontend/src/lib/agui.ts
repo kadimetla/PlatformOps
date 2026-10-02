@@ -169,6 +169,18 @@ export function createThreadClient(runsUrl: string, threadId: string): ThreadCli
       // in flight -- explicit no-op, not a silently queued retry.
       return;
     }
+    if (action.name === "guest.login.submit") {
+      const email = action.context?.email;
+      if (typeof email !== "string" || !email.trim()) {
+        appendTurn({ kind: "error", text: "Enter an email address before requesting a sign-in link." });
+        return;
+      }
+      // This is the one public typed action. The server accepts only the
+      // email through the existing registration handler; no browser session,
+      // target, organization, or authority field is supplied.
+      void runAndLog((s) => runCommand("/login", { email }, s));
+      return;
+    }
     if (action.name.startsWith("/")) {
       // A typed control-plane action (e.g. onboarding-review Approve).
       // Only the command name and the surface-reported context are sent;
