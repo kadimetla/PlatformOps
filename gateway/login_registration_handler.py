@@ -16,7 +16,11 @@ def build_login_registration_handler(service: RegistrationService):
 
     async def handle(invocation: CommandInvocation):
         command = LoginCommand.model_validate(invocation.payload)
-        state = await graph.ainvoke({"email": command.email, "result": None})
+        state = await graph.ainvoke({
+            "email": command.email,
+            "source": invocation.source,
+            "result": None,
+        })
         return state["result"]
 
     return handle

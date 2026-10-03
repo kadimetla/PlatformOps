@@ -439,15 +439,47 @@ def test_public_login_command_routes_without_a_browser_session_and_no_other_comm
     router = ControlPlaneCommandRouter({"login_registration": login})
     client = _client(_fake(), command_router=router, authenticated=False)
 
-    response = client.post("/commands", json=_command_body("/login", {"email": "alice@example.com"}))
+    response = client.post(
+        "/commands",
+        json=_command_body("/login", {"email": "alice@example.com"}),
+        headers={"origin": _ORIGIN},
+    )
 
     assert response.status_code == 200
     assert seen[0].principal is None
     assert seen[0].payload == {"email": "alice@example.com"}
+    assert seen[0].source == "testclient"
     assert client.post(
-        "/commands", json=_command_body("/login", {"email": "alice@example.com", "target": "prod"})
+        "/commands",
+        json=_command_body("/login", {"email": "alice@example.com", "target": "prod"}),
+        headers={"origin": _ORIGIN},
     ).status_code == 400
     assert client.post("/commands", json=_command_body("/provision")).status_code == 401
+
+
+def test_public_login_rejects_missing_or_cross_site_origin_before_routing():
+    router, seen = _recording_router()
+    client = _client(_fake(), command_router=router, authenticated=False)
+
+    for origin in (None, "https://evil.example"):
+        headers = {} if origin is None else {"origin": origin}
+        response = client.post(
+            "/commands", json=_command_body("/login", {"email": "alice@example.com"}), headers=headers,
+        )
+        assert response.status_code == 403
+
+    assert seen == []
+
+
+def test_invalid_cookie_rejects_protected_command_before_routing():
+    router, seen = _recording_router()
+    client = _client(_fake(), command_router=router)
+    client.cookies.set("platformops_session", "not-a-valid-session")
+
+    response = client.post("/commands", json=_command_body())
+
+    assert response.status_code == 401
+    assert seen == []
 
 
 def test_invalid_json_or_agui_body_is_a_clean_400_before_workflow_execution():

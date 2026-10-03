@@ -35,6 +35,18 @@
 - [ ] 3.4 Verify an end-to-end fake flow: confirm -> cookie + proof -> `/runs`
   authenticated -> provision fails closed for the empty-grant actor.
 
+## 3a. Public login hardening
+
+- [x] 3a.1 Require the configured Origin for the public `/login` command and
+  reject missing/cross-site origins before workflow invocation; verify it does
+  not require a CSRF proof before a session exists.
+- [x] 3a.2 Thread only the direct network peer address through the trusted
+  command invocation to registration rate limiting; verify one source cannot
+  trigger delivery for multiple addresses past its limit, and no forwarded
+  address or client payload is trusted.
+- [x] 3a.3 Verify malformed, missing, and invalid browser cookies reject
+  protected commands before routing.
+
 ## 4. Documentation and verification
 
 - [ ] 4.1 Correct `docs/WEB_CHAT_APP.md`, `frontend/README.md`, and

@@ -34,6 +34,7 @@ class CommandInvocation:
     route: CommandRoute
     principal: ValidatedPrincipal | None
     payload: dict[str, Any]
+    source: str | None = None
 
 
 class CommandRouteUnavailable(ValueError):
@@ -81,7 +82,8 @@ class ControlPlaneCommandRouter:
         self._handlers = handlers
 
     async def dispatch(
-        self, command: str, payload: dict[str, Any], *, principal: ValidatedPrincipal | None
+        self, command: str, payload: dict[str, Any], *, principal: ValidatedPrincipal | None,
+        source: str | None = None,
     ) -> Any:
         try:
             route = _ROUTES[ControlPlaneCommand(command)]
@@ -93,7 +95,9 @@ class ControlPlaneCommandRouter:
             handler = self._handlers[route.workflow_id]
         except KeyError as error:
             raise CommandRouteUnavailable("workflow is not enabled") from error
-        return await handler(CommandInvocation(route=route, principal=principal, payload=payload))
+        return await handler(CommandInvocation(
+            route=route, principal=principal, payload=payload, source=source,
+        ))
 
     async def dispatch_browser_mutation(
         self, command: str, payload: dict[str, Any], *, browser_session_token: str,

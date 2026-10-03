@@ -302,6 +302,8 @@ def create_app(
             # derive its principal from the validated cookie before routing.
             principal: ValidatedPrincipal | None = None
             if command == "/login":
+                if not authenticator.has_expected_origin(request.headers.get("origin")):
+                    raise HTTPException(status_code=403, detail="command not permitted")
                 try:
                     payload = LoginCommand.model_validate(payload).model_dump()
                 except ValidationError as exc:
@@ -309,7 +311,12 @@ def create_app(
             else:
                 principal = await authenticate(request)
             try:
-                outcome = await command_router.dispatch(command, payload, principal=principal)
+                # Use only the direct peer address. Forwarded headers are not
+                # trusted until explicit proxy configuration is introduced.
+                source = request.client.host if request.client is not None else None
+                outcome = await command_router.dispatch(
+                    command, payload, principal=principal, source=source,
+                )
             except CommandRouteUnavailable as exc:
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             except PermissionError as exc:
