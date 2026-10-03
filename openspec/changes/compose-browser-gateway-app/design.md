@@ -71,6 +71,12 @@ applies, and responses carry `Cache-Control: no-store`. The cookie value never
 appears in a body, log line, or error. These routes issue a session; they never
 mint grants or write a runtime actor.
 
+The public `/login` command also requires that configured Origin but does not
+require a CSRF proof, because it precedes session creation. It receives an
+internal rate-limit source derived only from the direct network peer address;
+it never trusts a client-supplied payload or forwarded-address header. A future
+trusted-proxy configuration may define a verified forwarded-address policy.
+
 The existing `VerificationEmailDelivery.send_verification(email, token)`
 boundary does not yet construct a URL. Introducing the fragment-only link
 builder is therefore an explicit prerequisite; no delivery implementation may
@@ -93,6 +99,9 @@ stub that always succeeds.
 - [Risk] Public routes invite token guessing -> Mitigation: reuse
   `RegistrationService`'s existing rate limiting and one-time consumption; the
   routes add no new token logic.
+- [Risk] A cross-site page could trigger login-email delivery -> Mitigation:
+  require the exact configured Origin even though this public entry point has
+  no CSRF proof, and apply per-email plus direct-peer rate limits.
 - [Risk] Duplicate ownership with `build-chat-workflow-context` 3.7-3.8 ->
   Mitigation: this change ends at the HTTP endpoint and composition; the
   browser/in-chat login flow stays there.

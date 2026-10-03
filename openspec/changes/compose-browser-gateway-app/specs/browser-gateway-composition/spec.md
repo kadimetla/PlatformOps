@@ -64,6 +64,22 @@ tokens.
 - **WHEN** a consumed, expired, or unknown token is confirmed
 - **THEN** the response is a generic failure with no cookie and no detail distinguishing the cause
 
+### Requirement: Public passwordless entry is origin-bound and abuse-controlled
+The system SHALL accept the public `/login` command only from the exact
+configured browser Origin. It SHALL accept only an email payload and SHALL use
+an internal direct-peer source for registration rate limiting; it SHALL NOT
+trust a client payload or unconfigured forwarded-address header as that source.
+
+#### Scenario: Cross-site login delivery is rejected
+- **WHEN** a request for `/login` has a missing or unexpected Origin
+- **THEN** the system rejects it before registration delivery or workflow invocation
+
+#### Scenario: One source requests links for multiple emails
+- **WHEN** one direct peer exceeds its registration source rate limit across
+  different email addresses
+- **THEN** the system preserves the generic pending response while suppressing
+  additional delivery
+
 ### Requirement: Unconfigured workflows are absent, not stubbed
 The system SHALL register only command handlers whose dependencies are
 configured; commands for other workflows SHALL be unavailable.

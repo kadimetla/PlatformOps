@@ -7,7 +7,7 @@ from workflows.login_registration.state import LoginRegistrationState
 
 def build_login_registration_graph(service: RegistrationService):
     def request_verification(state: LoginRegistrationState) -> dict:
-        return {"result": service.request_registration(state["email"])}
+        return {"result": service.request_registration(state["email"], source=state["source"])}
 
     builder = StateGraph(LoginRegistrationState)
     builder.add_node("request_verification", request_verification)

@@ -280,6 +280,14 @@ class BrowserSessionAuthenticator:
     def authenticate(self, token: str, *, now: datetime | None = None) -> ValidatedPrincipal:
         return self._authenticate_identity(token, now=now).principal
 
+    def has_expected_origin(self, origin: str | None) -> bool:
+        """Check the configured browser origin without authenticating a session.
+
+        Public passwordless entry points have no session or CSRF proof yet, but
+        they still need the same configured-origin boundary as confirmation.
+        """
+        return origin == self._expected_origin
+
     def _authenticate_identity(
         self, token: str, *, now: datetime | None = None,
     ) -> _VerifiedBrowserSessionIdentity:
